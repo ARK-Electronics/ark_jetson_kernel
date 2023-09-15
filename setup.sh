@@ -11,6 +11,9 @@ L4T_RELEASE_PACKAGE="jetson_linux_r35.3.1_aarch64.tbz2"
 SAMPLE_FS_PACKAGE="tegra_linux_sample-root-filesystem_r35.3.1_aarch64.tbz2"
 BOARD="jetson-orin-nano-devkit"
 
+pushd .
+mkdir -p prebuilt && cd prebuilt
+
 # Checks if setup is already performed
 already_performed=$(ls | grep "Linux_for_Tegra")
 if [ "$already_performed" ]; then
@@ -63,3 +66,5 @@ END_TIME=$(date +%s)
 TOTAL_TIME=$((${END_TIME}-${START_TIME}))
 echo "Finished -- $(date -d@${TOTAL_TIME} -u +%H:%M:%S)"
 echo "You can now flash the device"
+
+popd .
