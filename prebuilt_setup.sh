@@ -18,7 +18,7 @@ mkdir -p prebuilt && cd prebuilt
 already_performed=$(ls | grep "Linux_for_Tegra")
 if [ "$already_performed" ]; then
 	echo "Setup already complete. To start from scratch remove the Linux_for_Tegra directory"
-	echo "eg	sudo rm -rf Linux_for_Tegra/"
+	echo "eg	sudo rm -rf prebuilt/Linux_for_Tegra/"
 	exit
 fi
 
