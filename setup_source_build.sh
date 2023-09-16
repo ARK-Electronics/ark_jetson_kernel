@@ -27,8 +27,7 @@ fi
 release_downloaded=$(ls | grep "public_sources.tbz2")
 if [ -z $release_downloaded ]; then
 	echo "Downloading Jetson sources"
-	# https://developer.nvidia.com/embedded/jetson-linux-archive
-	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v3.1/sources/public_sources.tbz2/
+	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v3.1/sources/public_sources.tbz2
 	echo "Extracting Jetson sources"
 	tar -xjf public_sources.tbz2
 	cd Linux_for_Tegra/source/public
