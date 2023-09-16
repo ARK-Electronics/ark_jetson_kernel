@@ -50,9 +50,15 @@ cd source_build
 git clone git@github.com:ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
 ```
 Once you've made your modifications to the device tree files, copy them into the kernel source directory. For example if you've
-made changes to the **tegra234-p3768-0000-a0.dtsi** file:
+made changes to support the imx219 cameras over mipi:
 ```
 cp ark_jetson_orin_nano_nx_device_tree/cvb/tegra234-camera-ark-imx219.dtsi \
+  Linux_for_Tegra/source/public/hardware/nvidia/platform/t23x/p3768/kernel-dts/cvb/
+
+cp ark_jetson_orin_nano_nx_device_tree/cvb/tegra234-p3768-camera-ark-imx219.dtsi \
+  Linux_for_Tegra/source/public/hardware/nvidia/platform/t23x/p3768/kernel-dts/cvb/
+
+cp ark_jetson_orin_nano_nx_device_tree/cvb/tegra234-p3768-0000-a0.dtsi \
   Linux_for_Tegra/source/public/hardware/nvidia/platform/t23x/p3768/kernel-dts/cvb/
 ```
 Rebuild the kernel to build the device tree .dtb file
@@ -66,11 +72,11 @@ Note that there are different device tree binaries depending on the module and R
 **Orin Nano 8GB-DRAM**  : tegra234-p3767-**0003**-p3768-0000-a0.dtb <br>
 **Orin Nano 4GB-DRAM**  : tegra234-p3767-**0004**-p3768-0000-a0.dtb <br>
 
-You can now update the device tree binary in the prebuilt directory:
+You can now update the device tree binary in the prebuilt directory and reflash:
 ```
-cp kernel_out/arch/arm64/boot/dts/nvidia/tegra234-p3767-0003-p3768-0000-a0.dtb \
+sudo cp kernel_out/arch/arm64/boot/dts/nvidia/tegra234-p3767-0003-p3768-0000-a0.dtb \
   $ARK_JETSON_CORE_DIR/prebuilt/Linux_for_Tegra/bootloader/
-cp kernel_out/arch/arm64/boot/dts/nvidia/tegra234-p3767-0003-p3768-0000-a0.dtb \
+sudo cp kernel_out/arch/arm64/boot/dts/nvidia/tegra234-p3767-0003-p3768-0000-a0.dtb \
   $ARK_JETSON_CORE_DIR/prebuilt/Linux_for_Tegra/kernel/dtb/
 ```
 Or you can copy the binary directly to the device at **/boot/dtb/**. On reboot your new device tree will be active. <br>
