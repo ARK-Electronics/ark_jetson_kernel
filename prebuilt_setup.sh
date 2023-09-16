@@ -11,6 +11,12 @@ L4T_RELEASE_PACKAGE="jetson_linux_r35.3.1_aarch64.tbz2"
 SAMPLE_FS_PACKAGE="tegra_linux_sample-root-filesystem_r35.3.1_aarch64.tbz2"
 BOARD="jetson-orin-nano-devkit"
 
+# Add to bashrc if necessary
+exists=$(cat $BASHRC | grep ARK_JETSON_CORE_DIR)
+if [ -z "$exists" ]; then
+	echo "export ARK_JETSON_CORE_DIR=$PWD" >> $BASHRC
+fi
+
 pushd .
 mkdir -p prebuilt && cd prebuilt
 
@@ -31,10 +37,10 @@ if [ -z "$exists" ]; then
 	echo "export BOARD=$BOARD" >> $BASHRC
 fi
 
-# Check if release source files need to be downloaded
+# Check if release binary files need to be downloaded
 release_downloaded=$(ls | grep $L4T_RELEASE_PACKAGE)
 if [ -z $release_downloaded ]; then
-	echo "Downloading sources"
+	echo "Downloading prebuilt binaries"
 	# https://developer.nvidia.com/embedded/jetson-linux-archive
 	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v3.1/release/jetson_linux_r35.3.1_aarch64.tbz2
 	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v3.1/release/tegra_linux_sample-root-filesystem_r35.3.1_aarch64.tbz2
@@ -67,4 +73,4 @@ TOTAL_TIME=$((${END_TIME}-${START_TIME}))
 echo "Finished -- $(date -d@${TOTAL_TIME} -u +%H:%M:%S)"
 echo "You can now flash the device"
 
-popd .
+popd
