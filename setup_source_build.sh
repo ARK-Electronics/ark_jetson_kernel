@@ -38,7 +38,7 @@ fi
 # Check if toolchain is installed
 toolchain_installed=$(ls $HOME | grep "l4t-gcc")
 if [ -z "$toolchain_installed" ]; then
-	pushd .
+	pushd . > /dev/null
 	echo "Downloading and installing Jetson bootlin toolchain"
 	mkdir $HOME/l4t-gcc
 	cd $HOME/l4t-gcc
@@ -47,7 +47,7 @@ if [ -z "$toolchain_installed" ]; then
 	echo "Adding environment variables to bashrc"
 	echo "export CROSS_COMPILE_AARCH64_PATH=$HOME/l4t-gcc" >> $BASHRC
 	echo "export CROSS_COMPILE_AARCH64=$HOME/l4t-gcc/bin/aarch64-buildroot-linux-gnu-" >> $BASHRC
-	popd
+	popd > /dev/null
 fi
 
 echo "Finished"
