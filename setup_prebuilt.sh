@@ -11,12 +11,6 @@ L4T_RELEASE_PACKAGE="jetson_linux_r35.3.1_aarch64.tbz2"
 SAMPLE_FS_PACKAGE="tegra_linux_sample-root-filesystem_r35.3.1_aarch64.tbz2"
 BOARD="jetson-orin-nano-devkit"
 
-# Add to bashrc if necessary
-exists=$(cat $BASHRC | grep ARK_JETSON_CORE_DIR)
-if [ -z "$exists" ]; then
-	echo "export ARK_JETSON_CORE_DIR=$PWD" >> $BASHRC
-fi
-
 pushd . > /dev/null
 mkdir -p prebuilt && cd prebuilt
 

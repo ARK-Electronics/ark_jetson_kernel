@@ -8,9 +8,9 @@ IFS= read -rsp "[sudo] password for $USER: " SUDO_PASSWORD
 echo ""
 
 # Add to bashrc if necessary
-exists=$(cat $BASHRC | grep ARK_JETSON_CORE_DIR)
+exists=$(cat $BASHRC | grep ARK_JETSON_KERNEL_DIR)
 if [ -z "$exists" ]; then
-	echo "export ARK_JETSON_CORE_DIR=$PWD" >> $BASHRC
+	echo "export ARK_JETSON_KERNEL_DIR=$PWD" >> $BASHRC
 fi
 
 mkdir -p source_build && cd source_build

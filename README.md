@@ -3,11 +3,11 @@ prebuilt binaries or source files.
 
 # Installing the OS from binaries
 A single setup script is provided for your convenience. It will download the prebuilt release (35.3.1) and apply
-the modfied device tree binaries (dtb).
+the [custom ARK compiled](https://github.com/ARK-Electronics/ark_jetson_compiled_device_tree_files) device tree files.
 ```
 ./prebuilt_setup.sh
 ```
-Alternatively you can visit the [nvidia official documentation](https://docs.nvidia.com/jetson/archives/r35.3.1/DeveloperGuide/text/IN/QuickStart.html#to-flash-the-jetson-developer-kit-operating-software).
+Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r35.3.1/DeveloperGuide/text/IN/QuickStart.html#to-flash-the-jetson-developer-kit-operating-software) for flashing the release.
 
 ### Flashing
 Power on with the Force Recovery button held. You can verify the Jetson is in recovery mode by checking `lsusb`
@@ -33,7 +33,7 @@ provided that will download the necessary files and toolchain.
 ```
 ./source_build_setup.sh
 ```
-Alternatively you can visit the [nvidia official documentation](https://docs.nvidia.com/jetson/archives/r35.3.1/DeveloperGuide/text/SD/Kernel/KernelCustomization.html#building-the-kernel).
+Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r35.3.1/DeveloperGuide/text/SD/Kernel/KernelCustomization.html#building-the-kernel) for kernel customization and building from source.
 
 Once setup is complete you can build the kernel:
 ```
@@ -75,9 +75,9 @@ Note that there are different device tree binaries depending on the module and R
 You can now update the device tree binary in the prebuilt directory and reflash:
 ```
 sudo cp kernel_out/arch/arm64/boot/dts/nvidia/tegra234-p3767-0003-p3768-0000-a0.dtb \
-  $ARK_JETSON_CORE_DIR/prebuilt/Linux_for_Tegra/bootloader/
+  $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/bootloader/
 sudo cp kernel_out/arch/arm64/boot/dts/nvidia/tegra234-p3767-0003-p3768-0000-a0.dtb \
-  $ARK_JETSON_CORE_DIR/prebuilt/Linux_for_Tegra/kernel/dtb/
+  $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/kernel/dtb/
 ```
 Or you can copy the binary directly to the device at **/boot/dtb/**. On reboot your new device tree will be active. <br>
 Note that **kernel_** must be prepended to the file name *kernel_tegra234-p3767-0003-p3768-0000-a0.dtb*
