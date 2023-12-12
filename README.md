@@ -3,27 +3,24 @@ prebuilt binaries or source files.
 
 # Installing the OS from binaries
 A single setup script is provided for your convenience. It will download the prebuilt release (35.3.1) and apply
-the [custom ARK compiled](https://github.com/ARK-Electronics/ark_jetson_compiled_device_tree_files) device tree files.
+the [custom ARK compiled](https://github.com/ARK-Electronics/ark_jetson_compiled_device_tree_files) device tree files. The script will also configure the default user, password, and hostname as "jetson".
 ```
-./prebuilt_setup.sh
+./setup_prebuilt.sh
 ```
 Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r35.3.1/DeveloperGuide/text/IN/QuickStart.html#to-flash-the-jetson-developer-kit-operating-software) for flashing the release.
 
 ### Flashing
-Power on with the Force Recovery button held. You can verify the Jetson is in recovery mode by checking `lsusb`
+Connect a micro USB cable to the port adjacent to the mini HDMI. Power on with the Force Recovery button held. You can verify the Jetson is in recovery mode by checking `lsusb`.
 > Bus 001 Device 012: ID 0955:7523 NVIDIA Corp. APX
 
+Flash the image
 ```
-cd prebuilt/Linux_for_Tegra
+cd prebuilt/Linux_for_Tegra/
 sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
   -c tools/kernel_flash/flash_l4t_external.xml -p "\
   -c bootloader/t186ref/cfg/flash_t234_qspi.xml" \
   --showlogs --network usb0 jetson-orin-nano-devkit internal
 ```
-Once flashing is complete use the mini display port to finish setting up. <br>
-TODO: use /dev/ttyACM0 to finish setup (didn't work for me, the USB is RNDIS) <br>
-TODO: configure user/password before flashing to (bypasss?) the setup before being able to access
-the console on the hardware UART.
 
 ---
 

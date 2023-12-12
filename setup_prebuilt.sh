@@ -57,9 +57,13 @@ fi
 echo "Copying device tree files"
 sudo -S cp -r ark_jetson_compiled_device_tree_files/Linux_for_Tegra/* Linux_for_Tegra/ <<< "$SUDO_PASSWORD"
 
+popd > /dev/null
+
+echo "Setting up login credentials for the Jetson"
+sudo ./configure_user.sh
+
 END_TIME=$(date +%s)
 TOTAL_TIME=$((${END_TIME}-${START_TIME}))
 echo "Finished -- $(date -d@${TOTAL_TIME} -u +%H:%M:%S)"
 echo "You can now flash the device"
 
-popd > /dev/null
