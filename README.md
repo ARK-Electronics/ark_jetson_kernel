@@ -67,7 +67,7 @@ The device tree files for Jetson Orin Nano/NX can be found in the kernel source 
 You can download the github repository for the device tree source files here:
 ```
 cd source_build
-git clone git@github.com:ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+git clone -b ark_35.3.1 git@github.com:ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
 ```
 Once you've made your modifications to the device tree files, copy them into the kernel source directory. For example if you've
 made changes to support the imx219 cameras over mipi:

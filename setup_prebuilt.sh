@@ -51,7 +51,7 @@ fi
 repo_downloaded=$(ls | grep "ark_jetson_compiled_device_tree_files")
 if [ -z $repo_downloaded ]; then
 	echo "Downloading device tree files"
-	git clone git@github.com:ARK-Electronics/ark_jetson_compiled_device_tree_files.git
+	git clone -b ark_35.3.1 git@github.com:ARK-Electronics/ark_jetson_compiled_device_tree_files.git
 fi
 
 echo "Copying device tree files"
