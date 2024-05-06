@@ -2,12 +2,12 @@ This repository contains instructions and helper scripts to ease to process of i
 prebuilt binaries or source files.
 
 # Installing the OS from binaries
-A single setup script is provided for your convenience. It will download the prebuilt release (35.3.1) and apply
+A single setup script is provided for your convenience. It will download the prebuilt release (35.5.0) and apply
 the [custom ARK compiled](https://github.com/ARK-Electronics/ark_jetson_compiled_device_tree_files) device tree files. The script will also configure the default user, password, and hostname as "jetson".
 ```
 ./setup_prebuilt.sh
 ```
-Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r35.3.1/DeveloperGuide/text/IN/QuickStart.html#to-flash-the-jetson-developer-kit-operating-software) for flashing the release.
+Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r35.5.0/DeveloperGuide/index.html) for flashing the release.
 
 ### Flashing
 Connect a micro USB cable to the port adjacent to the mini HDMI. Power on with the Force Recovery button held. You can verify the Jetson is in recovery mode by checking `lsusb`.
@@ -53,7 +53,7 @@ provided that will download the necessary files and toolchain.
 ```
 ./source_build_setup.sh
 ```
-Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r35.3.1/DeveloperGuide/text/SD/Kernel/KernelCustomization.html#building-the-kernel) for kernel customization and building from source.
+Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r35.5.0/DeveloperGuide/SD/Kernel/KernelCustomization.html) for kernel customization and building from source.
 
 Once setup is complete you can build the kernel:
 ```
@@ -67,7 +67,7 @@ The device tree files for Jetson Orin Nano/NX can be found in the kernel source 
 You can download the github repository for the device tree source files here:
 ```
 cd source_build
-git clone -b ark_35.3.1 git@github.com:ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+git clone -b ark_35.5.0 git@github.com:ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
 ```
 Once you've made your modifications to the device tree files, copy them into the kernel source directory. For example if you've
 made changes to support the imx219 cameras over mipi:
