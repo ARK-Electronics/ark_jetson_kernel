@@ -7,8 +7,8 @@ SUDO_PASSWORD=
 IFS= read -rsp "[sudo] password for $USER: " SUDO_PASSWORD
 echo ""
 
-L4T_RELEASE_PACKAGE="jetson_linux_r35.3.1_aarch64.tbz2"
-SAMPLE_FS_PACKAGE="tegra_linux_sample-root-filesystem_r35.3.1_aarch64.tbz2"
+L4T_RELEASE_PACKAGE="jetson_linux_r35.5.0_aarch64.tbz2"
+SAMPLE_FS_PACKAGE="tegra_linux_sample-root-filesystem_r35.5.0_aarch64.tbz2"
 BOARD="jetson-orin-nano-devkit"
 
 pushd . > /dev/null
@@ -28,14 +28,14 @@ release_downloaded=$(ls | grep $L4T_RELEASE_PACKAGE)
 if [ -z $release_downloaded ]; then
 	echo "Downloading prebuilt binaries"
 	# https://developer.nvidia.com/embedded/jetson-linux-archive
-	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v3.1/release/jetson_linux_r35.3.1_aarch64.tbz2
-	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v3.1/release/tegra_linux_sample-root-filesystem_r35.3.1_aarch64.tbz2
+	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/jetson_linux_r35.5.0_aarch64.tbz2
+	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/release/tegra_linux_sample-root-filesystem_r35.5.0_aarch64.tbz2
 fi
 
 # Checks if setup is already performed
 already_performed=$(ls | grep "Linux_for_Tegra")
 if [ -z "$already_performed" ]; then
-	# https://docs.nvidia.com/jetson/archives/r35.3.1/DeveloperGuide/text/IN/QuickStart.html#jetson-modules-and-configurations
+	# https://docs.nvidia.com/jetson/archives/r35.5.0/DeveloperGuide/IN/QuickStart.html#jetson-modules-and-configurations
 	echo "Untarring files, this may take some time"
 	tar xf ${L4T_RELEASE_PACKAGE}
 	sudo -S tar xpf ${SAMPLE_FS_PACKAGE} -C Linux_for_Tegra/rootfs/ <<< "$SUDO_PASSWORD"
