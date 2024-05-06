@@ -14,14 +14,9 @@ BOARD="jetson-orin-nano-devkit"
 pushd . > /dev/null
 mkdir -p prebuilt && cd prebuilt
 
-# Add to bashrc if necessary
-exists=$(cat $BASHRC | grep L4T_RELEASE_PACKAGE)
-if [ -z "$exists" ]; then
-	echo "Adding environment variables to bashrc"
-	echo "export L4T_RELEASE_PACKAGE=$L4T_RELEASE_PACKAGE" >> $BASHRC
-	echo "export SAMPLE_FS_PACKAGE=$SAMPLE_FS_PACKAGE" >> $BASHRC
-	echo "export BOARD=$BOARD" >> $BASHRC
-fi
+export L4T_RELEASE_PACKAGE=$L4T_RELEASE_PACKAGE
+export SAMPLE_FS_PACKAGE=$SAMPLE_FS_PACKAGE
+export BOARD=$BOARD
 
 # Check if release binary files need to be downloaded
 release_downloaded=$(ls | grep $L4T_RELEASE_PACKAGE)
