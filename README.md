@@ -13,11 +13,6 @@ Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidi
 Connect a micro USB cable to the port adjacent to the mini HDMI. Power on with the Force Recovery button held. You can verify the Jetson is in recovery mode by checking `lsusb`.
 > Bus 001 Device 012: ID 0955:7523 NVIDIA Corp. APX
 
-Connect an FTDI cable to the debug port of the Jetson. This will allow you to monitor the progress and ensure there are no errors during the flashing process. After flashing is complete you will use this port to configure the wifi network connection.
-```
-picocom /dev/ttyUSB0 -b 115200
-```
-
 Flash the image
 ```
 cd prebuilt/Linux_for_Tegra/
@@ -30,7 +25,10 @@ sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
 Once flashing has been completed successfully, power cycle the Jetson.
 
 #### Setting up WiFi (headless)
-You will need an FTDI attached to the debug connector setup the wifi interface. Alternatively you can connect a display and configure it using the GUI.
+After flashing is complete you can use the USB connection to configure the wifi network connection.
+```
+picocom /dev/ttyUSB0 -b 115200
+```
 
 Check that the wifi interface exists
 ```
