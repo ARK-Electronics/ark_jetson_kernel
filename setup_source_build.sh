@@ -27,12 +27,14 @@ fi
 release_downloaded=$(ls | grep "public_sources.tbz2")
 if [ -z $release_downloaded ]; then
 	echo "Downloading Jetson sources"
-	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2
+	wget https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/sources/public_sources.tbz2
 	echo "Extracting Jetson sources"
 	tar -xjf public_sources.tbz2
-	cd Linux_for_Tegra/source/public
+	cd Linux_for_Tegra/source
 	echo "Extracting kernel source"
-	tar -xjf kernel_src.tbz2
+	tar xf kernel_src.tbz2
+	tar xf kernel_oot_modules_src.tbz2
+	tar xf nvidia_kernel_display_driver_source.tbz2
 fi
 
 # Check if toolchain is installed
@@ -42,11 +44,9 @@ if [ -z "$toolchain_installed" ]; then
 	echo "Downloading and installing Jetson bootlin toolchain"
 	mkdir $HOME/l4t-gcc
 	cd $HOME/l4t-gcc
-	wget https://developer.nvidia.com/embedded/jetson-linux/bootlin-toolchain-gcc-93
-	tar xf aarch64--glibc--stable-final.tar.gz
-	echo "Adding environment variables to bashrc"
-	echo "export CROSS_COMPILE_AARCH64_PATH=$HOME/l4t-gcc" >> $BASHRC
-	echo "export CROSS_COMPILE_AARCH64=$HOME/l4t-gcc/bin/aarch64-buildroot-linux-gnu-" >> $BASHRC
+	# https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/AT/JetsonLinuxToolchain.html#at-jetsonlinuxtoolchain
+	wget https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/toolchain/aarch64--glibc--stable-2022.08-1.tar.bz2
+	tar xf aarch64--glibc--stable-2022.08-1.tar.bz2
 	popd > /dev/null
 fi
 
