@@ -18,6 +18,7 @@ export SAMPLE_FS_PACKAGE=$(basename $ROOT_FS_URL)
 export BOARD="jetson-orin-nano-devkit"
 
 pushd . > /dev/null
+sudo rm -rf prebuilt
 mkdir -p prebuilt && cd prebuilt
 
 # https://developer.nvidia.com/embedded/jetson-linux-archive
