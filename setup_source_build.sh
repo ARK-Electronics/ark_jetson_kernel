@@ -50,4 +50,13 @@ if [ -z "$toolchain_installed" ]; then
 	popd > /dev/null
 fi
 
+# Clone ARK device tree
+echo "Downloading ARK device tree"
+cd source_build
+rm -rf ark_jetson_orin_nano_nx_device_tree
+git clone -b ark_36.3.0 git@github.com:ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+echo "Copying ARK device tree files"
+cp -r ark_jetson_orin_nano_nx_device_tree/* Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/
+cd ..
+
 echo "Finished"

@@ -65,19 +65,15 @@ sudo nmcli device wifi connect <MY_WIFI_AP> password <MY_WIFI_PASSWORD>
 
 # Building from source
 If you want to further modify the device tree, you will need to build the kernel from source. A helper script is
-provided that will download the necessary files and toolchain. This process involves building the device tree binaries and copying them into the prebuilt directory. You should run the **setup_prebuilt.sh** script first.
+provided that will download the kernel source, toolchain, and ARK customized device tree files. Run the **setup_prebuilt.sh** script first.
 ```
 ./setup_source_build.sh
 ```
 Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/Kernel/KernelCustomization.html) for kernel customization and building from source.
 
-### Update device tree for ARK carrier
-```
-cd source_build
-git clone -b ark_36.3.0 git@github.com:ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
-cp -rf ark_jetson_orin_nano_nx_device_tree/* $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public
-```
+If you want to make changes to the device tree you will need to modify the files found in the ARK custom device tree repo https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree
 
+### Build the kernel and device tree
 Once setup is complete you can build the kernel:
 ```
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
@@ -95,7 +91,7 @@ cd prebuilt/Linux_for_Tegra/
 sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
 ```
 
-### Generating a new kernel device tree
+### Build just the device tree
 To make changes to the kernel device tree you must build the kernel from source. After building from source you will copy over the new **tegra234-p3768-0000+p3767-<SKU>-nv.dtb** device tree binary to the corresponding location in the prebuilt directory and flash using the same method.
 
 The device tree files for Jetson Orin Nano/NX can be found in the kernel source directory at **Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public**. <br>
