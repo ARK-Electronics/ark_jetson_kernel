@@ -26,11 +26,9 @@ wget -nc $BSP_URL
 wget -nc $ROOT_FS_URL
 
 # https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/IN/QuickStart.html#to-flash-the-jetson-developer-kit-operating-software
-if [ ! -d "Linux_for_Tegra/rootfs/" ]; then
-	echo "Untarring files, this may take some time"
-	tar xf $L4T_RELEASE_PACKAGE
-	sudo -S tar xpf $SAMPLE_FS_PACKAGE -C Linux_for_Tegra/rootfs/ <<< "$SUDO_PASSWORD"
-fi
+echo "Untarring files, this may take some time"
+tar xf $L4T_RELEASE_PACKAGE
+sudo -S tar xpf $SAMPLE_FS_PACKAGE -C Linux_for_Tegra/rootfs/ <<< "$SUDO_PASSWORD"
 
 cd Linux_for_Tegra/
 echo "Satisfying prerequisites"
@@ -39,12 +37,8 @@ echo "Applying binaries"
 sudo -S ./apply_binaries.sh --debug <<< "$SUDO_PASSWORD"
 cd ..
 
-# Check if compiled devide tree repo is already downloaded
-repo_downloaded=$(ls | grep "ark_jetson_compiled_device_tree_files")
-if [ -z $repo_downloaded ]; then
-	echo "Downloading device tree files"
-	git clone -b ark_36.3.0 git@github.com:ARK-Electronics/ark_jetson_compiled_device_tree_files.git
-fi
+rm -rf ark_jetson_compiled_device_tree_files
+git clone -b ark_36.3.0 git@github.com:ARK-Electronics/ark_jetson_compiled_device_tree_files.git
 
 echo "Copying device tree files"
 sudo -S cp -r ark_jetson_compiled_device_tree_files/Linux_for_Tegra/* Linux_for_Tegra/ <<< "$SUDO_PASSWORD"

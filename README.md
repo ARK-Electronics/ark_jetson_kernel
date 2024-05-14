@@ -15,16 +15,14 @@ Connect a micro USB cable to the port adjacent to the mini HDMI. Power on with t
 > Bus 001 Device 012: ID 0955:7523 NVIDIA Corp. APX
 
 Flash the image
-```
+````
 cd prebuilt/Linux_for_Tegra/
-sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
-  -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/generic/cfg/flash_t234_qspi.xml" \
-  --showlogs --network usb0 jetson-orin-nano-devkit internal
-```
+sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
+````
 
 Install Jetpack and missing WiFi driver
 ```
-sudo apt-get install -y nvidia-jetpack backport-iwlwifi-dkms
+sudo apt update && sudo apt install -y nvidia-jetpack backport-iwlwifi-dkms
 ```
 
 #### Flashing only the QSPI
@@ -93,10 +91,8 @@ $ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
 ```
 Flash the image
 ```
-cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
-sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 \
-  -c tools/kernel_flash/flash_l4t_t234_nvme.xml -p "-c bootloader/generic/cfg/flash_t234_qspi.xml" \
-  --showlogs --network usb0 jetson-orin-nano-devkit internal
+cd prebuilt/Linux_for_Tegra/
+sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
 ```
 
 ### Generating a new kernel device tree
