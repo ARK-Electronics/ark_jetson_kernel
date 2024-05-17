@@ -18,7 +18,7 @@ export SAMPLE_FS_PACKAGE=$(basename $ROOT_FS_URL)
 export BOARD="jetson-orin-nano-devkit"
 
 pushd . > /dev/null
-sudo rm -rf prebuilt
+sudo -S rm -rf prebuilt <<< "$SUDO_PASSWORD"
 mkdir -p prebuilt && cd prebuilt
 
 # https://developer.nvidia.com/embedded/jetson-linux-archive
@@ -38,9 +38,9 @@ echo "Applying binaries"
 sudo -S ./apply_binaries.sh --debug <<< "$SUDO_PASSWORD"
 cd ..
 
+# Apply ARK compile device tree
 rm -rf ark_jetson_compiled_device_tree_files
 git clone -b ark_36.3.0 git@github.com:ARK-Electronics/ark_jetson_compiled_device_tree_files.git
-
 echo "Copying device tree files"
 sudo -S cp -r ark_jetson_compiled_device_tree_files/Linux_for_Tegra/* Linux_for_Tegra/ <<< "$SUDO_PASSWORD"
 

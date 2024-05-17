@@ -14,7 +14,7 @@ if [ -z "$exists" ]; then
 fi
 
 pushd . > /dev/null
-sudo rm -rf source_build
+sudo -S rm -rf source_build <<< "$SUDO_PASSWORD"
 mkdir -p source_build && cd source_build
 
 echo "Downloading Jetson sources"

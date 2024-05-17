@@ -16,7 +16,7 @@ Connect a micro USB cable to the port adjacent to the mini HDMI. Power on with t
 
 Flash the image
 ````
-cd prebuilt/Linux_for_Tegra/
+cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
 sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
 ````
 
@@ -71,38 +71,9 @@ provided that will download the kernel source, toolchain, and ARK customized dev
 ```
 Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/Kernel/KernelCustomization.html) for kernel customization and building from source.
 
-If you want to make changes to the device tree you will need to modify the files found in the ARK custom device tree repo https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree
-
-### Build the kernel and device tree
-Once setup is complete you can build the kernel:
-```
-export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/
-mkdir -p kernel_out
-./nvbuild.sh -o $PWD/kernel_out
-```
-And copy over the newly built device tree binaries to the prebuilt directory
-```
-$ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
-```
-Flash the image
-```
-cd prebuilt/Linux_for_Tegra/
-sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
-```
-
-### Build just the device tree
+### Notes on building the kernel and modifying the device tree
 To make changes to the kernel device tree you must build the kernel from source. After building from source you will copy over the new **tegra234-p3768-0000+p3767-<SKU>-nv.dtb** device tree binary to the corresponding location in the prebuilt directory and flash using the same method.
 
-The device tree files for Jetson Orin Nano/NX can be found in the kernel source directory at **Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public**. <br>
-
-
-To just build the device tree (kernel must be built first)
-```
-export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS=/home/jake/code/ark/ark_jetson_kernel/source_build/Linux_for_Tegra/source/kernel_out/kernel/kernel-jammy-src
-./nvbuild.sh -m -o $PWD/kernel_out
-```
 Note that there are different device tree binaries depending on the module and RAM. <br>
 https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/HR/JetsonModuleAdaptationAndBringUp/JetsonOrinNxNanoSeries.html#porting-the-linux-kernel-device-tree <br>
 **Orin NX 16GB-DRAM**   : tegra234-p3768-0000+p3767-**0000**-nv.dtb <br>
@@ -110,13 +81,77 @@ https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/HR/JetsonModuleAdap
 **Orin Nano 8GB-DRAM**  : tegra234-p3768-0000+p3767-**0003**-nv.dtb <br>
 **Orin Nano 4GB-DRAM**  : tegra234-p3768-0000+p3767-**0004**-nv.dtb <br>
 
-You can reflash the image or you can just copy the device tree binary overlay directly to the jetson. This will scp via micro-USB to the home directory on the Jetson. You will then need to move this file into **/boot**
+The device tree files for Jetson Orin Nano/NX can be found in the kernel source directory at **Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public**. We maintain a [repository](https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree ) with these files which is cloned into **$ARK_JETSON_KERNEL_DIR/source_build** in the source build setup script. If you want to modify the device tree you will need to modify the files in this repo and and copy them into the correct locaiton in the source build. <br>
 ```
-scp $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel_out/nvidia-oot/device-tree/platform/generic-dts/dtbs/tegra234-p3767-camera-p3768-imx219-ark-quad.dtbo jetson@192.168.55.1:~
-
+cd $ARK_JETSON_KERNEL_DIR/source_build
+cp -r ark_jetson_orin_nano_nx_device_tree/* Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/
 ```
-On reboot your new device tree will be active. <br>
 
+### Building the kernel and overlay DTBs
+Once setup is complete you can build the kernel device tree:
+```
+export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
+export KERNEL_HEADERS=/home/jake/code/ark/ark_jetson_kernel/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
+cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/
+make -C kernel
+make modules
+make dtbs
+```
+And copy over the newly built device tree binaries to the prebuilt directory
+```
+$ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
+```
+Flash the image (required for updating kernel device tree)
+```
+cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
+sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
+```
 
-### Adding a device tree overlay
-Device tree overlays can be found in **Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/overlay** and have the **.dts** extension. To include an overlay in the kernel you must add the **.dtbo** to the Makefile in the same directory. Alternatively you can copy the **.dtbo** at run time as explained above.
+### Building the camera overlay DTBS
+The camera overlays can be built and installed onto the Jetson without needing to reflash.
+```
+export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
+export KERNEL_HEADERS=/home/jake/code/ark/ark_jetson_kernel/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
+cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/
+make dtbs
+```
+
+Copy the overlay DTB to the Jetson via Micro-USB
+```
+DTB_PATH="$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel_out/nvidia-oot/device-tree/platform/generic-dts/dtbs/"
+OVERLAY_DTB=<your_overlay>
+scp $DTB_PATH/$OVERLAY_DTB jetson@192.168.55.1:~
+```
+Installing the overlay require sudo so you will then need to SSH into the Jetson and move the overlay into **/boot**.
+```
+ssh jetson@192.168.55.1
+sudo mv <your_overlay> /boot
+```
+You can then select your overlay using the Jetson-IO tool. List the available overlays to ensure yours is available.
+```
+sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
+```
+For example
+```
+ Header 1 [default]: Jetson 40pin Header
+   Available hardware modules:
+   1. Adafruit SPH0645LM4H
+   2. Adafruit UDA1334A
+   3. FE-PI Audio V1 and Z V2
+   4. ReSpeaker 4 Mic Array
+   5. ReSpeaker 4 Mic Linear Array
+ Header 2: Jetson 24pin CSI Connector
+   Available hardware modules:
+   1. Camera ARK IMX219 Quad
+   2. Camera ARK IMX477 Single
+```
+
+Apply your overlay, for example
+```
+sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera ARK IMX477 Single"
+```
+
+Reboot and your new device tree will be active.
+```
+sudo reboot
+```
