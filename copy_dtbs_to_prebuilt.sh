@@ -43,8 +43,15 @@ file_names=(
 
 for file in "${file_names[@]}"
 do
-    echo "Removing $file..."
-    sudo rm "$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/boot/$file"
-    sudo rm "$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/kernel/dtb/$file"
+    filepath="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/boot/$file"
+    if [ -e "$filepath" ]; then
+        echo "Removing $file..."
+        sudo rm filepath
+    fi
 
+    filepath="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/kernel/dtb/$file"
+    if [ -e "$filepath" ]; then
+        echo "Removing $file..."
+        sudo rm filepath
+    fi
 done
