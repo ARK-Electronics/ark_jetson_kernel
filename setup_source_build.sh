@@ -13,41 +13,37 @@ if [ -z "$exists" ]; then
 	echo "export ARK_JETSON_KERNEL_DIR=$PWD" >> $BASHRC
 fi
 
+pushd . > /dev/null
+sudo -S rm -rf source_build <<< "$SUDO_PASSWORD"
 mkdir -p source_build && cd source_build
 
-# Checks if setup is already performed
-already_performed=$(ls | grep "Linux_for_Tegra")
-if [ "$already_performed" ]; then
-	echo "Setup already complete. To start from scratch remove the Linux_for_Tegra directory"
-	echo "eg	sudo rm -rf source_build/Linux_for_Tegra/"
-	exit
-fi
+echo "Downloading Jetson sources"
+wget https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/sources/public_sources.tbz2
+echo "Extracting Jetson sources"
+tar -xjf public_sources.tbz2
+pushd . > /dev/null
+cd Linux_for_Tegra/source
+echo "Extracting kernel source"
+tar xf kernel_src.tbz2
+tar xf kernel_oot_modules_src.tbz2
+tar xf nvidia_kernel_display_driver_source.tbz2
+popd
 
-# Check if release source files need to be downloaded
-release_downloaded=$(ls | grep "public_sources.tbz2")
-if [ -z $release_downloaded ]; then
-	echo "Downloading Jetson sources"
-	wget https://developer.nvidia.com/downloads/embedded/l4t/r35_release_v5.0/sources/public_sources.tbz2
-	echo "Extracting Jetson sources"
-	tar -xjf public_sources.tbz2
-	cd Linux_for_Tegra/source/public
-	echo "Extracting kernel source"
-	tar -xjf kernel_src.tbz2
-fi
+pushd . > /dev/null
+echo "Downloading and installing Jetson bootlin toolchain"
+mkdir $HOME/l4t-gcc
+cd $HOME/l4t-gcc
+# https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/AT/JetsonLinuxToolchain.html#at-jetsonlinuxtoolchain
+wget https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/toolchain/aarch64--glibc--stable-2022.08-1.tar.bz2
+tar xf aarch64--glibc--stable-2022.08-1.tar.bz2
+popd > /dev/null
 
-# Check if toolchain is installed
-toolchain_installed=$(ls $HOME | grep "l4t-gcc")
-if [ -z "$toolchain_installed" ]; then
-	pushd . > /dev/null
-	echo "Downloading and installing Jetson bootlin toolchain"
-	mkdir $HOME/l4t-gcc
-	cd $HOME/l4t-gcc
-	wget https://developer.nvidia.com/embedded/jetson-linux/bootlin-toolchain-gcc-93
-	tar xf aarch64--glibc--stable-final.tar.gz
-	echo "Adding environment variables to bashrc"
-	echo "export CROSS_COMPILE_AARCH64_PATH=$HOME/l4t-gcc" >> $BASHRC
-	echo "export CROSS_COMPILE_AARCH64=$HOME/l4t-gcc/bin/aarch64-buildroot-linux-gnu-" >> $BASHRC
-	popd > /dev/null
-fi
+# Clone ARK device tree
+echo "Downloading ARK device tree"
+rm -rf ark_jetson_orin_nano_nx_device_tree
+git clone -b ark_36.3.0 git@github.com:ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+echo "Copying ARK device tree files"
+cp -r ark_jetson_orin_nano_nx_device_tree/* Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/
+popd
 
 echo "Finished"
