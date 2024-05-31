@@ -91,7 +91,7 @@ cp -r ark_jetson_orin_nano_nx_device_tree/* Linux_for_Tegra/source/hardware/nvid
 Once setup is complete you can build the kernel device tree:
 ```
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS=/home/jake/code/ark/ark_jetson_kernel/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
+export KERNEL_HEADERS=$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
 cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/
 make -C kernel
 make modules
