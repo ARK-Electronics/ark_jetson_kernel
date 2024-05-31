@@ -46,12 +46,12 @@ do
     filepath="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/boot/$file"
     if [ -e "$filepath" ]; then
         echo "Removing $file..."
-        sudo rm filepath
+        sudo rm $filepath
     fi
 
     filepath="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/kernel/dtb/$file"
     if [ -e "$filepath" ]; then
         echo "Removing $file..."
-        sudo rm filepath
+        sudo rm $filepath
     fi
 done
