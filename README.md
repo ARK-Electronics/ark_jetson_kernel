@@ -29,7 +29,7 @@ sudo apt update && sudo apt install -y nvidia-jetpack backport-iwlwifi-dkms
 You can also just flash the QSPI bootloader and install a pre-flashed NVME afterwards.
 ```
 cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
-sudo /flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit nvme0n1p1
+sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit nvme0n1p1
 ```
 https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/FlashingSupport.html#examples
 
