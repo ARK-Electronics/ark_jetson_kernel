@@ -18,7 +18,8 @@ export SAMPLE_FS_PACKAGE=$(basename $ROOT_FS_URL)
 export BOARD="jetson-orin-nano-devkit"
 
 # Add to bashrc if necessary
-exists=$(cat $BASHRC | grep ARK_JETSON_KERNEL_DIR)
+BASHRC="~/.bashrc"
+exists=$(cat $BASHRC | grep "ARK_JETSON_KERNEL_DIR")
 if [ -z "$exists" ]; then
 	echo "export ARK_JETSON_KERNEL_DIR=$PWD" >> $BASHRC
 fi
