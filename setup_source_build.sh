@@ -7,6 +7,7 @@ SUDO_PASSWORD=
 IFS= read -rsp "[sudo] password for $USER: " SUDO_PASSWORD
 echo ""
 
+echo "export ARK_JETSON_KERNEL_DIR=$PWD"
 # Add to bashrc if necessary
 exists=$(cat $BASHRC | grep ARK_JETSON_KERNEL_DIR)
 if [ -z "$exists" ]; then
