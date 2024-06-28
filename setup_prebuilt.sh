@@ -17,6 +17,7 @@ export L4T_RELEASE_PACKAGE=$(basename $BSP_URL)
 export SAMPLE_FS_PACKAGE=$(basename $ROOT_FS_URL)
 export BOARD="jetson-orin-nano-devkit"
 
+echo "export ARK_JETSON_KERNEL_DIR=$PWD"
 # Add to bashrc if necessary
 BASHRC="$HOME/.bashrc"
 exists=$(cat $BASHRC | grep "ARK_JETSON_KERNEL_DIR")
