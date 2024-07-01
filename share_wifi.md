@@ -33,6 +33,7 @@ ping 8.8.8.8
 #### Setting up WiFi
 Install the missing wifi module
 ```
+sudo apt update
 sudo apt-get install -y backport-iwlwifi-dkms
 ```
 
