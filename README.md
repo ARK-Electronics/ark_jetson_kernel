@@ -71,6 +71,39 @@ provided that will download the kernel source, toolchain, and ARK customized dev
 ```
 Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/Kernel/KernelCustomization.html) for kernel customization and building from source.
 
+### Building the kernel
+Add these definitions to the defconfig
+**$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src/arch/arm64/configs/defconfig**
+```
+CONFIG_USB_WDM=y
+CONFIG_USB_NET_DRIVERS=y
+CONFIG_USB_NET_QMI_WWAN=y
+CONFIG_USB_SERIAL_QUALCOMM=y
+CONFIG_WLAN=y
+CONFIG_WLAN_VENDOR_INTEL=y
+CONFIG_IWLWIFI=m
+CONFIG_IWLWIFI_LEDS=y
+CONFIG_IWLDVM=m
+CONFIG_IWLMVM=m
+CONFIG_IWLWIFI_OPMODE_MODULAR=y
+```
+Navigate to the root of the kernel sources
+```
+cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source
+make -C kernel
+```
+After building install the files and copy the kernel image
+```
+export INSTALL_MOD_PATH=$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/
+sudo -E make install -C kernel
+cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
+```
+Navigate back to prebuilt workspace and flash the image
+````
+cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
+sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
+````
+
 ### Notes on building the kernel and modifying the device tree
 To make changes to the kernel device tree you must build the kernel from source. After building from source you will copy over the new **tegra234-p3768-0000+p3767-<SKU>-nv.dtb** device tree binary to the corresponding location in the prebuilt directory and flash using the same method.
 
