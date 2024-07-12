@@ -72,7 +72,7 @@ provided that will download the kernel source, toolchain, and ARK customized dev
 Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/Kernel/KernelCustomization.html) for kernel customization and building from source.
 
 ### Building the kernel
-Add these definitions to the defconfig
+Add these definitions to the defconfig. These options add support for Sierra Wireless LTE modems and Intel WiFi cards.
 **$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src/arch/arm64/configs/defconfig**
 ```
 CONFIG_USB_WDM=y
@@ -89,12 +89,13 @@ CONFIG_IWLWIFI_OPMODE_MODULAR=y
 ```
 Navigate to the root of the kernel sources
 ```
+export INSTALL_MOD_PATH=$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/
 cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source
 make -C kernel
+make modules
 ```
 After building install the files and copy the kernel image
 ```
-export INSTALL_MOD_PATH=$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/
 sudo -E make install -C kernel
 cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
 ```
