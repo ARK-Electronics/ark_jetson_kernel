@@ -89,6 +89,8 @@ CONFIG_IWLWIFI_OPMODE_MODULAR=y
 ```
 Navigate to the root of the kernel sources
 ```
+export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
+export KERNEL_HEADERS=$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
 export INSTALL_MOD_PATH=$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/
 cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source
 make -C kernel
@@ -145,7 +147,7 @@ sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c
 The camera overlays can be built and installed onto the Jetson without needing to reflash.
 ```
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS=/home/jake/code/ark/ark_jetson_kernel/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
+export KERNEL_HEADERS=$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
 cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/
 make dtbs
 ```
