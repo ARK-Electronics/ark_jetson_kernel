@@ -20,9 +20,9 @@ cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
 sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
 ````
 
-Install Jetpack and missing WiFi driver
+Install Jetpack
 ```
-sudo apt update && sudo apt install -y nvidia-jetpack backport-iwlwifi-dkms
+sudo apt update && sudo apt install -y nvidia-jetpack
 ```
 
 #### Flashing only the QSPI
@@ -101,7 +101,7 @@ export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-
 export KERNEL_HEADERS=$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
 export INSTALL_MOD_PATH=$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/
 cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source
-make -C kernel && make modules
+make -C kernel && make modules && make dtbs
 ```
 After building install the files and copy the kernel image
 ```
