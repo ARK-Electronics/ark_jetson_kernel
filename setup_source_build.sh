@@ -66,7 +66,7 @@ popd > /dev/null
 # Clone ARK device tree
 echo "Downloading ARK device tree"
 rm -rf ark_jetson_orin_nano_nx_device_tree
-git clone -b ark_36.3.0 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+git clone -b ark_36.3.0.1 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
 echo "Copying ARK device tree files"
 cp -r ark_jetson_orin_nano_nx_device_tree/* Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/
 popd

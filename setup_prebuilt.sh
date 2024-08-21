@@ -48,7 +48,7 @@ cd ..
 
 # Apply ARK compile device tree
 rm -rf ark_jetson_compiled_device_tree_files
-git clone -b ark_36.3.0 https://github.com/ARK-Electronics/ark_jetson_compiled_device_tree_files.git
+git clone -b ark_36.3.0.1 https://github.com/ARK-Electronics/ark_jetson_compiled_device_tree_files.git
 echo "Copying device tree files"
 sudo -S cp -r ark_jetson_compiled_device_tree_files/Linux_for_Tegra/* Linux_for_Tegra/ <<< "$SUDO_PASSWORD"
 
