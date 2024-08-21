@@ -72,30 +72,7 @@ provided that will download the kernel source, toolchain, and ARK customized dev
 Alternatively you can visit NVIDIA's [official documentation](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/Kernel/KernelCustomization.html) for kernel customization and building from source.
 
 ### Building the kernel
-Add these definitions to the defconfig. These options add support for Sierra Wireless LTE modems and Intel WiFi cards.
-**$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src/arch/arm64/configs/defconfig**
-```
-CONFIG_USB_WDM=y
-CONFIG_USB_NET_DRIVERS=y
-CONFIG_USB_NET_QMI_WWAN=y
-CONFIG_USB_SERIAL_QUALCOMM=y
-CONFIG_WLAN=y
-CONFIG_WLAN_VENDOR_INTEL=y
-CONFIG_IWLWIFI=y
-CONFIG_IWLWIFI_LEDS=y
-CONFIG_IWLDVM=y
-CONFIG_IWLMVM=y
-CONFIG_IWLWIFI_OPMODE_MODULAR=y
-CONFIG_ATH_COMMON=y
-CONFIG_WLAN_VENDOR_ATH=y
-CONFIG_NET_VENDOR_ATHEROS=y
-CONFIG_ATH10K_CE=y
-CONFIG_ATH10K_USB=y
-CONFIG_CRYPTO_MICHAEL_MIC=y
-CONFIG_ATH11K=y
-CONFIG_ATH11K_PCI=y
-```
-Navigate to the root of the kernel sources
+Navigate to the root of the kernel sources and build the kernel, modules, and dtbs
 ```
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
 export KERNEL_HEADERS=$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
@@ -103,10 +80,17 @@ export INSTALL_MOD_PATH=$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/
 cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source
 make -C kernel && make modules && make dtbs
 ```
-After building install the files and copy the kernel image
+Install the kernel rootfs into the prebuilt directory
 ```
 sudo -E make install -C kernel
+```
+And copy the kernel image to the prebuilt directory
+```
 cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
+```
+And copy the dtbs if you've made changes to the device tree
+```
+$ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
 ```
 Navigate back to prebuilt workspace and flash the image
 ````
