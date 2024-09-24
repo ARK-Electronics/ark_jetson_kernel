@@ -44,8 +44,6 @@ cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
 sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit nvme0n1p1
 ```
 
-
-
 ### Known issues
 - The first time a newly flashed NVME is booted the kernel will panic if a WiFi card is installed. Install the WiFi card after the NVME has been booted at least once.
 
@@ -89,7 +87,11 @@ cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
 sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
 ````
 
-### Building the camera overlay DTBS
+#### Install ARK software
+You can now optionally install the ARK software packages <br>
+https://github.com/ARK-Electronics/ark_companion_scripts
+
+## Building the camera overlay DTBS
 The camera overlays can be built and installed onto the Jetson without needing to reflash.
 ```
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
