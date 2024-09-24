@@ -1,6 +1,6 @@
 # ARK Jetson Carrier Setup
 
-This repository contains instructions and scripts for flashing your Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier.
+This repository contains instructions and scripts for flashing your Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier. Clone this repository on your Host PC and follow the instructions below.
 
 # Installing the OS from binaries
 A single setup script is provided for your convenience. It will download the prebuilt Jetpack 6 release (36.3.0) and apply
