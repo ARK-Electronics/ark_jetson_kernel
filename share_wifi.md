@@ -17,7 +17,7 @@ Test internet connection
 ping 8.8.8.8
 ```
 
-Connect to your network
+Connect to your WiFi network if available
 ```
 SSID="<your_ssid>"
 PASSWORD="<your_password>"

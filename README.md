@@ -2,12 +2,18 @@
 
 This repository contains instructions and scripts for flashing your Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier. Clone this repository on your Host PC and follow the instructions below.
 
-# Installing the OS from binaries
-A single setup script is provided for your convenience. It will download the prebuilt Jetpack 6 release (36.3.0) and apply
-the [precompiled ARK device tree binaries](https://github.com/ARK-Electronics/ark_jetson_compiled_device_tree_files). The script will also configure the default user, password, and hostname as "jetson".
+# Installing the OS
+Run the **setup.sh** script to download and build the Jetson Orin Nano / NX Jetpack 6 kernel.
+
+The script will configure the default user, password, and hostname as `jetson`. The script will also add `ARK_JETSON_KERNEL_DIR` to your **~/.bashrc** for ease of use later.
 ```
-./setup_prebuilt.sh
+./setup.sh
 ```
+Once the setup script is finished you can build the kernel.
+```
+./build_kernel.sh
+```
+You can now flash the image.
 
 ### Flashing
 Connect a micro USB cable to the port adjacent to the mini HDMI. Power on with the Force Recovery button held. You can verify the Jetson is in recovery mode by checking `lsusb`.
@@ -19,8 +25,9 @@ cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
 sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
 ````
 
+After flashing is complete you can SSH via Micro USB to connect to your WiFi network if you have a WiFi network card installed. Alternatively you can share the internet connection from your Host PC using the **share_wifi.sh** script.
+
 #### Setting up WiFi
-After flashing is complete you can SSH via Micro USB to connect to your WiFi network
 ```
 ssh jetson@jetson.local
 ```
@@ -55,9 +62,9 @@ sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jet
 ---
 
 # Building from source
-If you want to further modify the device tree or add additional kernel modules (such as drivers), you will need to build the kernel from source. A helper script is provided that will download the kernel source, toolchain, and ARK customized device tree files. Run the **setup_prebuilt.sh** script before doing this.
+If you want to further modify the device tree or add additional kernel modules (such as drivers), you will need to build the kernel from source. These steps have been automated for you in **build_kernel.sh**.
 ```
-./setup_source_build.sh
+./setup.sh
 ```
 
 ### Building the kernel, modules, and dtbs
@@ -86,10 +93,6 @@ Navigate back to prebuilt workspace and flash the image
 cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
 sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
 ````
-
-#### Install ARK software
-You can now optionally install the ARK software packages <br>
-https://github.com/ARK-Electronics/ark_companion_scripts
 
 ## Building the camera overlay DTBS
 The camera overlays can be built and installed onto the Jetson without needing to reflash.
