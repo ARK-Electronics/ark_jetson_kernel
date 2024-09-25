@@ -4,12 +4,44 @@ function cleanup() {
 	exit 0
 }
 
+function sudo_refresh_loop() {
+	while true; do
+		sudo -v
+		sleep 60
+	done
+}
+
+function download_with_retry() {
+	local url=$1
+	local retries=3
+	local count=0
+	local success=0
+
+	while [ $count -lt $retries ]; do
+		wget $url
+		if [ $? -eq 0 ]; then
+			success=1
+			break
+		else
+			echo "Download failed. Retrying... ($((count+1))/$retries)"
+			count=$((count+1))
+			sleep 5
+		fi
+	done
+
+	if [ $success -eq 0 ]; then
+		echo "Failed to download $url after $retries attempts."
+		exit 1
+	fi
+}
+
 trap cleanup SIGINT SIGTERM
 
 # keep sudo credentials alive in the background
 sudo -v
 sudo_refresh_loop &
 SUDO_PID=$!
+START_TIME=$(date +%s)
 
 # Add to bashrc if necessary
 BASHRC="$HOME/.bashrc"
@@ -19,38 +51,34 @@ if [ -z "$exists" ]; then
 	export ARK_JETSON_KERNEL_DIR=$PWD
 fi
 
-START_TIME=$(date +%s)
-
 BSP_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/jetson_linux_r36.3.0_aarch64.tbz2"
 ROOT_FS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/tegra_linux_sample-root-filesystem_r36.3.0_aarch64.tbz2"
-# Used for both NX and Nano
-# Orin NX 16GB  : tegra234-p3768-0000+p3767-0000
-# Orin NX 8GB   : tegra234-p3768-0000+p3767-0001
-# Orin Nano 8GB : tegra234-p3768-0000+p3767-0003
-# Orin Nano 4GB : tegra234-p3768-0000+p3767-0004
 export L4T_RELEASE_PACKAGE=$(basename $BSP_URL)
 export SAMPLE_FS_PACKAGE=$(basename $ROOT_FS_URL)
 export BOARD="jetson-orin-nano-devkit"
 
-pushd . > /dev/null
+# remove previous
+sudo rm -rf source_build
 sudo rm -rf prebuilt
-mkdir -p prebuilt && cd prebuilt
+
+pushd .
+mkdir -p prebuilt
+cd prebuilt
 
 # https://developer.nvidia.com/embedded/jetson-linux-archive
 echo "Downloading prebuilt BSP and root filesystem"
-wget -nc $BSP_URL
-wget -nc $ROOT_FS_URL
+download_with_retry $BSP_URL
+download_with_retry $ROOT_FS_URL
 
 # https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/IN/QuickStart.html#to-flash-the-jetson-developer-kit-operating-software
 echo "Untarring files, this may take some time"
 tar xf $L4T_RELEASE_PACKAGE
 sudo tar xpf $SAMPLE_FS_PACKAGE -C Linux_for_Tegra/rootfs/
-cd Linux_for_Tegra/
+
 echo "Satisfying prerequisites"
-sudo ./tools/l4t_flash_prerequisites.sh
+sudo Linux_for_Tegra/tools/l4t_flash_prerequisites.sh
 echo "Applying binaries"
-sudo ./apply_binaries.sh --debug
-cd ..
+sudo Linux_for_Tegra/apply_binaries.sh --debug
 
 # Apply ARK compile device tree
 rm -rf ark_jetson_compiled_device_tree_files
@@ -58,21 +86,21 @@ git clone -b ark_36.3.0.1 https://github.com/ARK-Electronics/ark_jetson_compiled
 echo "Copying device tree files"
 sudo cp -r ark_jetson_compiled_device_tree_files/Linux_for_Tegra/* Linux_for_Tegra/
 
-popd > /dev/null
-
 echo "Setting up login credentials for the Jetson"
-sudo ./configure_user.sh
+sudo -E $ARK_JETSON_KERNEL_DIR/configure_user.sh
+
+popd
 
 ##### Setup source build
-pushd . > /dev/null
-sudo rm -rf source_build
-mkdir -p source_build && cd source_build
+pushd .
+mkdir -p source_build
+cd source_build
 
 echo "Downloading Jetson sources"
-wget https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/sources/public_sources.tbz2
+download_with_retry https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/sources/public_sources.tbz2
 echo "Extracting Jetson sources"
 tar -xjf public_sources.tbz2
-pushd . > /dev/null
+pushd .
 cd Linux_for_Tegra/source
 echo "Extracting kernel source"
 tar xf kernel_src.tbz2
@@ -104,7 +132,7 @@ echo "CONFIG_ATH11K_PCI=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconf
 
 popd
 
-pushd . > /dev/null
+pushd .
 mkdir -p $HOME/l4t-gcc
 cd $HOME/l4t-gcc
 TOOLCHAIN_TAR="aarch64--glibc--stable-2022.08-1.tar.bz2"
@@ -112,7 +140,7 @@ EXTRACTED_DIR="aarch64--glibc--stable-2022.08-1"
 
 if [ ! -f "$TOOLCHAIN_TAR" ]; then
 	echo "Downloading Jetson bootlin toolchain"
-	wget https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/toolchain/$TOOLCHAIN_TAR
+	download_with_retry https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/toolchain/$TOOLCHAIN_TAR
 else
 	echo "Jetson bootlin toolchain archive already exists, skipping download"
 fi
@@ -123,6 +151,7 @@ if [ ! -d "$EXTRACTED_DIR" ]; then
 else
 	echo "Jetson bootlin toolchain already extracted, skipping extraction"
 fi
+popd
 
 # Clone ARK device tree
 echo "Downloading ARK device tree"
@@ -131,7 +160,6 @@ git clone -b ark_36.3.0.1 https://github.com/ARK-Electronics/ark_jetson_orin_nan
 echo "Copying ARK device tree files"
 cp -r ark_jetson_orin_nano_nx_device_tree/* Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/
 popd
-
 
 END_TIME=$(date +%s)
 TOTAL_TIME=$((${END_TIME}-${START_TIME}))
