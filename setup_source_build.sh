@@ -1,21 +1,7 @@
-#!/bin/bash
-BASHRC="$HOME/.bashrc"
-START_TIME=$(date +%s)
-SUDO_PASSWORD=
 
-# sudo password for later
-IFS= read -rsp "[sudo] password for $USER: " SUDO_PASSWORD
-echo ""
-
-echo "export ARK_JETSON_KERNEL_DIR=$PWD"
-# Add to bashrc if necessary
-exists=$(cat $BASHRC | grep ARK_JETSON_KERNEL_DIR)
-if [ -z "$exists" ]; then
-	echo "export ARK_JETSON_KERNEL_DIR=$PWD" >> $BASHRC
-fi
 
 pushd . > /dev/null
-sudo -S rm -rf source_build <<< "$SUDO_PASSWORD"
+sudo rm -rf source_build
 mkdir -p source_build && cd source_build
 
 echo "Downloading Jetson sources"
