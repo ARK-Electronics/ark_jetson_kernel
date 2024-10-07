@@ -21,8 +21,7 @@ Connect a micro USB cable to the port adjacent to the mini HDMI. Power on with t
 
 Flash the image
 ````
-cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
-sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
+./flash.sh
 ````
 
 After flashing is complete you can SSH via Micro USB to connect to your WiFi network if you have a WiFi network card installed. Alternatively you can share the internet connection from your Host PC using the **share_wifi.sh** script.
