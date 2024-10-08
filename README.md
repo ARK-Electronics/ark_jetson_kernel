@@ -50,14 +50,6 @@ cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
 sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit nvme0n1p1
 ```
 
-### Known issues
-- The first time a newly flashed NVME is booted the kernel will panic if a WiFi card is installed. Install the WiFi card after the NVME has been booted at least once.
-
-- The Intel 9260 AC WiFi driver is not supported. You must connect via ethernet and install the backport driver.
-  ```
-  sudo apt-get install -y backport-iwlwifi-dkms
-  ```
-
 ---
 
 # Building from source
