@@ -52,11 +52,8 @@ sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jet
 
 ---
 
-# Building from source
-If you want to further modify the device tree or add additional kernel modules (such as drivers), you will need to build the kernel from source. These steps have been automated for you in **build_kernel.sh**.
-```
-./setup.sh
-```
+# Building from source explained
+The following steps have been automated for you in **build_kernel.sh**.
 
 ### Building the kernel, modules, and dtbs
 Navigate to the root of the kernel sources and build the kernel, modules, and dtbs
