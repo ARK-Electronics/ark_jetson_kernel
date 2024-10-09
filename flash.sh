@@ -2,7 +2,7 @@
 
 sudo -v
 
-while ! lsusb | grep -q "0955:7623"; do
+while ! lsusb | grep -q "NVIDIA Corp. APX"; do
     sleep 1
 done
 
