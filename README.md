@@ -41,7 +41,7 @@ sudo nmcli device wifi connect <MY_WIFI_AP> password <MY_WIFI_PASSWORD>
 
 #### Install ARK software
 You can now optionally install the ARK software packages <br>
-https://github.com/ARK-Electronics/ark_companion_scripts
+https://github.com/ARK-Electronics/ARK-OS
 
 #### Flashing only the QSPI
 You can also just flash the QSPI bootloader and install a pre-flashed NVME afterwards ([NVIDIA Docs](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/FlashingSupport.html#examples))
