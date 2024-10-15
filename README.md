@@ -13,6 +13,10 @@ Once the setup script is finished you can build the kernel.
 ```
 ./build_kernel.sh
 ```
+You can optionally add your WiFi network:
+```
+./add_wifi_network.sh <SSID> <PASSWORD>
+```
 You can now flash the image.
 
 ### Flashing
@@ -24,19 +28,9 @@ Flash the image
 ./flash.sh
 ````
 
-After flashing is complete you can SSH via Micro USB to connect to your WiFi network if you have a WiFi network card installed. Alternatively you can share the internet connection from your Host PC using the **share_wifi.sh** script.
-
-#### Setting up WiFi
+After flashing is complete you can SSH in via Micro USB or WiFi.
 ```
 ssh jetson@jetson.local
-```
-Check that the wifi interface exists and your network is visible
-```
-nmcli device wifi list
-```
-Connect to your network
-```
-sudo nmcli device wifi connect <MY_WIFI_AP> password <MY_WIFI_PASSWORD>
 ```
 
 #### Install ARK software
