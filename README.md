@@ -28,7 +28,7 @@ Flash the image
 ./flash.sh
 ````
 
-After flashing is complete you can SSH in via Micro USB or WiFi.
+Once complete, SSH in via Micro USB or WiFi.
 ```
 ssh jetson@jetson.local
 ```
