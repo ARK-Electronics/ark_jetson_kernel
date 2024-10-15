@@ -2,6 +2,8 @@
 
 sudo -v
 
+echo "Waiting for device..."
+
 while ! lsusb | grep -q "NVIDIA Corp. APX"; do
     sleep 1
 done
