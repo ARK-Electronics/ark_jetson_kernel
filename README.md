@@ -2,6 +2,8 @@
 
 This repository contains instructions and scripts for flashing your Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier. Clone this repository on your Host PC and follow the instructions below.
 
+**Note:** This has only been tested with Ubuntu 22.04
+
 # Installing the OS
 Run the **setup.sh** script to download and build the Jetson Orin Nano / NX Jetpack 6 kernel.
 
