@@ -26,6 +26,9 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single.dtbo $PR
 # IMX219 Quad
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo $PREBUILT_PATH/kernel/dtb/
+# IMX219 Single
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $PREBUILT_PATH/kernel/dtb/
 
 echo "Removing non-supported overlays from prebuilt directory"
 # Remove the overlays that don't work with ARK Carrier
@@ -70,3 +73,6 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single.dtbo $AR
 # IMX219 Quad
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo $ARK_COMPILED_DEVICE_TREE_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo $ARK_COMPILED_DEVICE_TREE_PATH/kernel/dtb/
+# IMX219 Single
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $ARK_COMPILED_DEVICE_TREE_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $ARK_COMPILED_DEVICE_TREE_PATH/kernel/dtb/
