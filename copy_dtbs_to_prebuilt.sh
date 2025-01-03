@@ -1,5 +1,6 @@
 #!/bin/bash
-DTBS_SOURCE_PATH="$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/nvidia-oot/device-tree/platform/generic-dts/dtbs"
+DTBS_SOURCE_PATH="$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs/"
+
 PREBUILT_PATH="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra"
 ARK_COMPILED_DEVICE_TREE_PATH="$ARK_JETSON_KERNEL_DIR/prebuilt/ark_jetson_compiled_device_tree_files/Linux_for_Tegra"
 
@@ -29,17 +30,7 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo $PREB
 echo "Removing non-supported overlays from prebuilt directory"
 # Remove the overlays that don't work with ARK Carrier
 file_names=(
-	"tegra234-p3767-camera-p3768-imx219-A.dtbo"
-	"tegra234-p3767-camera-p3768-imx219-ark-quad.dtbo"
-	"tegra234-p3767-camera-p3768-imx219-C.dtbo"
-	"tegra234-p3767-camera-p3768-imx219-dual.dtbo"
-	"tegra234-p3767-camera-p3768-imx219-imx477.dtbo"
-	"tegra234-p3767-camera-p3768-imx477-A.dtbo"
-	"tegra234-p3767-camera-p3768-imx477-C.dtbo"
-	"tegra234-p3767-camera-p3768-imx477-dual-4lane.dtbo"
-	"tegra234-p3767-camera-p3768-imx477-dual.dtbo"
-	"tegra234-p3767-camera-p3768-imx477-imx219.dtbo"
-	"tegra234-p3767-camera-p3768-ov5647-single.dtbo"
+	# TODO: remove overlays
 )
 
 for file in "${file_names[@]}"

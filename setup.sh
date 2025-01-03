@@ -1,4 +1,10 @@
 #!/bin/bash
+
+BSP_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/release/Jetson_Linux_R36.4.0_aarch64.tbz2"
+ROOT_FS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/release/Tegra_Linux_Sample-Root-Filesystem_R36.4.0_aarch64.tbz2"
+PUBLIC_SOURCES_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/sources/public_sources.tbz2"
+TOOLCHAIN_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/toolchain/aarch64--glibc--stable-2022.08-1.tar.bz2"
+
 function cleanup() {
 	kill -9 $SUDO_PID
 	exit 0
@@ -51,8 +57,6 @@ if [ -z "$exists" ]; then
 	export ARK_JETSON_KERNEL_DIR=$PWD
 fi
 
-BSP_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/jetson_linux_r36.3.0_aarch64.tbz2"
-ROOT_FS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/release/tegra_linux_sample-root-filesystem_r36.3.0_aarch64.tbz2"
 export L4T_RELEASE_PACKAGE=$(basename $BSP_URL)
 export SAMPLE_FS_PACKAGE=$(basename $ROOT_FS_URL)
 export BOARD="jetson-orin-nano-devkit"
@@ -97,7 +101,8 @@ mkdir -p source_build
 cd source_build
 
 echo "Downloading Jetson sources"
-download_with_retry https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/sources/public_sources.tbz2
+
+download_with_retry "${PUBLIC_SOURCES_URL}"
 echo "Extracting Jetson sources"
 tar -xjf public_sources.tbz2
 pushd .
@@ -135,19 +140,21 @@ popd
 pushd .
 mkdir -p $HOME/l4t-gcc
 cd $HOME/l4t-gcc
-TOOLCHAIN_TAR="aarch64--glibc--stable-2022.08-1.tar.bz2"
-EXTRACTED_DIR="aarch64--glibc--stable-2022.08-1"
 
-if [ ! -f "$TOOLCHAIN_TAR" ]; then
+TOOLCHAIN_FILENAME=$(basename "$TOOLCHAIN_URL")
+TOOLCHAIN_DIRNAME=${FILENAME%.bz2}
+
+if [ ! -f "$TOOLCHAIN_FILENAME" ]; then
 	echo "Downloading Jetson bootlin toolchain"
-	download_with_retry https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/toolchain/$TOOLCHAIN_TAR
+
+	download_with_retry $TOOLCHAIN_URL
 else
 	echo "Jetson bootlin toolchain archive already exists, skipping download"
 fi
 
-if [ ! -d "$EXTRACTED_DIR" ]; then
+if [ ! -d "$TOOLCHAIN_DIRNAME" ]; then
 	echo "Extracting Jetson bootlin toolchain"
-	tar xf $TOOLCHAIN_TAR
+	tar xf $TOOLCHAIN_FILENAME
 else
 	echo "Jetson bootlin toolchain already extracted, skipping extraction"
 fi
@@ -156,7 +163,9 @@ popd
 # Clone ARK device tree
 echo "Downloading ARK device tree"
 rm -rf ark_jetson_orin_nano_nx_device_tree
-git clone -b ark_36.3.0.1 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+# git clone -b ark_36.3.0.1 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+git clone -b pr-36.4 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+
 echo "Copying ARK device tree files"
 cp -r ark_jetson_orin_nano_nx_device_tree/* Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/
 popd
