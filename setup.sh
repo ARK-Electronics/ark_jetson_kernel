@@ -84,12 +84,6 @@ sudo Linux_for_Tegra/tools/l4t_flash_prerequisites.sh
 echo "Applying binaries"
 sudo Linux_for_Tegra/apply_binaries.sh --debug
 
-# Apply ARK compile device tree
-rm -rf ark_jetson_compiled_device_tree_files
-git clone -b ark_36.3.0.2 https://github.com/ARK-Electronics/ark_jetson_compiled_device_tree_files.git
-echo "Copying device tree files"
-sudo cp -r ark_jetson_compiled_device_tree_files/Linux_for_Tegra/* Linux_for_Tegra/
-
 echo "Setting up login credentials for the Jetson"
 sudo -E $ARK_JETSON_KERNEL_DIR/configure_user.sh
 
@@ -163,14 +157,13 @@ popd
 # Clone ARK device tree
 echo "Downloading ARK device tree"
 rm -rf ark_jetson_orin_nano_nx_device_tree
-# git clone -b ark_36.3.0.1 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
-git clone -b pr-36.4 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+git clone -b ark_36.4.0 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
 
 popd
 
 END_TIME=$(date +%s)
 TOTAL_TIME=$((${END_TIME}-${START_TIME}))
-echo "Finished -- $(date -d@${TOTAL_TIME} -u +%H:%M:%S)"
-echo "You can now flash the device"
+echo "Setup complete in $(date -d@${TOTAL_TIME} -u +%H:%M:%S)"
+echo "You can now build the kernel with ./build_kernel.sh"
 
 cleanup

@@ -89,7 +89,7 @@ make dtbs
 
 Copy the overlay DTB to the Jetson via Micro-USB
 ```
-DTB_PATH="$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel_out/nvidia-oot/device-tree/platform/generic-dts/dtbs/"
+DTB_PATH="$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs/"
 OVERLAY_DTB=<your_overlay>
 scp $DTB_PATH/$OVERLAY_DTB jetson@192.168.55.1:~
 ```
@@ -125,6 +125,10 @@ sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera ARK IMX477 Single"
 Reboot and your new device tree will be active.
 ```
 sudo reboot
+```
+You can check that LibArgus can find your camera sensor
+```
+nvargus_nvraw --lps
 ```
 
 ---
