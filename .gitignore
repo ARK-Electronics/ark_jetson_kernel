@@ -1,7 +1,6 @@
 jetson_linux_r35.3.1_aarch64.tbz2
 tegra_linux_sample-root-filesystem_r35.3.1_aarch64.tbz2
-Linux_for_Tegra/
 ark_jetson_compiled_device_tree_files/
-ark_jetson_orin_nano_nx_device_tree/
-public_sources.tbz2
 prebuilt/
+source_build/
+output.txt
