@@ -1,4 +1,5 @@
 #!/bin/bash
+export ARK_JETSON_KERNEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_BUILD_PATH="$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/"
 DTBS_SOURCE_PATH="$SOURCE_BUILD_PATH/source/kernel-devicetree/generic-dts/dtbs/"
 PREBUILT_PATH="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra"

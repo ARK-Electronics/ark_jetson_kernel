@@ -7,7 +7,7 @@ This repository contains instructions and scripts for flashing your Jetson **Ori
 # Installing the OS
 Run the **setup.sh** script to download and build the Jetson Orin Nano / NX Jetpack 6 kernel.
 
-The script will configure the default user, password, and hostname as `jetson`. The script will also add `ARK_JETSON_KERNEL_DIR` to your **~/.bashrc** for ease of use later.
+The script will configure the default user, password, and hostname as `jetson`.
 ```
 ./setup.sh
 ```
@@ -42,7 +42,7 @@ https://github.com/ARK-Electronics/ARK-OS
 #### Flashing the QSPI bootloader
 You can flash just the QSPI bootloader and install a pre-flashed NVME afterwards ([NVIDIA Docs](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/FlashingSupport.html#examples)). If you are upgrading from Jetpack5 to Jetpack6 you must reflash the QSPI bootloader.
 ```
-cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
+cd prebuilt/Linux_for_Tegra/
 sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit nvme0n1p1
 ```
 
@@ -55,9 +55,9 @@ The following steps have been automated for you in **build_kernel.sh**.
 Navigate to the root of the kernel sources and build the kernel, modules, and dtbs
 ```
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS=$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
-export INSTALL_MOD_PATH=$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/
-cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source
+export KERNEL_HEADERS=$PWD/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
+export INSTALL_MOD_PATH=$PWD/prebuilt/Linux_for_Tegra/rootfs/
+cd source_build/Linux_for_Tegra/source
 make -C kernel && make modules && make dtbs
 ```
 Install the kernel rootfs into the prebuilt directory
@@ -70,11 +70,11 @@ cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Teg
 ```
 And copy the dtbs if you've made changes to the device tree
 ```
-$ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
+copy_dtbs_to_prebuilt.sh
 ```
 Navigate back to prebuilt workspace and flash the image
 ````
-cd $ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/
+cd prebuilt/Linux_for_Tegra/
 sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
 ````
 
@@ -82,14 +82,14 @@ sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c
 The camera overlays can be built and installed onto the Jetson without needing to reflash.
 ```
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS=$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
-cd $ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/
+export KERNEL_HEADERS=$PWD/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
+cd source_build/Linux_for_Tegra/source/
 make dtbs
 ```
 
 Copy the overlay DTB to the Jetson via Micro-USB
 ```
-DTB_PATH="$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs/"
+DTB_PATH="$PWD/source_build/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs/"
 OVERLAY_DTB=<your_overlay>
 scp $DTB_PATH/$OVERLAY_DTB jetson@192.168.55.1:~
 ```
@@ -143,4 +143,4 @@ https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/HR/JetsonModuleAdap
 **Orin Nano 8GB-DRAM**  : tegra234-p3768-0000+p3767-**0003**-nv.dtb <br>
 **Orin Nano 4GB-DRAM**  : tegra234-p3768-0000+p3767-**0004**-nv.dtb <br>
 
-The device tree files for Jetson Orin Nano/NX can be found in the kernel source directory at **Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public**. We maintain a [repository](https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree ) with these files which is cloned into **$ARK_JETSON_KERNEL_DIR/source_build** in the source build setup script. If you want to modify the device tree you will need to modify the files in this repo and and copy them into the correct location in the source build. <br>
+The device tree files for Jetson Orin Nano/NX can be found in the kernel source directory at **Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public**. We maintain a [repository](https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree ) with these files which is cloned into **source_build/** in the source build setup script. If you want to modify the device tree you will need to modify the files in this repo and and copy them into the correct location in the source build. <br>
