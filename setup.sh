@@ -1,8 +1,8 @@
 #!/bin/bash
 
-BSP_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/release/Jetson_Linux_R36.4.0_aarch64.tbz2"
-ROOT_FS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/release/Tegra_Linux_Sample-Root-Filesystem_R36.4.0_aarch64.tbz2"
-PUBLIC_SOURCES_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.0/sources/public_sources.tbz2"
+BSP_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/Jetson_Linux_r36.4.3_aarch64.tbz2"
+ROOT_FS_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/release/Tegra_Linux_Sample-Root-Filesystem_r36.4.3_aarch64.tbz2"
+PUBLIC_SOURCES_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v4.3/sources/public_sources.tbz2"
 TOOLCHAIN_URL="https://developer.nvidia.com/downloads/embedded/l4t/r36_release_v3.0/toolchain/aarch64--glibc--stable-2022.08-1.tar.bz2"
 
 function cleanup() {
@@ -52,7 +52,7 @@ START_TIME=$(date +%s)
 export ARK_JETSON_KERNEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export L4T_RELEASE_PACKAGE=$(basename $BSP_URL)
 export SAMPLE_FS_PACKAGE=$(basename $ROOT_FS_URL)
-export BOARD="jetson-orin-nano-devkit"
+export BOARD="jetson-orin-nano-devkit-super"
 
 # remove previous
 sudo rm -rf source_build
@@ -124,6 +124,8 @@ echo "CONFIG_ATH10K_USB=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconf
 echo "CONFIG_CRYPTO_MICHAEL_MIC=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_ATH11K=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_ATH11K_PCI=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8XXXU=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8XXXU_UNTESTED=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 
 popd
 
@@ -153,7 +155,7 @@ popd
 # Clone ARK device tree
 echo "Downloading ARK device tree"
 rm -rf ark_jetson_orin_nano_nx_device_tree
-git clone -b ark_36.4.0 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+git clone -b ark_36.4.3 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
 
 popd
 

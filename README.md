@@ -43,7 +43,7 @@ https://github.com/ARK-Electronics/ARK-OS
 You can flash just the QSPI bootloader and install a pre-flashed NVME afterwards ([NVIDIA Docs](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/FlashingSupport.html#examples)). If you are upgrading from Jetpack5 to Jetpack6 you must reflash the QSPI bootloader.
 ```
 cd prebuilt/Linux_for_Tegra/
-sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit nvme0n1p1
+sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit-super nvme0n1p1
 ```
 
 ---
@@ -75,7 +75,7 @@ copy_dtbs_to_prebuilt.sh
 Navigate back to prebuilt workspace and flash the image
 ````
 cd prebuilt/Linux_for_Tegra/
-sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit nvme0n1p1
+sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit-super nvme0n1p1
 ````
 
 ## Building the camera overlay DTBS

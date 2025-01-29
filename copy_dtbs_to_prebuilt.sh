@@ -17,14 +17,31 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-nv.dtb $PREBUILT_PATH/r
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0001-nv.dtb $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv.dtb $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv.dtb $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv.dtb $PREBUILT_PATH/rootfs/boot/
+
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-dynamic.dtbo $PREBUILT_PATH/rootfs/boot/
+
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-nv-super.dtb $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0001-nv-super.dtb $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv-super.dtb $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv-super.dtb $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv-super.dtb $PREBUILT_PATH/rootfs/boot/
 
 # Copy kernel device tree to kernel path
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-nv.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0001-nv.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv.dtb $PREBUILT_PATH/kernel/dtb/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv.dtb $PREBUILT_PATH/kernel/dtb/
+
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-dynamic.dtbo $PREBUILT_PATH/kernel/dtb/
+
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0001-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
+
 
 # Copy camera overlays to kernel and bootloader paths
 # IMX477 Single
