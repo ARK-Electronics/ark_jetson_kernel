@@ -46,6 +46,36 @@ cd prebuilt/Linux_for_Tegra/
 sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit-super nvme0n1p1
 ```
 
+#### Changing Jetson Clock Speeds
+To show the current settings:
+```
+sudo jetson_clocks --show
+```
+To store the current settings:
+```
+sudo jetson_clocks --store
+```
+To maximize Jetson Orin performance
+```
+sudo jetson_clocks
+```
+To restore the previous settings
+```
+sudo jetson_clocks --restore
+```
+
+#### Jetson Super Mode
+After flashing or updating to JetPack 6.2, run the following command to start the newly available Super Mode.
+
+MAXN SUPER mode on Jetson Orin Nano Modules:
+```
+sudo nvpmodel -m 2
+```
+MAXN SUPER mode on Jetson Orin NX Modules:
+```
+sudo nvpmodel -m 0
+```
+
 ---
 
 # Building from source explained
