@@ -45,6 +45,10 @@ You can flash just the QSPI bootloader and install a pre-flashed NVME afterwards
 cd prebuilt/Linux_for_Tegra/
 sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit-super nvme0n1p1
 ```
+If the ./flash.sh command fails, try the l4t_initrd_flash.sh command:
+```
+sudo ./tools/kernel_flash/l4t_initrd_flash.sh -p "--no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml" --network usb0 jetson-orin-nano-devkit-super nvme0n1p1
+```
 
 #### Changing Jetson Clock Speeds
 To show the current settings:
