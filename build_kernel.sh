@@ -19,6 +19,7 @@ make -C kernel && make modules && make dtbs
 sudo -E make install -C kernel
 cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
 $ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
+$ARK_JETSON_KERNEL_DIR/copy_camera_params_to_prebuilt.sh
 
 END_TIME=$(date +%s)
 TOTAL_TIME=$((${END_TIME}-${START_TIME}))
