@@ -7,7 +7,6 @@ DEST_DIR="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/var/nvidia/nvca
 
 if [ -f "$DEST_DIR/$ISP_FILE" ]; then
     echo "Camera overrides file already exists at $DEST_DIR/$ISP_FILE"
-    echo "Nothing to do. Exiting."
     exit 0
 fi
 
@@ -20,6 +19,8 @@ echo "Extracting $TAR_FILE..."
 tar zxvf "$TAR_FILE"
 
 echo "Copying $ISP_FILE to $DEST_DIR..."
-sudo cp "$ISP_FILE" "$DEST_DIR/"
+sudo mv "$ISP_FILE" "$DEST_DIR/"
 
 echo "Installation completed successfully!"
+
+rm $TAR_FILE
