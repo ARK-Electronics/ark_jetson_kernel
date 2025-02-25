@@ -18,6 +18,9 @@ wget "$DOWNLOAD_URL"
 echo "Extracting $TAR_FILE..."
 tar zxvf "$TAR_FILE"
 
+sudo chmod 664 $ISP_FILE
+sudo chown root:root $ISP_FILE
+
 echo "Copying $ISP_FILE to $DEST_DIR..."
 sudo mv "$ISP_FILE" "$DEST_DIR/"
 
