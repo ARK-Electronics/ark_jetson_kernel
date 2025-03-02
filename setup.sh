@@ -75,7 +75,7 @@ sudo tar xpf $SAMPLE_FS_PACKAGE -C Linux_for_Tegra/rootfs/
 echo "Satisfying prerequisites"
 sudo Linux_for_Tegra/tools/l4t_flash_prerequisites.sh
 # Fresh systems could be missing these packages
-sudo apt-get install flex bison libssl-dev -y
+sudo apt-get install make build-essential flex bison libssl-dev -y
 
 echo "Applying binaries"
 sudo Linux_for_Tegra/apply_binaries.sh --debug
