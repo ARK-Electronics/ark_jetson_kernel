@@ -15,11 +15,28 @@ echo "Copying ARK device tree files"
 cp -r ark_jetson_orin_nano_nx_device_tree/Linux_for_Tegra/* Linux_for_Tegra/
 
 cd Linux_for_Tegra/source
+
+# Apply patches
+# patch -p1 < $ARK_JETSON_KERNEL_DIR/jetvariety.patch
+
 make -C kernel && make modules && make dtbs
 sudo -E make install -C kernel
 cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
 $ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
 $ARK_JETSON_KERNEL_DIR/copy_camera_params_to_prebuilt.sh
+
+popd
+
+# TODO: move to separate script
+# Copy .ko to prebuilt
+sudo cp source_build/Linux_for_Tegra/source/nvidia-oot/drivers/media/i2c/arducam_csi2.ko \
+	prebuilt/Linux_for_Tegra/rootfs/usr/lib/modules/5.15.148-tegra/updates/drivers/media/i2c/
+
+# TODO: figure this out -- have to do at runtime
+# sudo depmod -a
+# sudo modprobe arducam_csi2
+# lsmod | grep arducam_csi2
+
 
 END_TIME=$(date +%s)
 TOTAL_TIME=$((${END_TIME}-${START_TIME}))

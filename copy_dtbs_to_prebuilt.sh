@@ -42,7 +42,6 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv-super.dtb $PREBUILT_
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 
-
 # Copy camera overlays to kernel and bootloader paths
 # IMX477 Single
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single.dtbo $PREBUILT_PATH/rootfs/boot/
@@ -53,6 +52,9 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo $PREB
 # IMX219 Single
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $PREBUILT_PATH/kernel/dtb/
+# AR0234 Single
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/kernel/dtb/
 
 echo "Removing non-supported overlays from prebuilt directory"
 # Remove the overlays that don't work with ARK Carrier
