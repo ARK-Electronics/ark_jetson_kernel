@@ -126,6 +126,26 @@ echo "CONFIG_ATH11K=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_ATH11K_PCI=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_RTL8XXXU=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_RTL8XXXU_UNTESTED=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8192CE=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8192SE=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8192DE=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8723AE=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8192CU=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8188EE=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8192EE=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8723BE=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8180=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTL8187=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTW88=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_RTW89=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+
+# Bluetooth
+echo "CONFIG_BT=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_BT_INTEL=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_BT_BCM=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_BT_RTL=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_BT_QCA=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_BT_HCIBTUSB=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 
 popd
 
