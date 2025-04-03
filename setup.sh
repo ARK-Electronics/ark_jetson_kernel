@@ -155,7 +155,7 @@ popd
 # Clone ARK device tree
 echo "Downloading ARK device tree"
 rm -rf ark_jetson_orin_nano_nx_device_tree
-git clone -b ark_36.4.3 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
+git clone -b ark_36.4.3.1 https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
 
 popd
 
