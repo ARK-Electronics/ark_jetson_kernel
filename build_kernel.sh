@@ -24,12 +24,19 @@ if [ $? -ne 0 ]; then
     echo "Kernel build failed. Exiting."
     exit 1
 fi
-echo "Kernel build successful. Installing modules and dtbs..."
+echo "Kernel build successful. Installing in-tree modules and dtbs..."
 sudo -E make install -C kernel
 if [ $? -ne 0 ]; then
-    echo "Failed to install kernel modules and dtbs. Exiting."
+    echo "Failed to install in-tree modules and dtbs. Exiting."
     exit 1
 fi
+echo "In-tree modules and dtbs installation successful. Installing out-of-tree modules..."
+sudo -E make modules_install
+if [ $? -ne 0 ]; then
+    echo "Failed to install out-of-tree modules. Exiting."
+    exit 1
+fi
+
 cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
 $ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
 $ARK_JETSON_KERNEL_DIR/copy_camera_params_to_prebuilt.sh
