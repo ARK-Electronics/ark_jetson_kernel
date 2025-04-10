@@ -16,8 +16,32 @@ cp -r ark_jetson_orin_nano_nx_device_tree/Linux_for_Tegra/* Linux_for_Tegra/
 
 cd Linux_for_Tegra/source
 
-# Apply patches
-# patch -p1 < $ARK_JETSON_KERNEL_DIR/jetvariety.patch
+# Apply Jetvariety patch
+PATCH_FILE="$ARK_JETSON_KERNEL_DIR/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch"
+echo "Checking if patch has already been applied..."
+if patch -p1 -R --dry-run --force < "$PATCH_FILE" &>/dev/null; then
+    echo "Patch is already applied."
+    # NOTE: use this command to unapply the patch
+    # patch -p1 -R < /home/jake/code/ark/ark_jetson_kernel/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch
+    exit 0
+else
+    echo "Patch not yet applied. Applying now..."
+
+    # Check if the patch can be applied cleanly
+    if patch -p1 --dry-run --force < "$PATCH_FILE" &>/dev/null; then
+        # Actually apply the patch
+        if patch -p1 --force < "$PATCH_FILE"; then
+            echo "Patch applied successfully."
+            exit 0
+        else
+            echo "Error: Failed to apply patch."
+            exit 1
+        fi
+    else
+        echo "Error: Patch cannot be applied cleanly."
+        exit 1
+    fi
+fi
 
 make -C kernel && make modules && make dtbs
 if [ $? -ne 0 ]; then
