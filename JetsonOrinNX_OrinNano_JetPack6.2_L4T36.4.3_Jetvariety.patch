@@ -1,15 +1,3 @@
-diff --git a/hardware/nvidia/t23x/nv-public/overlay/Makefile b/hardware/nvidia/t23x/nv-public/overlay/Makefile
-index 93728f477..8c890f925 100644
---- a/hardware/nvidia/t23x/nv-public/overlay/Makefile
-+++ b/hardware/nvidia/t23x/nv-public/overlay/Makefile
-@@ -46,6 +46,7 @@ dtbo-y += tegra234-p3737-camera-e3331-overlay.dtbo
- dtbo-y += tegra234-p3737-camera-e3333-overlay.dtbo
- dtbo-y += tegra234-p3737-camera-imx185-overlay.dtbo
- dtbo-y += tegra234-p3767-camera-p3768-imx219-dual.dtbo
-+dtbo-y += tegra234-p3767-camera-p3768-arducam-dual.dtbo
- dtbo-y += tegra234-p3767-camera-p3768-imx477-dual.dtbo
- dtbo-y += tegra234-p3767-camera-p3768-imx477-dual-4lane.dtbo
- dtbo-y += tegra234-p3767-camera-p3768-imx477-imx219.dtbo
 diff --git a/hardware/nvidia/t23x/nv-public/overlay/tegra234-p3767-camera-p3768-arducam-dual.dts b/hardware/nvidia/t23x/nv-public/overlay/tegra234-p3767-camera-p3768-arducam-dual.dts
 new file mode 100644
 index 000000000..60022235f
