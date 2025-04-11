@@ -144,7 +144,6 @@ echo "CONFIG_BT=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_BT_INTEL=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_BT_BCM=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_BT_RTL=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
-echo "CONFIG_BT_QCA=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_BT_HCIBTUSB=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 
 popd
