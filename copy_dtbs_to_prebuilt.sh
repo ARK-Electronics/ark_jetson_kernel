@@ -56,6 +56,11 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $PR
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/kernel/dtb/
 
+# IMX477 DUAL ARK Adaptor
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-imx477-dual-4lane.dtbo $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-imx477-dual-4lane.dtbo $PREBUILT_PATH/kernel/dtb/
+
+
 echo "Removing non-supported overlays from prebuilt directory"
 # Remove the overlays that don't work with ARK Carrier
 file_names=(
@@ -66,7 +71,6 @@ file_names=(
     "tegra234-p3767-camera-p3768-imx219-imx477.dtbo"
     "tegra234-p3767-camera-p3768-imx477-A.dtbo"
     "tegra234-p3767-camera-p3768-imx477-C.dtbo"
-    "tegra234-p3767-camera-p3768-imx477-dual-4lane.dtbo"
     "tegra234-p3767-camera-p3768-imx477-dual.dtbo"
     "tegra234-p3767-camera-p3768-imx477-imx219.dtbo"
     "tegra234-p3767-camera-p3768-ov5647-single.dtbo"
