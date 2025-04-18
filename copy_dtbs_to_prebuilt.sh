@@ -55,6 +55,9 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $PR
 # AR0234 Single
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/kernel/dtb/
+# I2S to GPIO
+sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/kernel/dtb/
 
 echo "Removing non-supported overlays from prebuilt directory"
 # Remove the overlays that don't work with ARK Carrier
