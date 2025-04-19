@@ -41,3 +41,7 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0001-nv-super.dtb $PREBUILT_
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
+
+# I2S to GPIO
+sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/kernel/dtb/
