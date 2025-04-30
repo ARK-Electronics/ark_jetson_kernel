@@ -58,6 +58,9 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $P
 # ARK IMX477 Dual 4lane (must use ARK CSI-2-1 Adaptor)
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-dual-4lane.dtbo $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-dual-4lane.dtbo $PREBUILT_PATH/kernel/dtb/
+# ARK IMX477 Single 4lane (must use ARK CSI-2-1 Adaptor)
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single-4lane.dtbo $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single-4lane.dtbo $PREBUILT_PATH/kernel/dtb/
 
 # I2S to GPIO
 sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/rootfs/boot/

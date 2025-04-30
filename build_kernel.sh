@@ -63,7 +63,9 @@ fi
 echo "Copying kernel Image to prebuilt"
 cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
 $ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
-$ARK_JETSON_KERNEL_DIR/copy_camera_params_to_prebuilt.sh
+
+# NOTE: the camera params file is camera specific. This override file is for the IMX219
+# $ARK_JETSON_KERNEL_DIR/copy_camera_params_to_prebuilt.sh
 
 popd
 
