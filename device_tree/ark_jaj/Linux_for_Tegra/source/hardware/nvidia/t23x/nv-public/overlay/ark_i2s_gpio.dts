@@ -1,0 +1,49 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    jetson-header-name = "Jetson 40pin Header";
+    overlay-name = "ARK I2S to GPIO";
+    compatible = "nvidia,p3768-0000+p3767-0000\0nvidia,p3768-0000+p3767-0001\0nvidia,p3768-0000+p3767-0003\0nvidia,p3768-0000+p3767-0004\0nvidia,p3768-0000+p3767-0005\0nvidia,p3768-0000+p3767-0000-super\0nvidia,p3768-0000+p3767-0001-super\0nvidia,p3768-0000+p3767-0003-super\0nvidia,p3768-0000+p3767-0004-super\0nvidia,p3768-0000+p3767-0005-super\0nvidia,p3509-0000+p3767-0000\0nvidia,p3509-0000+p3767-0001\0nvidia,p3509-0000+p3767-0003\0nvidia,p3509-0000+p3767-0004\0nvidia,p3509-0000+p3767-0005";
+
+
+    fragment@0 {
+        target = <&pinmux>;
+
+        __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&jetson_io_pinmux>;
+
+            jetson_io_pinmux: exp-header-pinmux {
+            // I2S0_SCLK
+		    hdr40-pin12 {
+		        nvidia,pins = "soc_gpio41_ph7";
+		        nvidia,tristate = <0x0>;
+		        nvidia,enable-input = <0x1>;
+		        nvidia,pull = <0x0>;
+		    };
+            // I2S0_DOUT
+		    hdr40-pin40 {
+		        nvidia,pins = "soc_gpio42_pi0";
+		        nvidia,tristate = <0x0>;
+		        nvidia,enable-input = <0x1>;
+		        nvidia,pull = <0x0>;
+		    };
+            // I2S0_DIN
+		    hdr40-pin38 {
+		        nvidia,pins = "soc_gpio43_pi1";
+		        nvidia,tristate = <0x0>;
+		        nvidia,enable-input = <0x1>;
+		        nvidia,pull = <0x0>;
+		    };
+            // I2S0_FS
+		    hdr40-pin35 {
+		        nvidia,pins = "soc_gpio44_pi2";
+		        nvidia,tristate = <0x0>;
+		        nvidia,enable-input = <0x1>;
+		        nvidia,pull = <0x0>;
+		    };
+	     };
+        };
+    };
+};
