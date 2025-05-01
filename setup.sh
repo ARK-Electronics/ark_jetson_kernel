@@ -169,11 +169,6 @@ else
 fi
 popd
 
-# Clone ARK device tree
-echo "Downloading ARK device tree"
-rm -rf ark_jetson_orin_nano_nx_device_tree
-git clone -b main https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree.git
-
 popd
 
 END_TIME=$(date +%s)

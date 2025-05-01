@@ -10,9 +10,11 @@ export INSTALL_MOD_PATH=$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/
 
 pushd .
 
+# Copy ARK device tree overlay into source build
 cd $ARK_JETSON_KERNEL_DIR/source_build/
 echo "Copying ARK device tree files"
-cp -r ark_jetson_orin_nano_nx_device_tree/Linux_for_Tegra/* Linux_for_Tegra/
+# TODO: select PAB or JaJ
+cp -r device_tree/ark_pab/Linux_for_Tegra/* Linux_for_Tegra/
 
 cd Linux_for_Tegra/source
 
