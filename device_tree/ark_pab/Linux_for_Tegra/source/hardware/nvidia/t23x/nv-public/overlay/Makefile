@@ -71,6 +71,7 @@ dtbo-y += tegra234-p3767-camera-p3768-ark-imx219-single.dtbo
 dtbo-y += tegra234-p3767-camera-p3768-ark-arducam-single.dtbo
 dtbo-y += tegra234-p3767-camera-p3768-ark-imx477-dual-4lane.dtbo
 dtbo-y += tegra234-p3767-camera-p3768-ark-imx477-single-4lane.dtbo
+dtbo-y += ark_i2s_gpio.dtbo
 
 ifneq ($(dtb-y),)
 dtb-y := $(addprefix $(makefile-path)/,$(dtb-y))
