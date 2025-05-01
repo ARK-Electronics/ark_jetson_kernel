@@ -85,14 +85,10 @@ You must have gstreamer installed. The easiest way to get it is to install Jetpa
 ```
 sudo apt-get install nvidia-jetpack -y
 ```
-Set variables
+
+Start a simple UDP h.264 pipeline. Replace the IP and port settings.
 ```
-HOST_IP="192.168.0.96"
-HOST_PORT="5600"
-```
-Start a simple UDP h.264 pipeline
-```
-gst-launch-1.0 nvarguscamerasrc sensor-id=0 ! nvvidconv ! x264enc key-int-max=15 bitrate=2500 tune=zerolatency speed-preset=ultrafast ! video/x-h264,stream-format=byte-stream ! rtph264pay config-interval=1 name=pay0 pt=96 ! udpsink host=$HOST_IP port=$HOST_PORT sync=false
+gst-launch-1.0 nvarguscamerasrc sensor-id=0 ! nvvidconv ! x264enc key-int-max=15 bitrate=2500 tune=zerolatency speed-preset=ultrafast ! video/x-h264,stream-format=byte-stream ! rtph264pay config-interval=1 name=pay0 pt=96 ! udpsink host=192.168.0.96 port=5600 sync=false
 
 ```
 
