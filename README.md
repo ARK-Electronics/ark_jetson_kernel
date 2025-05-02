@@ -80,6 +80,26 @@ MAXN SUPER mode on Jetson Orin NX Modules:
 sudo nvpmodel -m 0
 ```
 
+#### Testing cameras with gstreamer
+You must have gstreamer installed. The easiest way to get it is to install Jetpack (on the Jetson)
+```
+sudo apt-get install nvidia-jetpack -y
+```
+
+Start a simple UDP h.264 pipeline. Replace the IP and port settings.
+```
+gst-launch-1.0 nvarguscamerasrc ! nvvidconv ! x264enc key-int-max=15 bitrate=2500 tune=zerolatency speed-preset=ultrafast ! video/x-h264,stream-format=byte-stream ! rtph264pay config-interval=1 name=pay0 pt=96 ! udpsink host=192.168.0.96 port=5600 sync=false
+
+```
+OR dump the stream to a file
+```
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM), width=3840, height=2160, format=NV12, framerate=30/1' ! nvvidconv ! x264enc key-int-max=15 bitrate=2500 tune=zerolatency speed-preset=ultrafast ! h264parse ! mp4mux ! filesink location=output.mp4
+```
+OR test camera with v4l2-ctl
+```
+v4l2-ctl --set-fmt-video=width=3840,height=2160,pixelformat=RG10 --stream-mmap --stream-count=300 -d /dev/video0
+```
+
 ---
 
 # Building from source explained
@@ -177,4 +197,4 @@ https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/HR/JetsonModuleAdap
 **Orin Nano 8GB-DRAM**  : tegra234-p3768-0000+p3767-**0003**-nv.dtb <br>
 **Orin Nano 4GB-DRAM**  : tegra234-p3768-0000+p3767-**0004**-nv.dtb <br>
 
-The device tree files for Jetson Orin Nano/NX can be found in the kernel source directory at **Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public**. We maintain a [repository](https://github.com/ARK-Electronics/ark_jetson_orin_nano_nx_device_tree ) with these files which is cloned into **source_build/** in the source build setup script. If you want to modify the device tree you will need to modify the files in this repo and and copy them into the correct location in the source build. <br>
+The device tree files for Jetson Orin Nano/NX can be found in the kernel source directory at **Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public**. We apply an overlay of modified files from the **device_tree** directory for both PAB and JaJ targets. If you want to modify the device tree you will need to modify the files there and and copy them into the correct location in the source_build. <br>

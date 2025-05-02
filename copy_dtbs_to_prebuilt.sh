@@ -42,6 +42,14 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv-super.dtb $PREBUILT_
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 
+# I2S to GPIO
+sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/kernel/dtb/
+
+if [ "$TARGET" == "JAJ" ]; then
+    exit 0
+fi
+
 # Copy camera overlays to kernel and bootloader paths
 # IMX477 Single
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single.dtbo $PREBUILT_PATH/rootfs/boot/
@@ -55,9 +63,12 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $PR
 # AR0234 Single
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/kernel/dtb/
-# I2S to GPIO
-sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/rootfs/boot/
-sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/kernel/dtb/
+# ARK IMX477 Dual 4lane (must use ARK CSI-2-1 Adaptor)
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-dual-4lane.dtbo $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-dual-4lane.dtbo $PREBUILT_PATH/kernel/dtb/
+# ARK IMX477 Single 4lane (must use ARK CSI-2-1 Adaptor)
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single-4lane.dtbo $PREBUILT_PATH/rootfs/boot/
+sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single-4lane.dtbo $PREBUILT_PATH/kernel/dtb/
 
 echo "Removing non-supported overlays from prebuilt directory"
 # Remove the overlays that don't work with ARK Carrier

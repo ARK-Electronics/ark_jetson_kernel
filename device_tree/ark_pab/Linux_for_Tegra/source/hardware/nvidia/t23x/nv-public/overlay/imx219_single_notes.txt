@@ -1,0 +1,14 @@
+## argus does not see it! This command works for Quad but not for Single
+nvargus_nvraw --lps
+
+
+jetson@jetson:~$  nvargus_nvraw --lps
+nvargus_nvraw version 1.16.0
+Number of supported sensor entries 5
+Entry  Source Mode      Uniquename             Resolution   FR  BitDepth  Mode
+Index  Index  Index                                             CSI Dyn   Type
+  0      0      0   ark_imx219_dual_hawk_bottomleft   3280x2464   20  10  10    Bayer
+  1      0      1   ark_imx219_dual_hawk_bottomleft   3280x1848   28  10  10    Bayer
+  2      0      2   ark_imx219_dual_hawk_bottomleft   1920x1080   29  10  10    Bayer
+  3      0      3   ark_imx219_dual_hawk_bottomleft   1640x1232   29  10  10    Bayer
+  4      0      4   ark_imx219_dual_hawk_bottomleft   1280x 720   59  10  10    Bayer

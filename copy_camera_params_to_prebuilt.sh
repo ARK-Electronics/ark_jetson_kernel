@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# IMX219 ONLY
+# https://www.waveshare.com/wiki/IMX219-160_Camera
 DOWNLOAD_URL="https://files.waveshare.com/upload/e/eb/Camera_overrides.tar.gz"
 TAR_FILE="Camera_overrides.tar.gz"
 ISP_FILE="camera_overrides.isp"
