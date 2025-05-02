@@ -88,10 +88,17 @@ sudo apt-get install nvidia-jetpack -y
 
 Start a simple UDP h.264 pipeline. Replace the IP and port settings.
 ```
-gst-launch-1.0 nvarguscamerasrc sensor-id=0 ! nvvidconv ! x264enc key-int-max=15 bitrate=2500 tune=zerolatency speed-preset=ultrafast ! video/x-h264,stream-format=byte-stream ! rtph264pay config-interval=1 name=pay0 pt=96 ! udpsink host=192.168.0.96 port=5600 sync=false
+gst-launch-1.0 nvarguscamerasrc ! nvvidconv ! x264enc key-int-max=15 bitrate=2500 tune=zerolatency speed-preset=ultrafast ! video/x-h264,stream-format=byte-stream ! rtph264pay config-interval=1 name=pay0 pt=96 ! udpsink host=192.168.0.96 port=5600 sync=false
 
 ```
-
+OR dump the stream to a file
+```
+gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM), width=3840, height=2160, format=NV12, framerate=30/1' ! nvvidconv ! x264enc key-int-max=15 bitrate=2500 tune=zerolatency speed-preset=ultrafast ! h264parse ! mp4mux ! filesink location=output.mp4
+```
+OR test camera with v4l2-ctl
+```
+v4l2-ctl --set-fmt-video=width=3840,height=2160,pixelformat=RG10 --stream-mmap --stream-count=300 -d /dev/video0
+```
 
 ---
 
