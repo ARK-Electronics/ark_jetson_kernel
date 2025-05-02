@@ -20,28 +20,28 @@
                 nvidia,pins = "soc_gpio41_ph7";
                 nvidia,tristate = <0x0>;
                 nvidia,enable-input = <0x1>;
-                nvidia,pull = <0x1>;
+                nvidia,pull = <0x0>;
             };
             // I2S0_DOUT
             hdr40-pin40 {
                 nvidia,pins = "soc_gpio42_pi0";
                 nvidia,tristate = <0x0>;
                 nvidia,enable-input = <0x1>;
-                nvidia,pull = <0x1>;
+                nvidia,pull = <0x0>;
             };
             // I2S0_DIN
             hdr40-pin38 {
                 nvidia,pins = "soc_gpio43_pi1";
                 nvidia,tristate = <0x0>;
                 nvidia,enable-input = <0x1>;
-                nvidia,pull = <0x1>;
+                nvidia,pull = <0x0>;
             };
             // I2S0_FS
             hdr40-pin35 {
                 nvidia,pins = "soc_gpio44_pi2";
                 nvidia,tristate = <0x0>;
                 nvidia,enable-input = <0x1>;
-                nvidia,pull = <0x1>;
+                nvidia,pull = <0x0>;
             };
          };
         };
