@@ -80,7 +80,17 @@ MAXN SUPER mode on Jetson Orin NX Modules:
 sudo nvpmodel -m 0
 ```
 
-#### Testing cameras with gstreamer
+
+
+### Testing cameras
+
+#### V4L
+See if v4l can read frames
+```
+v4l2-ctl -d /dev/video0 --set-fmt-video=width=1920,height=1080 --set-ctrl bypass_mode=0 --stream-mmap --stream-count=500
+```
+
+#### GStreamer
 You must have gstreamer installed. The easiest way to get it is to install Jetpack (on the Jetson)
 ```
 sudo apt-get install nvidia-jetpack -y
