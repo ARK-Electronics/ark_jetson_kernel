@@ -89,7 +89,7 @@
 				modules {
 					module0 {
 						badge = "jakku_front_RBPCV3";
-						position = "bottom";
+						position = "front";
 						orientation = "1";
 						drivernode0 {
 							pcl_id = "v4l2_sensor";
@@ -98,7 +98,7 @@
 					};
 					module1 {
 						badge = "jakku_rear_RBPCV3";
-						position = "top";
+						position = "rear";
 						orientation = "1";
 						drivernode0 {
 							pcl_id = "v4l2_sensor";
