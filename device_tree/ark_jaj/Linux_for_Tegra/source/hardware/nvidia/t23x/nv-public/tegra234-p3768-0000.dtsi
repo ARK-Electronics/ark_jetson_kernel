@@ -69,15 +69,15 @@
 							status = "okay";
 						};
 
-						usb3-1 {
-							nvidia,function = "xusb";
-							status = "okay";
-						};
+						// usb3-1 {
+						// 	nvidia,function = "xusb";
+						// 	status = "okay";
+						// };
 
-						usb3-2 {
-							nvidia,function = "xusb";
-							status = "okay";
-						};
+						// usb3-2 {
+						// 	nvidia,function = "xusb";
+						// 	status = "okay";
+						// };
 					};
 				};
 			};
@@ -89,6 +89,13 @@
 					vbus-supply = <&vdd_5v0_sys>;
 					status = "okay";
 					usb-role-switch;
+					
+					connector {
+						compatible = "usb-b-connector", "gpio-usb-b-connector";
+						label = "micro-USB";
+						type = "micro";
+						id-gpio = <&gpio TEGRA234_MAIN_GPIO(Z, 1) GPIO_ACTIVE_LOW>;
+					};
 				};
 
 				/* hub */
@@ -107,30 +114,29 @@
 
 				/* USB C */
 				usb3-0 {
-					nvidia,usb2-companion = <0>;
-					status = "okay";
-				};
-
-				/* dual USB A port */
-				usb3-1 {
 					nvidia,usb2-companion = <1>;
 					status = "okay";
 				};
 
-				/* dual USB A port */
-				usb3-2 {
-					nvidia,usb2-companion = <1>;
-					status = "okay";
-				};
+				// /* dual USB A port */
+				// usb3-1 {
+				// 	nvidia,usb2-companion = <1>;
+				// 	status = "okay";
+				// };
+
+				// /* dual USB A port */
+				// usb3-2 {
+				// 	nvidia,usb2-companion = <1>;
+				// 	status = "okay";
+				// };
 			};
 		};
 
 		usb@3550000 {
 			status = "okay";
 
-			phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>,
-			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>;
-			phy-names = "usb2-0", "usb3-0";
+			phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>;
+			phy-names = "usb2-0";
 		};
 
 		usb@3610000 {
@@ -139,11 +145,8 @@
 			phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>,
 			       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-1}>,
 			       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-2}>,
-			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>,
-			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-1}>,
-			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-2}>;
-			phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0",
-				    "usb3-1", "usb3-2";
+			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>;
+			phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0";
 		};
 
 		/* C8 - Ethernet */

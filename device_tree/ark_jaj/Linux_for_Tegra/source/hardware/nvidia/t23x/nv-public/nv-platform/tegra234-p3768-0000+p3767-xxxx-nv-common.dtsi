@@ -185,17 +185,17 @@
 			};
 		};
 
-		padctl@3520000 {
-			ports {
-				usb2-0 {
-					port {
-						typec_p0: endpoint {
-							remote-endpoint = <&fusb_p0>;
-						};
-					};
-				};
-			};
-		};
+		// padctl@3520000 {
+		// 	ports {
+		// 		usb2-0 {
+		// 			port {
+		// 				typec_p0: endpoint {
+		// 					remote-endpoint = <&fusb_p0>;
+		// 				};
+		// 			};
+		// 		};
+		// 	};
+		// };
 
 		i2c@c240000 {
 			status = "okay";
@@ -220,22 +220,22 @@
 					shunt-resistor-micro-ohms = <5000>;
 				};
 			};
-			fusb301@25 {
-				compatible = "onsemi,fusb301";
-				reg = <0x25>;
-				status = "okay";
-				#address-cells = <1>;
-				#size-cells = <0>;
-				interrupt-parent = <&gpio>;
-				interrupts = <TEGRA234_MAIN_GPIO(Z, 1) IRQ_TYPE_LEVEL_LOW>;
-				connector@0 {
-					port@0 {
-						fusb_p0: endpoint {
-							remote-endpoint = <&typec_p0>;
-						};
-					};
-				};
-			};
+			// fusb301@25 {
+			// 	compatible = "onsemi,fusb301";
+			// 	reg = <0x25>;
+			// 	status = "okay";
+			// 	#address-cells = <1>;
+			// 	#size-cells = <0>;
+			// 	interrupt-parent = <&gpio>;
+			// 	interrupts = <TEGRA234_MAIN_GPIO(Z, 1) IRQ_TYPE_LEVEL_LOW>;
+			// 	connector@0 {
+			// 		port@0 {
+			// 			fusb_p0: endpoint {
+			// 				remote-endpoint = <&typec_p0>;
+			// 			};
+			// 		};
+			// 	};
+			// };
 		};
 
 		pcie-ep@14160000 {/* C4 - End Point */
