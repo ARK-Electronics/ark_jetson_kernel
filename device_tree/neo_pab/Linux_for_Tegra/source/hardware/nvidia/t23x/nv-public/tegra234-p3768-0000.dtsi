@@ -69,15 +69,6 @@
 							status = "okay";
 						};
 
-						usb3-1 {
-							nvidia,function = "xusb";
-							status = "okay";
-						};
-
-						usb3-2 {
-							nvidia,function = "xusb";
-							status = "okay";
-						};
 					};
 				};
 			};
@@ -110,18 +101,6 @@
 					nvidia,usb2-companion = <0>;
 					status = "okay";
 				};
-
-				/* dual USB A port */
-				usb3-1 {
-					nvidia,usb2-companion = <1>;
-					status = "okay";
-				};
-
-				/* dual USB A port */
-				usb3-2 {
-					nvidia,usb2-companion = <1>;
-					status = "okay";
-				};
 			};
 		};
 
@@ -139,11 +118,8 @@
 			phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>,
 			       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-1}>,
 			       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-2}>,
-			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>,
-			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-1}>,
-			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-2}>;
-			phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0",
-				    "usb3-1", "usb3-2";
+			       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>;
+			phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0";
 		};
 
 		/* C8 - Ethernet */
@@ -180,7 +156,7 @@
 			phy-names = "p2u-0", "p2u-1", "p2u-2", "p2u-3";
 		};
 
-		/* C7 - Pi 5 PCIE FFC Connector */
+		/* C7 - Not Connected */
 		pcie@141e0000 {
 			status = "okay";
 
