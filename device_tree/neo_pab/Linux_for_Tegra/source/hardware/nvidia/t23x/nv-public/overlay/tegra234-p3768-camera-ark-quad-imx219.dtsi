@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2023-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+#define CAM0_PWDN	TEGRA234_MAIN_GPIO(H, 6)
+#define CAM1_PWDN	TEGRA234_MAIN_GPIO(AC, 0)
+#define CAM2_PWDN	TEGRA234_MAIN_GPIO(Y, 4)
+#define CAM3_PWDN	TEGRA234_AON_GPIO(CC, 3)
+#define CAMERA_I2C_MUX_BUS(x) (0x1E + x)
+
+#include <dt-bindings/tegra234-p3767-0000-common.h>
+#include "tegra234-camera-ark-quad-imx219.dtsi"
+
+/ {
+	fragment-camera@0 {
+		target-path = "/";
+		__overlay__ {
+			bus@0 {
+				i2c@3180000 {
+					tca9546@70 {
+						compatible = "nxp,pca9546";
+						reg = <0x70>;
+						i2c-parent = <&cam_i2c>;
+						skip_mux_detect = "yes";
+						status = "okay";
+						force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
+						i2c@0 {
+							status = "okay";
+							reg = <0>;
+							i2c-mux,deselect-on-exit;
+							ark_imx219_a@10 {
+								status = "okay";
+								reset-gpios = <&gpio CAM0_PWDN GPIO_ACTIVE_HIGH>;
+							};
+						};
+						i2c@1 {
+							status = "okay";
+							reg = <1>;
+							i2c-mux,deselect-on-exit;
+							ark_imx219_b@10 {
+								status = "okay";
+								reset-gpios = <&gpio CAM1_PWDN GPIO_ACTIVE_HIGH>;
+							};
+						};
+						i2c@2 {
+							status = "okay";
+							reg = <2>;
+							i2c-mux,deselect-on-exit;
+							ark_imx219_c@10 {
+								status = "okay";
+								reset-gpios = <&gpio CAM2_PWDN GPIO_ACTIVE_HIGH>;
+							};
+						};
+						i2c@3 {
+							status = "okay";
+							reg = <3>;
+							i2c-mux,deselect-on-exit;
+							ark_imx219_d@10 {
+								status = "okay";
+								reset-gpios = <&gpio_aon CAM3_PWDN GPIO_ACTIVE_HIGH>;
+							};
+						};
+					};
+				};
+				gpio@2200000 {
+					camera-control-output-high {
+					gpios = <CAM0_PWDN 1 CAM1_PWDN 1
+						CAM2_PWDN 1 CAM3_PWDN 1>;
+					label = "cam0-pwdn","cam1-pwdn",
+						"cam2-pwdn", "cam3-pwdn";
+					};
+				};
+			};
+		};
+	};
+};
