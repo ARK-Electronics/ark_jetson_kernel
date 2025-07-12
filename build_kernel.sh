@@ -14,7 +14,8 @@ pushd .
 echo "Please select the target platform:"
 echo "1) PAB"
 echo "2) JAJ"
-read -p "Enter your choice (1 or 2): " choice
+echo "3) NEO"
+read -p "Enter your choice (1, 2, or 3): " choice
 
 case $choice in
     1)
@@ -24,6 +25,10 @@ case $choice in
     2)
         export TARGET="JAJ"
         DT_SOURCE="ark_jaj"
+        ;;
+    3)
+        export TARGET="NEO"
+        DT_SOURCE="neo_pab"
         ;;
     *)
         echo "Invalid choice. Exiting."
