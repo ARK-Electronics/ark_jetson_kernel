@@ -173,16 +173,6 @@
 					nvidia,tx-clk-tap-delay = <0x0>;
 				};
 			};
-			spi@1 {
-				compatible = "tegra-spidev";
-				reg = <0x1>;
-				spi-max-frequency = <50000000>;
-				controller-data {
-					nvidia,enable-hw-based-cs;
-					nvidia,rx-clk-tap-delay = <0x10>;
-					nvidia,tx-clk-tap-delay = <0x0>;
-				};
-			};
 		};
 
 		padctl@3520000 {

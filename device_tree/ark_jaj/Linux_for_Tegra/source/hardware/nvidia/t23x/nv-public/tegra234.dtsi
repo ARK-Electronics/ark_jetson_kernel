@@ -2942,7 +2942,7 @@
 			dmas = <&gpcdma 17>, <&gpcdma 17>;
 			dma-names = "rx", "tx";
 			dma-coherent;
-			status = "disabled";
+			status = "okay";
 		};
 
 		spi@3270000 {
