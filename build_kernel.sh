@@ -85,6 +85,29 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "Fixing kernel module symlinks in rootfs"
+# The kernel version for JP 6.2
+JETSON_KERNEL_VERSION="5.15.148-tegra"
+ROOTFS_PATH="$INSTALL_MOD_PATH"
+MODULES_PATH="$ROOTFS_PATH/lib/modules/$JETSON_KERNEL_VERSION"
+HEADERS_TARGET="/usr/src/linux-headers-5.15.148-tegra-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
+
+if [ -d "$MODULES_PATH" ]; then
+    echo "Updating symlinks in $MODULES_PATH"
+    # Remove old symlinks (they point to build machine paths)
+    sudo rm -f "$MODULES_PATH/build"
+    sudo rm -f "$MODULES_PATH/source"
+
+    # Create new symlinks that will be valid on the Jetson
+    sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
+    sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
+
+    echo "Symlinks updated successfully"
+    ls -la "$MODULES_PATH" | grep -E "build|source"
+else
+    echo "WARNING: Module path $MODULES_PATH not found!"
+fi
+
 echo "Copying kernel Image to prebuilt"
 cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
 $ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
