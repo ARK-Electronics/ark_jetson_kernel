@@ -46,7 +46,7 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv-super.dtb $PREBUILT_
 sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/kernel/dtb/
 
-if [ "$TARGET" == "JAJ" ]; then
+if [ "$TARGET" != "PAB" ]; then
     exit 0
 fi
 
