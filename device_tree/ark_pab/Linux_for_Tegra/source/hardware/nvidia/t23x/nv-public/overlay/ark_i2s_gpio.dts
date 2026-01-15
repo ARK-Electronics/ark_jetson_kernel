@@ -1,3 +1,83 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2024, ARK Electronics
+/*
+ * ARK I2S0 to GPIO Device Tree Overlay
+ *
+ * This overlay reconfigures the ARK I2S0 connector pins as general-purpose
+ * GPIOs on Jetson Orin NX/Nano carriers.
+ *
+ * =============================================================================
+ * PIN MAPPING TABLE
+ * =============================================================================
+ *
+ * ARK Pin | ARK Signal     | HDR40 Pin | Pinmux Name | SoC GPIO        | nvidia,pins
+ * --------|----------------|-----------|-------------|-----------------|------------------
+ * 1       | VDD_5V_JPERIPH | -         | -           | -               | -
+ * 2       | I2S0_DOUT_3V3  | 40        | I2S0_DOUT   | soc_gpio42_pi0  | "soc_gpio42_pi0"
+ * 3       | I2S0_DIN_3V3   | 38        | I2S0_DIN    | soc_gpio43_pi1  | "soc_gpio43_pi1"
+ * 4       | I2S0_LRCLK_3V3 | 35        | I2S0_FS     | soc_gpio44_pi2  | "soc_gpio44_pi2"
+ * 5       | I2S0_SCLK_3V3  | 12        | I2S0_SCLK   | soc_gpio41_ph7  | "soc_gpio41_ph7"
+ * 6       | AUD_MCLK_3V3   | 7         | GPIO09      | soc_gpio59_pac6 | "soc_gpio59_pac6"
+ * 7       | GND            | -         | -           | -               | -
+ *
+ * =============================================================================
+ * HOW TO CREATE YOUR OWN OVERLAY
+ * =============================================================================
+ *
+ * To create a custom overlay for any connector, follow these steps:
+ *
+ * 1. FIND YOUR CONNECTOR'S SIGNALS
+ *    - Look at your carrier board schematic to identify the signal names
+ *      on your connector (e.g., I2S0_DOUT_3V3, SPI1_MOSI, etc.)
+ *
+ * 2. MAP SIGNALS TO 40-PIN HEADER
+ *    - Use the Jetson Pinmux Spreadsheet to find which 40-pin header pin
+ *      each signal connects to:
+ *      device_tree/ark_pab/Jetson_Orin_NX_and_Orin_Nano_series_Pinmux_Config_Jetpack_6.xlsm
+ *
+ * 3. FIND THE SOC GPIO NAME
+ *    - Look up the SoC pin name in the GPIO header file:
+ *      device_tree/ark_pab/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/
+ *        include/platforms/dt-bindings/tegra234-p3767-0000-common.h
+ *    - Find the HDR40_PINxx definition (e.g., HDR40_PIN40 = "soc_gpio42_pi0")
+ *
+ * 4. ADD PIN CONFIGURATION
+ *    - Create a node for each pin using the pattern:
+ *        hdr40-pinXX {
+ *            nvidia,pins = "<soc_gpio_name>";
+ *            nvidia,tristate = <0x0>;      // 0=drive, 1=tristate
+ *            nvidia,enable-input = <0x1>;  // 0=output only, 1=input enabled
+ *            nvidia,pull = <0x0>;          // 0=none, 1=down, 2=up
+ *        };
+ *
+ * 5. ADD TO MAKEFILE
+ *    - Edit the Makefile in the same overlay directory:
+ *      device_tree/ark_pab/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/overlay/Makefile
+ *    - Add your overlay to the build list:
+ *        dtbo-y += your_overlay_name.dtbo
+ *
+ * 6. ADD TO PREBUILT COPY SCRIPT
+ *    - Edit copy_dtbs_to_prebuilt.sh in the repository root
+ *    - Add lines to copy your compiled overlay:
+ *        sudo cp $DTBS_SOURCE_PATH/your_overlay_name.dtbo $PREBUILT_PATH/rootfs/boot/
+ *        sudo cp $DTBS_SOURCE_PATH/your_overlay_name.dtbo $PREBUILT_PATH/kernel/dtb/
+ *
+ * =============================================================================
+ * HOW TO APPLY THIS OVERLAY
+ * =============================================================================
+ *
+ *    sudo /opt/nvidia/jetson-io/config-by-hardware.py -n "ARK I2S to GPIO"
+ *    sudo reboot
+ *
+ * =============================================================================
+ * EXAMPLE USAGE (Python)
+ * =============================================================================
+ *
+ * See the example script in ARK-OS:
+ * https://github.com/ARK-Electronics/ARK-OS/blob/main/platform/jetson/scripts/i2s_gpio_example.py
+ *
+ */
+
 /dts-v1/;
 /plugin/;
 
@@ -6,19 +86,15 @@
     overlay-name = "ARK I2S to GPIO";
     compatible = "nvidia,p3768-0000+p3767-0000\0nvidia,p3768-0000+p3767-0001\0nvidia,p3768-0000+p3767-0003\0nvidia,p3768-0000+p3767-0004\0nvidia,p3768-0000+p3767-0005\0nvidia,p3768-0000+p3767-0000-super\0nvidia,p3768-0000+p3767-0001-super\0nvidia,p3768-0000+p3767-0003-super\0nvidia,p3768-0000+p3767-0004-super\0nvidia,p3768-0000+p3767-0005-super\0nvidia,p3509-0000+p3767-0000\0nvidia,p3509-0000+p3767-0001\0nvidia,p3509-0000+p3767-0003\0nvidia,p3509-0000+p3767-0004\0nvidia,p3509-0000+p3767-0005";
 
-    // see: tegra234-p3767-0000-common.h
     fragment@0 {
         target = <&pinmux>;
 
-        // Jetson I2S0 to GPIO
         __overlay__ {
             pinctrl-names = "default";
             pinctrl-0 = <&jetson_io_pinmux>;
 
-            // Naming convetion:
-            // ARK Pinout --> Jetson Pinmux Config
-
             jetson_io_pinmux: exp-header-pinmux {
+
                 // I2S0_DOUT_3V3 --> I2S0_DOUT
                 hdr40-pin40 {
                     nvidia,pins = "soc_gpio42_pi0";
@@ -26,6 +102,7 @@
                     nvidia,enable-input = <0x1>;
                     nvidia,pull = <0x0>;
                 };
+
                 // I2S0_DIN_3V3 --> I2S0_DIN
                 hdr40-pin38 {
                     nvidia,pins = "soc_gpio43_pi1";
@@ -33,6 +110,7 @@
                     nvidia,enable-input = <0x1>;
                     nvidia,pull = <0x0>;
                 };
+
                 // I2S0_LRCLK_3V3 --> I2S0_FS
                 hdr40-pin35 {
                     nvidia,pins = "soc_gpio44_pi2";
@@ -40,6 +118,7 @@
                     nvidia,enable-input = <0x1>;
                     nvidia,pull = <0x0>;
                 };
+
                 // I2S0_SCLK_3V3 --> I2S0_SCLK
                 hdr40-pin12 {
                     nvidia,pins = "soc_gpio41_ph7";
