@@ -21,6 +21,16 @@ You can optionally add your WiFi network:
 ```
 You can now flash the image.
 
+If you forgot to set the WiFi network, you ssh in over the micro USB.
+```
+ssh jetson@jetson.local
+```
+and use network manager to add your network:
+```
+
+nmcli dev wifi connect YourNetworkName password YourPassword
+```
+
 ### Flashing
 Connect a micro USB cable to the port adjacent to the mini HDMI. Power on with the Force Recovery button held. You can verify the Jetson is in recovery mode by checking `lsusb`.
 > Bus 001 Device 012: ID 0955:7523 NVIDIA Corp. APX
