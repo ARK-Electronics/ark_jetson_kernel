@@ -22,7 +22,7 @@ You can now flash the image.
 
 You can optionally add your WiFi network after building and before flashing:
 ```
-./add_wifi_network.sh <SSID> <PASSWORD>
+./add_wifi_network.sh YourNetworkName YourPassword
 ```
 
 If you didn't configure the WiFi network before flashing, you can ssh in over the micro USB.
