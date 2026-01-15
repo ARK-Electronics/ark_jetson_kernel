@@ -31,7 +31,7 @@ ssh jetson@jetson.local
 ```
 and use network manager to add your network:
 ```
-nmcli dev wifi connect YourNetworkName password YourPassword
+sudo nmcli dev wifi connect YourNetworkName password YourPassword
 ```
 
 ### Flashing
