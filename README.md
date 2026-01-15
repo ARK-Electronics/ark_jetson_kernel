@@ -4,7 +4,7 @@ This repository contains instructions and scripts for flashing your Jetson **Ori
 
 **Note:** This has only been tested with Ubuntu 22.04
 
-# Installing the OS
+# Building
 Run the **setup.sh** script to download and build the Jetson Orin Nano / NX Jetpack 6 kernel.
 
 The script will configure the default user, password, and hostname as `jetson`.
@@ -15,13 +15,17 @@ Once the setup script is finished you can build the kernel.
 ```
 ./build_kernel.sh
 ```
-You can optionally add your WiFi network:
+
+You can now flash the image.
+
+### Adding WiFi
+
+You can optionally add your WiFi network after building and before flashing:
 ```
 ./add_wifi_network.sh <SSID> <PASSWORD>
 ```
-You can now flash the image.
 
-If you forgot to set the WiFi network, you ssh in over the micro USB.
+If you didn't configure the WiFi network before flashing, you can ssh in over the micro USB.
 ```
 ssh jetson@jetson.local
 ```
