@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Log output to file while keeping terminal output
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec > >(tee "$SCRIPT_DIR/flash.log.txt") 2>&1
+
 sudo -v
 
 echo "Waiting for device..."

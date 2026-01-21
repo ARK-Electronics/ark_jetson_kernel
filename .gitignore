@@ -4,3 +4,8 @@ ark_jetson_compiled_device_tree_files/
 prebuilt/
 source_build/
 output.txt
+
+# Log files
+setup.log.txt
+build.log.txt
+flash.log.txt

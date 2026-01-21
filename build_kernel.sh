@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Log output to file while keeping terminal output
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec > >(tee "$SCRIPT_DIR/build.log.txt") 2>&1
+
 START_TIME=$(date +%s)
 
 sudo -v
