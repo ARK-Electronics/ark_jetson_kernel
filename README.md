@@ -53,7 +53,6 @@ You can now optionally install the ARK software packages, which provide handy to
 https://github.com/ARK-Electronics/ARK-OS
 
 ---
----
 
 ## Additional Documentation
 
