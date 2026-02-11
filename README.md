@@ -58,7 +58,6 @@ https://github.com/ARK-Electronics/ARK-OS
 
 The sections below cover advanced topics for reference. Most users will not need these for initial setup.
 
----
 
 ### Flashing the QSPI Bootloader
 You can flash just the QSPI bootloader and install a pre-flashed NVME afterwards ([NVIDIA Docs](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/FlashingSupport.html#examples)). If you are upgrading from Jetpack5 to Jetpack6 you must reflash the QSPI bootloader.
