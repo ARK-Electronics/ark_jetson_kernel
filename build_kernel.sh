@@ -40,6 +40,20 @@ case $choice in
         ;;
 esac
 
+# Auto-clean on target switch to prevent stale build artifacts
+LAST_TARGET_FILE="$ARK_JETSON_KERNEL_DIR/source_build/LAST_BUILT_TARGET"
+if [ -f "$LAST_TARGET_FILE" ]; then
+    LAST_TARGET=$(cat "$LAST_TARGET_FILE")
+    if [ "$LAST_TARGET" != "$TARGET" ]; then
+        echo "Target changed from $LAST_TARGET to $TARGET — cleaning build artifacts..."
+        cd "$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source"
+        make -C kernel clean
+        make clean
+        cd "$ARK_JETSON_KERNEL_DIR"
+        echo "Clean complete."
+    fi
+fi
+
 # Create a file to track the last built target
 echo "$TARGET" > $ARK_JETSON_KERNEL_DIR/source_build/LAST_BUILT_TARGET
 
@@ -47,6 +61,11 @@ echo "$TARGET" > $ARK_JETSON_KERNEL_DIR/source_build/LAST_BUILT_TARGET
 cd $ARK_JETSON_KERNEL_DIR/source_build/
 echo "Copying ARK device tree files for $TARGET"
 cp -r $ARK_JETSON_KERNEL_DIR/device_tree/$DT_SOURCE/Linux_for_Tegra/* Linux_for_Tegra/
+
+# Inject ARK target identifier into super DTS model strings
+find "$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public/nv-platform/" \
+    -name "*-nv-super.dts" \
+    -exec sed -i "s/Engineering Reference Developer Kit Super/ARK ${TARGET} Jetson Carrier Super/" {} +
 
 cd Linux_for_Tegra/source
 

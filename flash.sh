@@ -4,6 +4,27 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec > >(tee "$SCRIPT_DIR/flash.log.txt") 2>&1
 
+# Pre-flash target confirmation
+LAST_TARGET_FILE="$SCRIPT_DIR/source_build/LAST_BUILT_TARGET"
+if [ -f "$LAST_TARGET_FILE" ]; then
+    LAST_TARGET=$(cat "$LAST_TARGET_FILE")
+    echo "========================================="
+    echo "  Built target: $LAST_TARGET"
+    echo "========================================="
+    read -p "Flash this target? (y/N): " confirm
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+        echo "Flash aborted."
+        exit 0
+    fi
+else
+    echo "WARNING: No LAST_BUILT_TARGET file found — cannot confirm which target was built."
+    read -p "Continue anyway? (y/N): " confirm
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+        echo "Flash aborted."
+        exit 0
+    fi
+fi
+
 sudo -v
 
 echo "Waiting for device..."

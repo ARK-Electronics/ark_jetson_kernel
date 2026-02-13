@@ -9,7 +9,7 @@
 
 / {
 	compatible = "nvidia,p3768-0000+p3767-0000", "nvidia,p3767-0000", "nvidia,tegra234";
-	model = "NVIDIA Jetson Orin NX 16GB ARK PAB Jetson Carrier";
+	model = "NVIDIA Jetson Orin NX 16GB ARK JAJ Jetson Carrier";
 
 	aliases {
 		serial1 = &uarta;
