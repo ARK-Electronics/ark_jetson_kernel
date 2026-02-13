@@ -9,5 +9,5 @@
 
 / {
 	compatible = "nvidia,p3768-0000+p3767-0001", "nvidia,p3767-0001", "nvidia,tegra234";
-	model = "NVIDIA Jetson Orin NX 8GB ARK PAB Jetson Carrier";
+	model = "NVIDIA Jetson Orin NX 8GB ARK JAJ Jetson Carrier";
 };
