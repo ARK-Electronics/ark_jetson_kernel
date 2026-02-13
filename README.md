@@ -42,6 +42,16 @@ Flash the image:
 ./flash.sh
 ```
 
+> **NVIDIA Dev Kit Modules:** The `flash.sh` script flashes to NVMe (`nvme0n1p1`), which is correct for production Jetson modules on the ARK PAB carrier. If you are using a **Jetson module from an NVIDIA Developer Kit**, these modules have an SD card instead of NVMe and boot from the SD card. You will need to flash using the SD card command instead:
+> ```
+> cd prebuilt/Linux_for_Tegra/
+> sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device mmcblk0p1 \
+>     -c tools/kernel_flash/flash_l4t_t234_nvme.xml \
+>     -p "-c bootloader/generic/cfg/flash_t234_qspi.xml" \
+>     --showlogs --network usb0 \
+>     jetson-orin-nano-devkit-super internal
+> ```
+
 Once complete, SSH in via Micro USB or WiFi.
 ```
 ssh jetson@jetson.local
