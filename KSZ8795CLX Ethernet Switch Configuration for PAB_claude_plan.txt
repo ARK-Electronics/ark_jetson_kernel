@@ -47,13 +47,12 @@
          compatible = "micrel,ksz8795";
          reg = <0>;
          spi-max-frequency = <50000000>;
-         reset-gpios = <&gpio TEGRA234_MAIN_GPIO(/* TODO: map GPIO09 */) GPIO_ACTIVE_LOW>;
+         reset-gpios = <&gpio TEGRA234_MAIN_GPIO(AC, 6) GPIO_ACTIVE_LOW>;
      };
  };
 
- GPIO note: Schematic label "GPIO09" must be mapped to its Tegra234 bank/pin from the
- Jetson Orin NX Module Data Sheet GPIO table before filling in the macro above.
- If no software-controlled reset is needed, the reset-gpios line can be omitted.
+ GPIO note: Schematic "GPIO09" = Tegra234 GPIO3_PAC.06 = TEGRA234_MAIN_GPIO(AC, 6).
+ dt-bindings/gpio/tegra234-gpio.h must be included (already available via the tegra234 base DTSI).
 
  SPI note: spi@3210000 is Tegra234's SPI1 controller (clock TEGRA234_CLK_SPI1),
  which is what the Jetson module calls "SPI_0". The BCT pinmux already configures the
