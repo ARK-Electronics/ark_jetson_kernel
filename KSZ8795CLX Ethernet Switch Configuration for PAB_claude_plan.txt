@@ -1,35 +1,41 @@
- KSZ8795CLX Ethernet Switch Configuration for PAB_V3    
+ KSZ8795CLX Ethernet Switch Configuration for PAB_V3
 
  Context
 
  The PAB_V3 carrier board has a KSZ8795CLX 5-port managed 10/100 ethernet switch connected
  via SPI0 to the Jetson Orin NX. The switch topology is:
 
- ┌──────────────────┬─────────────────────────────────────────┐
- │   Switch Port    │              Connected To               │
- ├──────────────────┼─────────────────────────────────────────┤
- │ Port 1 (PHY1)    │ Jetson eqos (RGMII via copper PHY link) │
- ├──────────────────┼─────────────────────────────────────────┤
- │ Port 2 (PHY2)    │ External LAN port                       │
- ├──────────────────┼─────────────────────────────────────────┤
- │ Port 3 (PHY3)    │ Pixhawk payload connector               │
- ├──────────────────┼─────────────────────────────────────────┤
- │ Port 4 (PHY4)    │ Pixhawk FC (ARKV6X)                     │
- ├──────────────────┼─────────────────────────────────────────┤
- │ Port 5 (CPU MAC) │ Not connected on PAB_V3                 │
- └──────────────────┴─────────────────────────────────────────┘
+ ┌──────────────────┬───────────────────────────────┬───────────────────┐
+ │   Switch Port    │         Connected To          │       Label       │
+ ├──────────────────┼───────────────────────────────┼───────────────────┤
+ │ Port 1 (PHY1)    │ Jetson eqos (copper PHY link) │ jetson            │
+ ├──────────────────┼───────────────────────────────┼───────────────────┤
+ │ Port 2 (PHY2)    │ External LAN port             │ external          │
+ ├──────────────────┼───────────────────────────────┼───────────────────┤
+ │ Port 3 (PHY3)    │ Pixhawk payload connector     │ pixhawk-payload   │
+ ├──────────────────┼───────────────────────────────┼───────────────────┤
+ │ Port 4 (PHY4)    │ Pixhawk FC (ARKV6X)           │ flight-controller │
+ ├──────────────────┼───────────────────────────────┼───────────────────┤
+ │ Port 5 (CPU MAC) │ Not connected on PAB_V3       │ —                 │
+ └──────────────────┴───────────────────────────────┴───────────────────┘
 
  SPI0 on the Jetson (= spi@3210000, kernel SPI1) is the management-only interface — it
  carries switch register reads/writes, not ethernet data.
 
- Why NOT DSA: Linux's Distributed Switch Architecture (DSA) requires port 5 (the CPU/MAC
- port) to be connected to the host MAC for tail-tag packet framing. Since PAB_V3 connects the
- Jetson's eqos to Port 1 (a standard PHY port), DSA doesn't apply. The switch operates as
- a transparent L2 bridge; the Jetson accesses all devices through its eqos interface normally.
+ Why NOT DSA: Linux DSA (Distributed Switch Architecture) requires port 5 (the dedicated
+ CPU/MAC port) to be connected to the Jetson's MAC for tail-tag packet framing. On PAB_V3,
+ port 5 is not connected — the Jetson's eqos connects to port 1 as a standard copper PHY link.
+ The switch operates as a transparent L2 bridge; all devices are reachable from the Jetson's
+ eqos interface normally.
 
- Correct driver: spi_ks8995 (MICREL_KS8995MA) — the legacy management-only SPI driver.
- It exposes all 256 switch registers as a binary sysfs file for reads/writes. This is the right
- tool for configuring switch behavior without DSA.
+ Correct driver: MICREL_KS8995MA (drivers/net/phy/spi_ks8995.c) — the management-only
+ SPI driver. It exposes all 256 switch registers as a binary sysfs file for reads/writes.
+
+ SPI note: spi@3210000 is Tegra234's SPI1 controller (what the module calls "SPI_0").
+ The BCT pinmux already configures spi1_* pins (pz3/pz4/pz5/pz6) at boot, so no BCT
+ changes are needed.
+
+ Reset GPIO: Schematic "GPIO09" = GPIO3_PAC.06 = TEGRA234_MAIN_GPIO(AC, 6).
 
  ---
  Files to Modify
@@ -51,102 +57,138 @@
      };
  };
 
- GPIO note: Schematic "GPIO09" = Tegra234 GPIO3_PAC.06 = TEGRA234_MAIN_GPIO(AC, 6).
- dt-bindings/gpio/tegra234-gpio.h must be included (already available via the tegra234 base DTSI).
+ No pinctrl stanza needed — BCT already sets up the spi1_* pins at boot.
 
- SPI note: spi@3210000 is Tegra234's SPI1 controller (clock TEGRA234_CLK_SPI1),
- which is what the Jetson module calls "SPI_0". The BCT pinmux already configures the
- spi1_* pins (pz3/pz4/pz5/pz6) at boot, so no extra pinctrl stanza is needed in
- the kernel DTS.
+ 2. Kernel Config — setup.sh
 
- 2. Kernel Config — Enable the Driver
+ File: setup.sh
 
- Config symbol: CONFIG_MICREL_KS8995MA=m
- Kconfig entry: drivers/net/phy/Kconfig — "Micrel KS8995MA 5-ports 10/100 managed Ethernet switch"
+ Following the established pattern at line ~112 where defconfig options are appended,
+ add one line in that block:
 
- The active kernel .config lives in source_build/Linux_for_Tegra/source/kernel/. To add it:
+ echo "CONFIG_MICREL_KS8995MA=m" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 
- # From source_build/Linux_for_Tegra/source/
- make -C kernel menuconfig
- # Navigate: Device Drivers → Network device support → PHY Device support and infrastructure
- #   → Micrel KS8995MA 5-ports 10/100 managed Ethernet switch → M
- # Save and exit
+ CONFIG_MICREL_KS8995MA depends on CONFIG_SPI which is already enabled.
+ No DSA modules needed.
 
- Or edit the .config directly:
- CONFIG_MICREL_KS8995MA=m
+ 3. Systemd Service — Initial Switch Config Script
 
- No additional DSA or KSZ8795 DSA modules are needed.
+ Location to add in setup.sh (after rootfs setup), OR deploy manually post-flash:
 
- ---
- Runtime Configuration
+ Create prebuilt/Linux_for_Tegra/rootfs/usr/local/bin/ksz8795-config.sh:
+ #!/bin/bash
+ # KSZ8795 switch initial configuration
+ # Re-run at any time to apply settings without rebooting
+ SYSFS=/sys/bus/spi/devices/spi1.0/registers
+ [ -e "$SYSFS" ] || { echo "KSZ8795 not found at $SYSFS"; exit 1; }
 
- After boot, the driver creates:
- /sys/bus/spi/devices/spi1.0/registers   # 256-byte binary blob of all switch registers
+ # Helper: write one byte to a register
+ write_reg() {
+     local reg=$1 val=$2
+     printf "\\x$(printf '%02x' $val)" | \
+         dd of="$SYSFS" bs=1 seek=$reg conv=notrunc 2>/dev/null
+ }
 
- Read a register (e.g., register 0x01 — Chip ID1):
- dd if=/sys/bus/spi/devices/spi1.0/registers bs=1 skip=1 count=1 2>/dev/null | xxd
+ # Helper: read one byte from a register
+ read_reg() {
+     dd if="$SYSFS" bs=1 skip=$1 count=1 2>/dev/null | xxd -p
+ }
 
- Write a register (e.g., register 0x0D — Global Control 5):
- printf "\x4e" | dd of=/sys/bus/spi/devices/spi1.0/registers bs=1 seek=13 conv=notrunc 2>/dev/null
+ # Example: enable port-based VLAN isolation
+ # Prevent ports 3 (payload) and 4 (FC) from talking directly —
+ # they must go through the Jetson (port 1).
+ # KSZ8795 port VLAN membership regs: 0x58 (port 1), 0x5A (port 2), 0x5C (port 3), 0x5E (port 4)
+ # Bit mask: bit 0=port1, bit1=port2, bit2=port3, bit3=port4, bit4=port5
+ # Default (all-to-all): each port has all bits set
+ # Isolated (payload+FC only via port 1):
+ #   port3 can only reach port1 → 0x01
+ #   port4 can only reach port1 → 0x01
+ #   port1 can reach all      → 0x1F
+ # write_reg 0x5C 0x01   # port 3 (payload): only allow to port 1
+ # write_reg 0x5E 0x01   # port 4 (FC): only allow to port 1
 
- Systemd Service for Initial Config
+ echo "KSZ8795 configuration applied."
 
- Create /etc/systemd/system/ksz8795-config.service and
- /usr/local/bin/ksz8795-config.sh in the rootfs at
- prebuilt/Linux_for_Tegra/rootfs/.
+ Create prebuilt/Linux_for_Tegra/rootfs/etc/systemd/system/ksz8795-config.service:
+ [Unit]
+ Description=KSZ8795 Ethernet Switch Configuration
+ After=network-pre.target
+ Before=network.target
 
- The script is re-runnable at any time to change settings online — no reboot needed.
- See the key registers below for what to configure.
+ [Service]
+ Type=oneshot
+ ExecStart=/usr/local/bin/ksz8795-config.sh
+ RemainAfterExit=yes
+
+ [Install]
+ WantedBy=multi-user.target
+
+ Enable it:
+ # In setup.sh or manually post-flash:
+ sudo chroot prebuilt/Linux_for_Tegra/rootfs/ systemctl enable ksz8795-config
+ # OR on the Jetson after first boot:
+ # sudo systemctl enable ksz8795-config
 
  ---
  Available Settings (Key Registers)
 
- ┌─────────────┬─────────────────────┬───────────────────────────────────────────────────────────┐
- │ Register(s) │        Name         │                     What it Controls                      │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0x00–0x01   │ Chip ID             │ Read-only: verify 0x95 = KSZ8795                          │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0x02        │ Global Control 0    │ Flush MAC table, new MAC only                             │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0x06        │ Global Control 4    │ Half-duplex backoff, unicast flooding                     │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0x0C        │ Global Control 4    │ Broadcast storm protection enable                         │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0x0D        │ Global Control 5    │ Multicast/broadcast storm threshold                       │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0x1C–0x27   │ Port N Control 1–12 │ Per-port: enable, speed, duplex, VLAN, priority, learning │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0x58–0x6F   │ Port N VLAN Control │ Port-based VLAN membership bitmasks                       │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0x74–0x79   │ Advanced Control    │ Spanning tree, loop detection                             │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0x7C–0x7F   │ Port N Priority     │ 802.1p/DSCP QoS per port                                  │
- ├─────────────┼─────────────────────┼───────────────────────────────────────────────────────────┤
- │ 0xE0–0xFF   │ MIB Counters        │ Per-port traffic statistics (read-only)                   │
- └─────────────┴─────────────────────┴───────────────────────────────────────────────────────────┘
+ ┌──────────────────────────┬────────────────────────┬────────────────────────────────────────────┐
+ │         Register         │          Name          │              What it Controls              │
+ ├──────────────────────────┼────────────────────────┼────────────────────────────────────────────┤
+ │ 0x00–0x01                │ Chip ID                │ Read-only verify: expect 0x8795            │
+ ├──────────────────────────┼────────────────────────┼────────────────────────────────────────────┤
+ │ 0x0C                     │ Global Control 4       │ Enable broadcast storm protection          │
+ ├──────────────────────────┼────────────────────────┼────────────────────────────────────────────┤
+ │ 0x0D                     │ Global Control 5       │ Storm threshold (packets/period)           │
+ ├──────────────────────────┼────────────────────────┼────────────────────────────────────────────┤
+ │ 0x1C–0x27                │ Port N Control 1–12    │ Per-port: enable, speed, duplex, learning  │
+ ├──────────────────────────┼────────────────────────┼────────────────────────────────────────────┤
+ │ 0x58/0x5A/0x5C/0x5E/0x60 │ Port N VLAN membership │ Bitmask of which ports each port can reach │
+ ├──────────────────────────┼────────────────────────┼────────────────────────────────────────────┤
+ │ 0x6C–0x6F                │ Port N priority        │ 802.1p queue assignment per-port           │
+ ├──────────────────────────┼────────────────────────┼────────────────────────────────────────────┤
+ │ 0xE0–0xFF                │ MIB counters           │ Per-port traffic stats (read-only)         │
+ └──────────────────────────┴────────────────────────┴────────────────────────────────────────────┘
 
- Recommended Settings for UAV Use
+ Recommended UAV Settings (Start Simple, Add as Needed)
 
- Default (factory): All ports in same VLAN, forwarding between all ports — safe starting point.
+ 1. Default (factory): All ports in same VLAN → works out of the box, no changes needed.
+ 2. Port isolation (optional): Set port 3 (payload) and port 4 (FC) to only reach port 1
+ (Jetson) — prevents cross-talk between payload and FC without going through the Jetson.
+ 3. Storm control (recommended): Enable broadcast limiting so a misbehaving device can't
+ flood the FC port with broadcast traffic.
+ 4. Disable port 5 (optional): Port 5 is unconnected; disabling it in software prevents
+ any spurious behavior.
 
- Useful additions:
- 1. QoS priority on Port 4 (FC): Set port 4's egress priority high so FC traffic isn't delayed by payload traffic on port 3.
- 2. Port-based VLAN isolation: Prevent port 3 (payload) and port 4 (FC) from communicating directly without going through the Jetson. This keeps flight-critical traffic on a separate L2 domain.
- 3. Disable port 5: Port 5 (CPU MAC) is unconnected; explicitly disabling it prevents any spurious forwarding behavior.
- 4. Storm control: Enable broadcast/multicast storm protection to prevent a misbehaving device from flooding the FC port.
-
- For the full register map, refer to the KSZ8795CLX datasheet (Microchip DS00002196).
+ Changing settings online (no reboot):
+ sudo /usr/local/bin/ksz8795-config.sh   # re-apply full config
+ # OR write individual registers directly:
+ printf "\x01" | sudo dd of=/sys/bus/spi/devices/spi1.0/registers bs=1 seek=92 conv=notrunc 2>/dev/null
 
  ---
  Build & Verify
 
- 1. Edit the DTS and kernel config as above.
- 2. Run ./build_kernel.sh → select 3) PAB_V3.
- 3. Flash with ./flash.sh.
- 4. On the Jetson, confirm the driver loaded:
+ Build
+
+ 1. Edit the DTS and setup.sh as above.
+ 2. If source_build/ already exists (setup already ran), manually add the config line:
+ echo "CONFIG_MICREL_KS8995MA=m" >> \
+   source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+ 3. Run ./build_kernel.sh → select 3) PAB_V3.
+ 4. Flash with ./flash.sh.
+
+ Verify on Jetson
+
+ # Confirm driver loaded and sysfs exists
  lsmod | grep ks8995
- ls /sys/bus/spi/devices/spi1.0/
- 5. Verify chip ID:
+ ls /sys/bus/spi/devices/spi1.0/registers
+
+ # Read chip ID registers (expect first byte ~0x87, second ~0x95)
  dd if=/sys/bus/spi/devices/spi1.0/registers bs=1 skip=0 count=2 2>/dev/null | xxd
- # Expect: 8795 family → byte[0]=0x87, byte[1]=0x95 (or 0x96 for revision)
- 6. Test networking: connect a device to an external port; it should appear reachable from eth0 on the Jetson.
+
+ # Run config script
+ sudo /usr/local/bin/ksz8795-config.sh
+
+ # Confirm ethernet works through switch
+ ip link show eth0
+ ping <device-on-external-port>
