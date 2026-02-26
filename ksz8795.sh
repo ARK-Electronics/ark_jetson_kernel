@@ -6,7 +6,7 @@
 #   ./ksz8795.sh write <reg_hex> <val_hex>  — write one register
 #   ./ksz8795.sh id                — verify chip ID
 #   ./ksz8795.sh config-default    — apply recommended defaults
-SYSFS=/sys/bus/spi/devices/spi1.0/registers
+SYSFS=/sys/bus/spi/devices/spi0.0/registers
 [ -e "$SYSFS" ] || { echo "ERROR: KSZ8795 sysfs not found. Is the driver loaded?"; exit 1; }
 
 write_reg() { printf "\\x$(printf '%02x' $((16#${2#0x})))" | \
