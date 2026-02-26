@@ -159,16 +159,16 @@
 
  Verify on Jetson
 
- # Confirm driver loaded and sysfs exists
- lsmod | grep ks8995
- ls /sys/bus/spi/devices/spi1.0/registers
+# Confirm driver loaded and sysfs exists
+lsmod | grep ks8995
+ls /sys/bus/spi/devices/spi1.0/registers
 
- # Read chip ID registers (expect first byte ~0x87, second ~0x95)
- dd if=/sys/bus/spi/devices/spi1.0/registers bs=1 skip=0 count=2 2>/dev/null | xxd
+# Read chip ID registers (expect first byte ~0x87, second ~0x95)
+dd if=/sys/bus/spi/devices/spi1.0/registers bs=1 skip=0 count=2 2>/dev/null | xxd
 
- # Run config script
- sudo /usr/local/bin/ksz8795-config.sh
+# Run config script
+sudo /usr/local/bin/ksz8795-config.sh
 
- # Confirm ethernet works through switch
- ip link show eth0
- ping <device-on-external-port>
+# Confirm ethernet works through switch
+ip link show eth0
+ping <device-on-external-port>

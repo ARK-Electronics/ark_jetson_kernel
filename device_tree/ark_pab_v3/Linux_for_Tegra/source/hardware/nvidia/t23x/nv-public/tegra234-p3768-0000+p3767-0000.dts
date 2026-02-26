@@ -54,7 +54,8 @@
 		spi@3210000 {
 			status = "okay";
 
-			ethernet-switch@0 {
+			/* Override NVIDIA's default tegra-spidev@0 with the KSZ8795 switch */
+			spi@0 {
 				compatible = "micrel,ksz8795";
 				reg = <0>;
 				spi-max-frequency = <50000000>;
