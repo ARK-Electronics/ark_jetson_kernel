@@ -6,28 +6,13 @@ This repository contains instructions and scripts for flashing your Jetson **Ori
 
 ## Prebuilt Images (Recommended)
 
-Prebuilt flash packages are available on the [Releases page](https://github.com/ARK-Electronics/ark_jetson_kernel/releases). These are self-contained — no build tools or kernel source needed.
+Prebuilt flash packages are available on the [Releases page](https://github.com/ARK-Electronics/ark_jetson_kernel/releases). No build tools or kernel source needed — download and flash:
 
-### Quick Start
-
-1. Download the `.tar.gz` for your carrier board from the latest release
-2. Connect a micro USB cable to the Jetson and power on with the **Force Recovery** button held
-3. Run the flash script:
 ```
-./flash_from_package.sh ark-pab-v3-nvme-super-v1.0.0.tar.gz
+./flash_from_package.sh <package.tar.gz>
 ```
 
-The script will extract the package, detect the Jetson, and flash it. Once complete:
-```
-ssh jetson@jetson.local
-```
-
-### Split packages
-
-If the download was split into multiple parts (files ending in `.part.*`), pass the directory:
-```
-./flash_from_package.sh ark-pab-v3-nvme-super-v1.0.0_split/
-```
+See [packaging.md](packaging.md) for full details on generating, testing, and publishing flash packages.
 
 ## Building from Source
 
@@ -89,44 +74,9 @@ Once complete, SSH in via Micro USB or WiFi.
 ssh jetson@jetson.local
 ```
 
-### 5. Generate Flash Package (optional)
+### 5. Generate & Publish Flash Package (optional)
 
-After building, you can generate a self-contained flash package (`.tar.gz`) that can be used to flash Jetsons without any build tools or kernel source. The package includes DTBs for all module variants and the correct one is selected automatically at flash time.
-
-```
-./generate_flash_package.sh
-```
-
-The output is saved to the project root, e.g. `ark-pab-v3-nvme-super-v1.0.0.tar.gz`. The version comes from the current git tag, or `dev` if untagged.
-
-#### Options
-
-| Flag | Description |
-|------|-------------|
-| `--sdcard` | Generate a package for SD card instead of NVMe |
-| `--no-super` | Target the non-super module variant |
-
-```
-# Generate for SD card
-./generate_flash_package.sh --sdcard
-
-# Non-super module variant
-./generate_flash_package.sh --no-super
-```
-
-If the package exceeds 2GB (the GitHub Releases per-file limit), it is automatically split into parts in a `_split/` directory with a `reassemble.sh` script included.
-
-#### Publishing a release
-
-```
-git tag -a v1.0.0 -m "ARK Carrier Board Image v1.0.0"
-git push origin v1.0.0
-
-gh release create v1.0.0 \
-  --title "v1.0.0" \
-  --notes "Release notes here" \
-  ark-pab-v3-nvme-super-v1.0.0.tar.gz
-```
+See [packaging.md](packaging.md) for how to generate distributable flash packages and publish them to GitHub Releases.
 
 ### 6. Install ARK Software (optional)
 You can now optionally install the ARK software packages, which provide handy tools for working with the Jetson on an ARK carrier.
