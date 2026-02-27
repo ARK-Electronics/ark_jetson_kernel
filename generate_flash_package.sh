@@ -127,7 +127,7 @@ if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
     mkdir -p "$SPLIT_DIR"
     split -b 1900m "$OUTPUT_FILE" "$SPLIT_DIR/${PACKAGE_NAME}.part."
     SHA256=$(sha256sum "$OUTPUT_FILE" | cut -d' ' -f1)
-    rm "$OUTPUT_FILE"
+    rm -f "$OUTPUT_FILE"
 
     # Create reassembly script
     cat > "$SPLIT_DIR/reassemble.sh" << 'EOF'
