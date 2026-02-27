@@ -26,7 +26,7 @@
 					port@0 {
 						reg = <0>;
 						rbpcv3_imx477_vi_in0: endpoint {
-							port-index = <1>;
+							port-index = <0>;
 							bus-width = <4>;
 							remote-endpoint = <&rbpcv3_imx477_csi_out0>;
 						};
@@ -121,7 +121,7 @@
 								port@0 {
 									reg = <0>;
 									rbpcv3_imx477_csi_in0: endpoint@0 {
-										port-index = <1>;
+										port-index = <0>;
 										bus-width = <4>;
 										remote-endpoint = <&rbpcv3_imx477_out0>;
 									};
@@ -277,7 +277,7 @@
 							mode0 { /* IMX477_MODE_3840x2160 */
 								mclk_khz = "24000";
 								num_lanes = "4";
-								tegra_sinterface = "serial_b";
+								tegra_sinterface = "serial_a";
 								phy_mode = "DPHY";
 								discontinuous_clk = "no";
 								dpcm_enable = "false";
@@ -315,7 +315,7 @@
 							mode1 { /* IMX477_MODE_1920X1080 */
 								mclk_khz = "24000";
 								num_lanes = "4";
-								tegra_sinterface = "serial_b";
+								tegra_sinterface = "serial_a";
 								phy_mode = "DPHY";
 								discontinuous_clk = "no";
 								dpcm_enable = "false";
@@ -356,7 +356,7 @@
 								port@0 {
 									reg = <0>;
 									rbpcv3_imx477_out0: endpoint {
-										port-index = <1>;
+										port-index = <0>;
 										bus-width = <4>;
 										remote-endpoint = <&rbpcv3_imx477_csi_in0>;
 									};
