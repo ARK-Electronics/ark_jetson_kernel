@@ -12,6 +12,7 @@
 #include "nv-soc/tegra234-soc-camera.dtsi"
 #include "tegra234-dcb-p3737-0000-p3701-0000-hdmi.dtsi"
 #include <dt-bindings/gpio/tegra234-gpio.h>
+#include <dt-bindings/pinctrl/pinctrl-tegra.h>
 
 / {
 	aliases {
@@ -42,6 +43,16 @@
 
 		pinmux@2430000 {
 			status = "okay";
+			spi1_default: spi1-default {
+				spi1-pins {
+					nvidia,pins = "spi1_sck_pz3", "spi1_miso_pz4",
+						      "spi1_mosi_pz5", "spi1_cs0_pz6";
+					nvidia,function = "spi1";
+					nvidia,pull = <TEGRA_PIN_PULL_NONE>;
+					nvidia,tristate = <TEGRA_PIN_DISABLE>;
+					nvidia,enable-input = <TEGRA_PIN_ENABLE>;
+				};
+			};
 		};
 
 		aconnect@2900000 {
@@ -137,6 +148,8 @@
 		/* ARK: SPI1: KSZ8795CLX ethernet switch management interface */
 		spi@3210000{
 			status = "okay";
+			pinctrl-names = "default";
+			pinctrl-0 = <&spi1_default>;
 			spi@0 {
 				compatible = "micrel,ksz8795";
 				reg = <0x0>;
