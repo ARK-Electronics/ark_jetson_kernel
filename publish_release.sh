@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Publishes a generated flash package to GitHub Releases.
-# Renames the dev tarball/split dir with the given version, tags the commit, and uploads.
+# Publishes generated flash package(s) to GitHub Releases.
+# Tags the commit, creates a release, and uploads the files.
 #
 # Usage: ./publish_release.sh <version>
 #   e.g. ./publish_release.sh v1.0.0
@@ -22,41 +22,30 @@ if ! command -v gh &>/dev/null; then
     exit 1
 fi
 
-# Find dev tarballs and/or split directories
+# Find tarballs and/or split directories
 RELEASE_FILES=()
-FOUND=false
 
-for f in ark-*-dev.tar.gz; do
+for f in ark-*.tar.gz; do
     [ -f "$f" ] || continue
-    FOUND=true
-    RENAMED="${f/-dev/-$VERSION}"
-    mv "$f" "$RENAMED"
-    echo "Renamed: $f -> $RENAMED"
-    RELEASE_FILES+=("$RENAMED")
+    RELEASE_FILES+=("$f")
 done
 
-for d in ark-*-dev_split; do
+for d in ark-*_split; do
     [ -d "$d" ] || continue
-    FOUND=true
-    RENAMED_DIR="${d/-dev/-$VERSION}"
-    mv "$d" "$RENAMED_DIR"
-    echo "Renamed: $d -> $RENAMED_DIR"
-    # Upload the parts and reassemble script
-    for part in "$RENAMED_DIR"/*; do
+    for part in "$d"/*; do
         RELEASE_FILES+=("$part")
     done
 done
 
-if [ "$FOUND" = false ]; then
-    echo "ERROR: No ark-*-dev.tar.gz or ark-*-dev_split/ found."
+if [ ${#RELEASE_FILES[@]} -eq 0 ]; then
+    echo "ERROR: No ark-*.tar.gz or ark-*_split/ found."
     echo "Run generate_flash_package.sh first."
     exit 1
 fi
 
-echo ""
 echo "Files to upload:"
 for f in "${RELEASE_FILES[@]}"; do
-    echo "  $f ($(du -h "$f" | cut -f1))"
+    echo "  $(basename "$f") ($(du -h "$f" | cut -f1))"
 done
 echo ""
 
@@ -65,11 +54,19 @@ git tag -a "$VERSION" -m "$VERSION"
 git push origin "$VERSION"
 echo "Tagged and pushed: $VERSION"
 
-# Create release
+# Create release, then upload files one at a time
+echo ""
 echo "Creating GitHub release..."
-gh release create "$VERSION" "${RELEASE_FILES[@]}" \
+gh release create "$VERSION" \
     --title "$VERSION" \
     --notes "ARK Carrier Board Image $VERSION"
 
+for f in "${RELEASE_FILES[@]}"; do
+    echo "Uploading $(basename "$f") ($(du -h "$f" | cut -f1))..."
+    gh release upload "$VERSION" "$f"
+    echo "  Done."
+done
+
 echo ""
-echo "Done! Release: $(gh release view "$VERSION" --json url -q .url)"
+echo "All uploads complete!"
+echo "Release: $(gh release view "$VERSION" --json url -q .url)"

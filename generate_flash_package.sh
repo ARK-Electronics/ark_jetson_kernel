@@ -51,24 +51,19 @@ if [ ! -f "$L4T_DIR/kernel/Image" ]; then
     exit 1
 fi
 
-# Determine version from git tag (falls back to "dev")
-VERSION=$(git -C "$SCRIPT_DIR" describe --tags --exact-match 2>/dev/null || echo "dev")
-
 # Build descriptive output filename
-# e.g. ark-pab-v3-nvme-super-v1.0.0.tar.gz
+# e.g. ark-pab-v3-nvme-super.tar.gz
 TARGET_LOWER=$(echo "$TARGET" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
 PACKAGE_NAME="ark-${TARGET_LOWER}-${STORAGE}"
 if [[ "$FLASH_TARGET" == *"-super" ]]; then
     PACKAGE_NAME="${PACKAGE_NAME}-super"
 fi
-PACKAGE_NAME="${PACKAGE_NAME}-${VERSION}"
 
 echo "========================================="
 echo "  Generating flash package"
 echo "  Target:  $TARGET"
 echo "  Storage: $STORAGE ($STORAGE_DEV)"
 echo "  Board:   $FLASH_TARGET"
-echo "  Version: $VERSION"
 echo "  Output:  ${PACKAGE_NAME}.tar.gz"
 echo "========================================="
 
