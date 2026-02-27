@@ -9,3 +9,8 @@ output.txt
 setup.log.txt
 build.log.txt
 flash.log.txt
+generate_flash_package.log.txt
+
+# Flash packages
+ark-*.tar.gz
+*_split/

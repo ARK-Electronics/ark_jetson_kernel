@@ -1,13 +1,40 @@
 # ARK Jetson Carrier Setup
 
-This repository contains instructions and scripts for flashing your Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier. Clone this repository on your Host PC and follow the instructions below.
+This repository contains instructions and scripts for flashing your Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier.
 
 **Note:** This has only been tested with Ubuntu 22.04
 
-## Getting Started
+## Prebuilt Images (Recommended)
+
+Prebuilt flash packages are available on the [Releases page](https://github.com/ARK-Electronics/ark_jetson_kernel/releases). These are self-contained — no build tools or kernel source needed.
+
+### Quick Start
+
+1. Download the `.tar.gz` for your carrier board from the latest release
+2. Connect a micro USB cable to the Jetson and power on with the **Force Recovery** button held
+3. Run the flash script:
+```
+./flash_from_package.sh ark-pab-v3-nvme-super-v1.0.0.tar.gz
+```
+
+The script will extract the package, detect the Jetson, and flash it. Once complete:
+```
+ssh jetson@jetson.local
+```
+
+### Split packages
+
+If the download was split into multiple parts (files ending in `.part.*`), pass the directory:
+```
+./flash_from_package.sh ark-pab-v3-nvme-super-v1.0.0_split/
+```
+
+## Building from Source
+
+If you need to customize the kernel or device tree, clone this repository and follow the steps below.
 
 ### 1. Setup
-Run the **setup.sh** script to download and build the Jetson Orin Nano / NX Jetpack 6 kernel.
+Run the **setup.sh** script to download the Jetson Orin Nano / NX Jetpack 6 BSP and kernel source.
 
 The script will configure the default user, password, and hostname as `jetson`.
 ```
