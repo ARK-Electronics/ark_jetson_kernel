@@ -1,46 +1,135 @@
 #!/bin/bash
 
-# Flash a Jetson from a prebuilt ARK flash package (.tar.gz).
+# Flash a Jetson from a prebuilt ARK flash package.
+# Downloads the package from GitHub Releases, reassembles if split, and flashes.
 # No build tools or kernel source needed — just a Linux host with USB.
 #
-# Usage: ./flash_from_package.sh <package.tar.gz>
-#        ./flash_from_package.sh <split_dir/>
+# Usage: ./flash_from_package.sh [version]
+#        ./flash_from_package.sh              # uses latest release
+#        ./flash_from_package.sh 0.0.6        # specific version
+#        ./flash_from_package.sh package.tar.gz  # local file
 
 set -e
 
-if [ $# -lt 1 ]; then
-    echo "Usage: ./flash_from_package.sh <package.tar.gz | split_dir/>"
-    echo ""
-    echo "Flash a prebuilt ARK Jetson image package."
-    echo "Put the Jetson in recovery mode before running this script."
-    echo ""
-    echo "Download packages from:"
-    echo "  https://github.com/ARK-Electronics/ark_jetson_kernel/releases"
-    exit 1
-fi
+REPO="ARK-Electronics/ark_jetson_kernel"
+API_URL="https://api.github.com/repos/$REPO/releases"
 
-INPUT="$1"
+# --- Determine input mode ---
 
-# Handle split packages (directory with .part.* files)
-TARBALL="$INPUT"
-if [ -d "$INPUT" ]; then
-    if ls "$INPUT"/*.part.* &>/dev/null; then
-        TARBALL="$INPUT/reassembled.tar.gz"
-        echo "Reassembling split parts..."
-        cat "$INPUT"/*.part.* > "$TARBALL"
-        echo "Reassembled: $TARBALL"
+INPUT="${1:-}"
+
+resolve_tarball_from_local() {
+    local input="$1"
+    if [ -d "$input" ]; then
+        if ls "$input"/*.part.* &>/dev/null; then
+            TARBALL="$input/reassembled.tar.gz"
+            echo "Reassembling split parts..."
+            cat "$input"/*.part.* > "$TARBALL"
+            echo "Reassembled: $TARBALL"
+        else
+            echo "ERROR: No split parts found in $input"
+            exit 1
+        fi
+    elif [ -f "$input" ]; then
+        TARBALL="$input"
     else
-        echo "ERROR: No split parts found in $INPUT"
+        echo "ERROR: File not found: $input"
         exit 1
     fi
+}
+
+download_release() {
+    local version="$1"
+    local release_url
+
+    if [ -z "$version" ]; then
+        echo "Fetching latest release..."
+        release_url="$API_URL/latest"
+    else
+        echo "Fetching release $version..."
+        release_url="$API_URL/tags/$version"
+    fi
+
+    local release_json
+    release_json=$(curl -sL "$release_url")
+
+    # Check for errors
+    if echo "$release_json" | grep -q '"message"'; then
+        local msg
+        msg=$(echo "$release_json" | grep -o '"message":"[^"]*"' | head -1)
+        echo "ERROR: Release not found ($msg)"
+        echo ""
+        echo "Available releases:"
+        curl -sL "$API_URL" | grep -o '"tag_name":"[^"]*"' | sed 's/"tag_name":"//;s/"//' | head -10
+        exit 1
+    fi
+
+    local tag
+    tag=$(echo "$release_json" | grep -o '"tag_name":"[^"]*"' | sed 's/"tag_name":"//' | sed 's/"//')
+    echo "Release: $tag"
+
+    # Get asset URLs (exclude source code archives)
+    local assets
+    assets=$(echo "$release_json" | grep -o '"browser_download_url":"[^"]*"' | sed 's/"browser_download_url":"//' | sed 's/"//' | grep -v '/archive/')
+
+    if [ -z "$assets" ]; then
+        echo "ERROR: No downloadable assets found in release $tag"
+        exit 1
+    fi
+
+    # Download all assets (skip flash_from_package.sh — that's us)
+    DOWNLOAD_DIR=$(mktemp -d)
+    echo "Downloading to $DOWNLOAD_DIR ..."
+    echo ""
+
+    local has_parts=false
+    while IFS= read -r url; do
+        local filename
+        filename=$(basename "$url")
+
+        # Skip downloading ourselves
+        if [ "$filename" = "flash_from_package.sh" ]; then
+            continue
+        fi
+
+        if [[ "$filename" == *.part.* ]]; then
+            has_parts=true
+        fi
+
+        echo "  Downloading $filename..."
+        curl -L --progress-bar -o "$DOWNLOAD_DIR/$filename" "$url"
+    done <<< "$assets"
+
+    echo ""
+
+    # Resolve to a tarball
+    if [ "$has_parts" = true ]; then
+        TARBALL="$DOWNLOAD_DIR/reassembled.tar.gz"
+        echo "Reassembling split parts..."
+        cat "$DOWNLOAD_DIR"/*.part.* > "$TARBALL"
+        rm -f "$DOWNLOAD_DIR"/*.part.*
+        echo "Reassembled: $TARBALL"
+    else
+        TARBALL=$(ls "$DOWNLOAD_DIR"/*.tar.gz 2>/dev/null | head -1)
+        if [ -z "$TARBALL" ]; then
+            echo "ERROR: No .tar.gz found in downloaded assets"
+            ls -la "$DOWNLOAD_DIR"/
+            exit 1
+        fi
+    fi
+}
+
+# Decide: local file/dir, or download from GitHub
+if [ -n "$INPUT" ] && { [ -f "$INPUT" ] || [ -d "$INPUT" ]; }; then
+    # Local file or directory
+    resolve_tarball_from_local "$INPUT"
+else
+    # Version tag or latest
+    download_release "$INPUT"
 fi
 
-if [ ! -f "$TARBALL" ]; then
-    echo "ERROR: File not found: $TARBALL"
-    exit 1
-fi
+# --- Check host prerequisites ---
 
-# Check for required host tools
 MISSING=()
 for cmd in lsusb python3 ssh; do
     if ! command -v "$cmd" &>/dev/null; then
@@ -54,14 +143,17 @@ if [ ${#MISSING[@]} -gt 0 ]; then
     exit 1
 fi
 
-# Extract to temp directory
+# --- Extract and flash ---
+
 WORK_DIR=$(mktemp -d)
 cleanup() {
-    echo "Cleaning up temp directory..."
+    echo "Cleaning up temp directories..."
     rm -rf "$WORK_DIR"
+    [ -n "${DOWNLOAD_DIR:-}" ] && rm -rf "$DOWNLOAD_DIR"
 }
 trap cleanup EXIT
 
+echo ""
 echo "Extracting flash package to $WORK_DIR ..."
 tar xf "$TARBALL" -C "$WORK_DIR"
 

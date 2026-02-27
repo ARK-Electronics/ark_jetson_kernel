@@ -12,7 +12,7 @@ After running `build_kernel.sh`, generate a flash package:
 
 No Jetson needs to be connected. The package includes DTBs for all module variants (Orin Nano 4GB/8GB, Orin NX 8GB/16GB) — the correct one is selected automatically at flash time.
 
-The output is saved to the project root, e.g. `ark-pab-v3-nvme-super-dev.tar.gz`. The filename includes `dev` if the current commit isn't tagged.
+The output is saved to the project root, e.g. `ark-pab-v3-nvme-super.tar.gz`.
 
 ### Options
 
@@ -31,7 +31,7 @@ The output is saved to the project root, e.g. `ark-pab-v3-nvme-super-dev.tar.gz`
 
 ### Output
 
-If the package is under 2GB, you get a single `.tar.gz`. If it exceeds 2GB (the GitHub Releases per-file limit), it is automatically split into 1.9GB parts in a `_split/` directory with a `reassemble.sh` script included.
+If the package is under 2GB, you get a single `.tar.gz`. If it exceeds 2GB (the GitHub Releases per-file limit), it is automatically split into 1.9GB parts in a `_split/` directory.
 
 ## Publishing a Release
 
@@ -42,33 +42,41 @@ After generating and testing the flash package:
 ```
 
 This script:
-1. Renames the `*-dev*` tarball/split directory with the version
-2. Creates a git tag and pushes it
-3. Creates a GitHub Release and uploads the files
+1. Creates a git tag and pushes it
+2. Creates a GitHub Release with flashing instructions
+3. Uploads the flash package and `flash_from_package.sh`
 
 Requires the [GitHub CLI](https://cli.github.com/) (`gh`). Install with `sudo apt install gh` and authenticate with `gh auth login`.
 
-## Flashing from a Package
+## Flashing from a Package (Customer)
 
-Customers download the package from the [Releases page](https://github.com/ARK-Electronics/ark_jetson_kernel/releases) and run:
-
-```
-./flash_from_package.sh ark-pab-v3-nvme-super-v1.0.0.tar.gz
-```
-
-Or if the package was split:
+Customers download and run the flash script — it handles everything:
 
 ```
-./flash_from_package.sh ark-pab-v3-nvme-super-v1.0.0_split/
+curl -LO https://github.com/ARK-Electronics/ark_jetson_kernel/releases/download/<version>/flash_from_package.sh
+chmod +x flash_from_package.sh
+./flash_from_package.sh <version>
 ```
 
-The script extracts the package, waits for a Jetson in recovery mode, and flashes it. No build tools or kernel source needed — just a Linux host with USB.
+Or to flash the latest release:
+
+```
+./flash_from_package.sh
+```
+
+The script downloads the package from GitHub Releases, reassembles if split, extracts, waits for a Jetson in recovery mode, and flashes. No build tools or kernel source needed — just an Ubuntu 22.04 host with USB.
+
+A local `.tar.gz` or split directory can also be passed directly:
+
+```
+./flash_from_package.sh ark-pab-v3-nvme-super.tar.gz
+```
 
 ## Workflow Summary
 
 ```
 ./build_kernel.sh                    # build the kernel
-./generate_flash_package.sh          # generate ark-*-dev.tar.gz / _split
+./generate_flash_package.sh          # generate ark-*.tar.gz / _split
 # ... test the package on a Jetson ...
-./publish_release.sh v1.0.0          # tag, rename, upload to GitHub Releases
+./publish_release.sh v1.0.0          # tag, upload to GitHub Releases
 ```

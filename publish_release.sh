@@ -22,7 +22,7 @@ if ! command -v gh &>/dev/null; then
     exit 1
 fi
 
-# Find tarballs and/or split directories
+# Find tarballs and/or split part files (not reassemble.sh — the flash script handles that)
 RELEASE_FILES=()
 
 for f in ark-*.tar.gz; do
@@ -32,7 +32,8 @@ done
 
 for d in ark-*_split; do
     [ -d "$d" ] || continue
-    for part in "$d"/*; do
+    for part in "$d"/*.part.*; do
+        [ -f "$part" ] || continue
         RELEASE_FILES+=("$part")
     done
 done
@@ -41,6 +42,14 @@ if [ ${#RELEASE_FILES[@]} -eq 0 ]; then
     echo "ERROR: No ark-*.tar.gz or ark-*_split/ found."
     echo "Run generate_flash_package.sh first."
     exit 1
+fi
+
+# Always include flash_from_package.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/flash_from_package.sh" ]; then
+    RELEASE_FILES+=("$SCRIPT_DIR/flash_from_package.sh")
+else
+    echo "WARNING: flash_from_package.sh not found, release will not include flash script."
 fi
 
 echo "Files to upload:"
@@ -54,12 +63,30 @@ git tag -a "$VERSION" -m "$VERSION"
 git push origin "$VERSION"
 echo "Tagged and pushed: $VERSION"
 
+# Build release notes
+NOTES="## ARK Carrier Board Image $VERSION
+
+### Flashing
+
+Download and run the flash script:
+\`\`\`
+curl -LO https://github.com/ARK-Electronics/ark_jetson_kernel/releases/download/${VERSION}/flash_from_package.sh
+chmod +x flash_from_package.sh
+./flash_from_package.sh ${VERSION}
+\`\`\`
+
+The script downloads the package, reassembles it if split, and flashes the Jetson.
+
+**Requirements:** Ubuntu 22.04 host with USB connection. Put the Jetson in recovery mode (hold Force Recovery button while powering on) before or during the script — it will wait for detection.
+
+Supports all Orin Nano/NX module variants — the correct DTB is selected automatically at flash time."
+
 # Create release, then upload files one at a time
 echo ""
 echo "Creating GitHub release..."
 gh release create "$VERSION" \
     --title "$VERSION" \
-    --notes "ARK Carrier Board Image $VERSION"
+    --notes "$NOTES"
 
 for f in "${RELEASE_FILES[@]}"; do
     echo "Uploading $(basename "$f") ($(du -h "$f" | cut -f1))..."

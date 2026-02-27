@@ -6,13 +6,15 @@ This repository contains instructions and scripts for flashing your Jetson **Ori
 
 ## Prebuilt Images (Recommended)
 
-Prebuilt flash packages are available on the [Releases page](https://github.com/ARK-Electronics/ark_jetson_kernel/releases). No build tools or kernel source needed — download and flash:
+Prebuilt flash packages are available on the [Releases page](https://github.com/ARK-Electronics/ark_jetson_kernel/releases). No build tools or kernel source needed:
 
 ```
-./flash_from_package.sh <package.tar.gz>
+curl -LO https://github.com/ARK-Electronics/ark_jetson_kernel/releases/latest/download/flash_from_package.sh
+chmod +x flash_from_package.sh
+./flash_from_package.sh
 ```
 
-See [packaging.md](packaging.md) for full details on generating, testing, and publishing flash packages.
+The script downloads the latest release, reassembles if needed, and flashes. See [packaging.md](packaging.md) for more details.
 
 ## Building from Source
 
