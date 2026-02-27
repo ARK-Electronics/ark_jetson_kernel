@@ -148,7 +148,7 @@ fi
 WORK_DIR=$(mktemp -d)
 cleanup() {
     echo "Cleaning up temp directories..."
-    rm -rf "$WORK_DIR"
+    sudo rm -rf "$WORK_DIR"
     [ -n "${DOWNLOAD_DIR:-}" ] && rm -rf "$DOWNLOAD_DIR"
 }
 trap cleanup EXIT
