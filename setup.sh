@@ -148,6 +148,9 @@ echo "CONFIG_BT_INTEL=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_BT_BCM=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_BT_RTL=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 
+# KSZ8795 SPI ethernet switch (PAB_V3)
+echo "CONFIG_MICREL_KS8995MA=m" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+
 popd
 
 pushd .
