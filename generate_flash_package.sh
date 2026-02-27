@@ -5,13 +5,12 @@
 #
 # Prerequisites: Run setup.sh and build_kernel.sh first.
 #
-# Usage: ./generate_flash_package.sh [--sdcard] [--no-super] [--offline]
+# Usage: ./generate_flash_package.sh [--sdcard] [--no-super]
 
 # Defaults: NVMe + super (same as flash.sh)
 STORAGE="nvme"
 STORAGE_DEV="nvme0n1p1"
 FLASH_TARGET="jetson-orin-nano-devkit-super"
-OFFLINE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -22,12 +21,9 @@ while [[ $# -gt 0 ]]; do
         --no-super)
             FLASH_TARGET="jetson-orin-nano-devkit"
             shift ;;
-        --offline)
-            OFFLINE=true
-            shift ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: ./generate_flash_package.sh [--sdcard] [--no-super] [--offline]"
+            echo "Usage: ./generate_flash_package.sh [--sdcard] [--no-super]"
             exit 1 ;;
     esac
 done
@@ -76,14 +72,10 @@ echo "  Version: $VERSION"
 echo "  Output:  ${PACKAGE_NAME}.tar.gz"
 echo "========================================="
 
-# Offline mode: set board IDs so no Jetson needs to be connected
-if [ "$OFFLINE" = true ]; then
-    echo "Offline mode: using default board IDs (Orin NX 16GB)"
-    echo "  BOARDID=3767  FAB=300  BOARDSKU=0000"
-    export BOARDID=3767
-    export FAB=300
-    export BOARDSKU=0000
-fi
+# NOTE: The flash tool auto-detects the actual module variant at flash time.
+export BOARDID=3767
+export FAB=300
+export BOARDSKU=0000
 
 sudo -v
 
