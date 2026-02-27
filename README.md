@@ -89,7 +89,52 @@ Once complete, SSH in via Micro USB or WiFi.
 ssh jetson@jetson.local
 ```
 
-### 5. Install ARK Software (optional)
+### 5. Generate Flash Package (optional)
+
+After building, you can generate a self-contained flash package (`.tar.gz`) that can be shared with others or uploaded to GitHub Releases. Recipients can flash with `flash_from_package.sh` without needing any build tools or kernel source.
+
+```
+./generate_flash_package.sh
+```
+
+This requires a Jetson connected in recovery mode (to auto-detect board IDs). The output is saved to the project root, e.g. `ark-pab-v3-nvme-super-v1.0.0.tar.gz`.
+
+#### Options
+
+| Flag | Description |
+|------|-------------|
+| `--sdcard` | Generate a package for SD card instead of NVMe |
+| `--no-super` | Target the non-super module variant |
+| `--offline` | Generate without a Jetson connected (uses default board IDs for Orin NX 16GB: BOARDID=3767, FAB=300, BOARDSKU=0000) |
+
+```
+# Generate for SD card
+./generate_flash_package.sh --sdcard
+
+# Generate without a Jetson connected
+./generate_flash_package.sh --offline
+
+# Combine flags
+./generate_flash_package.sh --sdcard --no-super --offline
+```
+
+The version in the output filename comes from the current git tag (e.g. `v1.0.0`). If there is no tag on the current commit, it defaults to `dev`.
+
+If the package exceeds 2GB (the GitHub Releases per-file limit), it is automatically split into parts in a `_split/` directory with a `reassemble.sh` script included.
+
+#### Publishing a release
+
+```
+git tag -a v1.0.0 -m "ARK Carrier Board Image v1.0.0"
+git push origin v1.0.0
+
+gh release create v1.0.0 \
+  --title "v1.0.0" \
+  --notes "Release notes here" \
+  ark-pab-v3-nvme-super-v1.0.0.tar.gz
+```
+
+### 6. Install ARK Software (optional)
 You can now optionally install the ARK software packages, which provide handy tools for working with the Jetson on an ARK carrier.
 
 https://github.com/ARK-Electronics/ARK-OS
