@@ -4,21 +4,36 @@ This document covers tested camera sensors, available device tree overlays, and 
 
 ## Tested Cameras
 
-| Sensor | Lanes | Resolution | Overlay (Single) | Overlay (Dual) | Status |
-|--------|-------|------------|-------------------|----------------|--------|
-| IMX477 | 2     | 4056x3040  | `ark-imx477-single` | `imx477-dual` | Working |
-| IMX219 | 2     | 3280x2464  | `ark-imx219-single` | `imx219-dual` | Working |
+| Sensor | Lanes | Resolution | Overlays | Status |
+|--------|-------|------------|----------|--------|
+| IMX477 | 2     | 4056x3040  | single, dual | Working |
+| IMX219 | 2     | 3280x2464  | single, dual, quad (PAB only) | Working |
+
+## IMX219 (Sony, 8MP)
+
+Tested and working in 2-lane mode.
+
+- **PAB**: Tested on all 4 CSI ports (quad overlay)
+- **JAJ / PAB_V3**: Tested on both CSI ports (dual overlay)
+
+### Overlays
+
+| Overlay | Filename | Ports |
+|---------|----------|-------|
+| Single  | `tegra234-p3767-camera-p3768-ark-imx219-single.dtbo` | CAM0 |
+| Dual    | `tegra234-p3767-camera-p3768-imx219-dual.dtbo` | CAM0 + CAM1 |
+| Quad    | `tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo` | All 4 ports (PAB only) |
 
 ## IMX477 (Sony Starvis, 12.3MP)
 
-### Working Overlays
+Tested and working in 2-lane mode on all carrier boards.
 
-Each carrier board has two IMX477 overlays:
+### Overlays
 
-- **Single** (`tegra234-p3767-camera-p3768-ark-imx477-single.dtbo`) -- CAM0 only
-- **Dual** (`tegra234-p3767-camera-p3768-imx477-dual.dtbo`) -- CAM0 + CAM1
-
-Both use **2-lane MIPI CSI-2**.
+| Overlay | Filename | Ports |
+|---------|----------|-------|
+| Single  | `tegra234-p3767-camera-p3768-ark-imx477-single.dtbo` | CAM0 |
+| Dual    | `tegra234-p3767-camera-p3768-imx477-dual.dtbo` | CAM0 + CAM1 |
 
 ### 4-Lane Mode (Not Working)
 
