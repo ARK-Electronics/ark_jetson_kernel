@@ -14,7 +14,7 @@ chmod +x flash_from_package.sh
 ./flash_from_package.sh
 ```
 
-The script downloads the latest release, reassembles if needed, and flashes. See [packaging.md](packaging.md) for more details.
+The script downloads the latest release, reassembles if needed, and flashes. See [packaging/](packaging/) for more details.
 
 ## Building from Source
 
@@ -78,7 +78,7 @@ ssh jetson@jetson.local
 
 ### 5. Generate & Publish Flash Package (optional)
 
-See [packaging.md](packaging.md) for how to generate distributable flash packages and publish them to GitHub Releases.
+See [packaging/](packaging/) for how to generate distributable flash packages and publish them to GitHub Releases.
 
 ### 6. Install ARK Software (optional)
 You can now optionally install the ARK software packages, which provide handy tools for working with the Jetson on an ARK carrier.

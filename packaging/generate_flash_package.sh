@@ -30,17 +30,18 @@ done
 
 # Log output to file while keeping terminal output
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec > >(tee "$SCRIPT_DIR/generate_flash_package.log.txt") 2>&1
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+exec > >(tee "$ROOT_DIR/generate_flash_package.log.txt") 2>&1
 
 # Validate that a kernel has been built
-LAST_TARGET_FILE="$SCRIPT_DIR/source_build/LAST_BUILT_TARGET"
+LAST_TARGET_FILE="$ROOT_DIR/source_build/LAST_BUILT_TARGET"
 if [ ! -f "$LAST_TARGET_FILE" ]; then
     echo "ERROR: No LAST_BUILT_TARGET file found. Run build_kernel.sh first."
     exit 1
 fi
 TARGET=$(cat "$LAST_TARGET_FILE")
 
-L4T_DIR="$SCRIPT_DIR/prebuilt/Linux_for_Tegra"
+L4T_DIR="$ROOT_DIR/prebuilt/Linux_for_Tegra"
 if [ ! -d "$L4T_DIR" ]; then
     echo "ERROR: prebuilt/Linux_for_Tegra not found. Run setup.sh and build_kernel.sh first."
     exit 1
@@ -108,7 +109,7 @@ if [ ! -f "$MFI_FILE" ]; then
 fi
 
 # Move to project root with descriptive name
-OUTPUT_FILE="$SCRIPT_DIR/${PACKAGE_NAME}.tar.gz"
+OUTPUT_FILE="$ROOT_DIR/${PACKAGE_NAME}.tar.gz"
 mv "$MFI_FILE" "$OUTPUT_FILE"
 
 # Check size and split if >2GB (GitHub Releases limit)
@@ -118,7 +119,7 @@ MAX_SIZE=$((2 * 1024 * 1024 * 1024))
 if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
     echo ""
     echo "Package exceeds 2GB ($(numfmt --to=iec-i --suffix=B "$FILE_SIZE")) — splitting for GitHub Releases..."
-    SPLIT_DIR="$SCRIPT_DIR/${PACKAGE_NAME}_split"
+    SPLIT_DIR="$ROOT_DIR/${PACKAGE_NAME}_split"
     mkdir -p "$SPLIT_DIR"
     split -b 1900m "$OUTPUT_FILE" "$SPLIT_DIR/${PACKAGE_NAME}.part."
     SHA256=$(sha256sum "$OUTPUT_FILE" | cut -d' ' -f1)

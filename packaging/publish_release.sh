@@ -23,14 +23,16 @@ if ! command -v gh &>/dev/null; then
 fi
 
 # Find tarballs and/or split part files (not reassemble.sh — the flash script handles that)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 RELEASE_FILES=()
 
-for f in ark-*.tar.gz; do
+for f in "$ROOT_DIR"/ark-*.tar.gz; do
     [ -f "$f" ] || continue
     RELEASE_FILES+=("$f")
 done
 
-for d in ark-*_split; do
+for d in "$ROOT_DIR"/ark-*_split; do
     [ -d "$d" ] || continue
     for part in "$d"/*.part.*; do
         [ -f "$part" ] || continue
@@ -39,13 +41,12 @@ for d in ark-*_split; do
 done
 
 if [ ${#RELEASE_FILES[@]} -eq 0 ]; then
-    echo "ERROR: No ark-*.tar.gz or ark-*_split/ found."
-    echo "Run generate_flash_package.sh first."
+    echo "ERROR: No ark-*.tar.gz or ark-*_split/ found in project root."
+    echo "Run packaging/generate_flash_package.sh first."
     exit 1
 fi
 
 # Always include flash_from_package.sh
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/flash_from_package.sh" ]; then
     RELEASE_FILES+=("$SCRIPT_DIR/flash_from_package.sh")
 else
