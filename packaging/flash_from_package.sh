@@ -145,6 +145,12 @@ fi
 
 EXTRACT_DIR="$CACHE_DIR/extracted"
 
+# --- Log output to file while keeping terminal output ---
+
+mkdir -p "$CACHE_DIR/logs"
+LOG_FILE="$CACHE_DIR/logs/flash-$(date +%Y%m%d-%H%M%S).log"
+exec > >(tee "$LOG_FILE") 2>&1
+
 # --- Helper: find the tarball in cache dir ---
 
 find_tarball() {
