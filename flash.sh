@@ -53,7 +53,12 @@ sudo -v
 
 echo "Waiting for device..."
 
-while ! lsusb -d 0955:7323 > /dev/null 2>&1; do
+while true; do
+    for pid in 7323 7423 7523 7623; do
+        if lsusb -d 0955:${pid} > /dev/null 2>&1; then
+            break 2
+        fi
+    done
     sleep 1
 done
 
