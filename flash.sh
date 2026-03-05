@@ -11,12 +11,15 @@ while [[ $# -gt 0 ]]; do
             STORAGE_DEV="mmcblk0p1"
             USE_INITRD=false
             shift ;;
+        --usb)
+            STORAGE_DEV="sda1"
+            shift ;;
         --no-super)
             FLASH_TARGET="jetson-orin-nano-devkit"
             shift ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: ./flash.sh [--sdcard] [--no-super]"
+            echo "Usage: ./flash.sh [--sdcard] [--usb] [--no-super]"
             exit 1 ;;
     esac
 done
