@@ -50,6 +50,9 @@ By default, `flash.sh` targets NVMe + Orin Super. For other configurations:
 # Flash to SD card (NVIDIA dev kit modules)
 ./flash.sh --sdcard
 
+# Flash to USB thumb drive
+./flash.sh --usb
+
 # Flash non-super module variant
 ./flash.sh --no-super
 
