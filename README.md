@@ -1,13 +1,27 @@
 # ARK Jetson Carrier Setup
 
-This repository contains instructions and scripts for flashing your Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier. Clone this repository on your Host PC and follow the instructions below.
+This repository contains instructions and scripts for flashing your Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier.
 
 **Note:** This has only been tested with Ubuntu 22.04
 
-## Getting Started
+## Prebuilt Images (Recommended)
+
+Prebuilt flash packages are available on the [Releases page](https://github.com/ARK-Electronics/ark_jetson_kernel/releases). No build tools or kernel source needed:
+
+```
+curl -LO https://github.com/ARK-Electronics/ark_jetson_kernel/releases/latest/download/flash_from_package.sh
+chmod +x flash_from_package.sh
+./flash_from_package.sh
+```
+
+The script downloads the latest release, reassembles if needed, and flashes. See [packaging/](packaging/) for more details.
+
+## Building from Source
+
+If you need to customize the kernel or device tree, clone this repository and follow the steps below.
 
 ### 1. Setup
-Run the **setup.sh** script to download and build the Jetson Orin Nano / NX Jetpack 6 kernel.
+Run the **setup.sh** script to download the Jetson Orin Nano / NX Jetpack 6 BSP and kernel source.
 
 The script will configure the default user, password, and hostname as `jetson`.
 ```
@@ -62,7 +76,11 @@ Once complete, SSH in via Micro USB or WiFi.
 ssh jetson@jetson.local
 ```
 
-### 5. Install ARK Software (optional)
+### 5. Generate & Publish Flash Package (optional)
+
+See [packaging/](packaging/) for how to generate distributable flash packages and publish them to GitHub Releases.
+
+### 6. Install ARK Software (optional)
 You can now optionally install the ARK software packages, which provide handy tools for working with the Jetson on an ARK carrier.
 
 https://github.com/ARK-Electronics/ARK-OS
@@ -121,24 +139,8 @@ sudo nvpmodel -m 0
 
 ---
 
-### Testing Cameras with GStreamer
-You must have gstreamer installed. The easiest way to get it is to install Jetpack (on the Jetson):
-```
-sudo apt-get install nvidia-jetpack -y
-```
-
-Start a simple UDP h.264 pipeline. Replace the IP and port settings.
-```
-gst-launch-1.0 nvarguscamerasrc ! nvvidconv ! x264enc key-int-max=15 bitrate=2500 tune=zerolatency speed-preset=ultrafast ! video/x-h264,stream-format=byte-stream ! rtph264pay config-interval=1 name=pay0 pt=96 ! udpsink host=192.168.0.96 port=5600 sync=false
-```
-OR dump the stream to a file:
-```
-gst-launch-1.0 nvarguscamerasrc ! 'video/x-raw(memory:NVMM), width=3840, height=2160, format=NV12, framerate=30/1' ! nvvidconv ! x264enc key-int-max=15 bitrate=2500 tune=zerolatency speed-preset=ultrafast ! h264parse ! mp4mux ! filesink location=output.mp4
-```
-OR test camera with v4l2-ctl:
-```
-v4l2-ctl --set-fmt-video=width=3840,height=2160,pixelformat=RG10 --stream-mmap --stream-count=300 -d /dev/video0
-```
+### Camera Support
+See [cameras.md](cameras.md) for tested cameras, overlays, and test commands (GStreamer, v4l2-ctl).
 
 ---
 

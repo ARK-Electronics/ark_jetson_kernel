@@ -19,8 +19,6 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv.dtb $PREBUILT_PATH/r
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv.dtb $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv.dtb $PREBUILT_PATH/rootfs/boot/
 
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-dynamic.dtbo $PREBUILT_PATH/rootfs/boot/
-
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-nv-super.dtb $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0001-nv-super.dtb $PREBUILT_PATH/rootfs/boot/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv-super.dtb $PREBUILT_PATH/rootfs/boot/
@@ -34,69 +32,39 @@ sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv.dtb $PREBUILT_PATH/k
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv.dtb $PREBUILT_PATH/kernel/dtb/
 
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-dynamic.dtbo $PREBUILT_PATH/kernel/dtb/
-
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0000-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0001-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0003-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0004-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 sudo cp $DTBS_SOURCE_PATH/tegra234-p3768-0000+p3767-0005-nv-super.dtb $PREBUILT_PATH/kernel/dtb/
 
-# I2S to GPIO
-sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/rootfs/boot/
-sudo cp $DTBS_SOURCE_PATH/ark_i2s_gpio.dtbo $PREBUILT_PATH/kernel/dtb/
+echo "Installing overlay dtbo files from build"
+# Build list of source dtbo filenames
+source_dtbos=()
+for dtbo in $DTBS_SOURCE_PATH/*.dtbo; do
+    filename=$(basename "$dtbo")
+    source_dtbos+=("$filename")
+    echo "  $filename"
+    sudo cp "$dtbo" $PREBUILT_PATH/rootfs/boot/
+    sudo cp "$dtbo" $PREBUILT_PATH/kernel/dtb/
+done
 
-if [ "$TARGET" != "PAB" ]; then
-    exit 0
-fi
-
-# Copy camera overlays to kernel and bootloader paths
-# IMX477 Single
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single.dtbo $PREBUILT_PATH/rootfs/boot/
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single.dtbo $PREBUILT_PATH/kernel/dtb/
-# IMX219 Quad
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo $PREBUILT_PATH/rootfs/boot/
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo $PREBUILT_PATH/kernel/dtb/
-# IMX219 Single
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $PREBUILT_PATH/rootfs/boot/
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx219-single.dtbo $PREBUILT_PATH/kernel/dtb/
-# AR0234 Single
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/rootfs/boot/
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-arducam-single.dtbo $PREBUILT_PATH/kernel/dtb/
-# ARK IMX477 Dual 4lane (must use ARK CSI-2-1 Adaptor)
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-dual-4lane.dtbo $PREBUILT_PATH/rootfs/boot/
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-dual-4lane.dtbo $PREBUILT_PATH/kernel/dtb/
-# ARK IMX477 Single 4lane (must use ARK CSI-2-1 Adaptor)
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single-4lane.dtbo $PREBUILT_PATH/rootfs/boot/
-sudo cp $DTBS_SOURCE_PATH/tegra234-p3767-camera-p3768-ark-imx477-single-4lane.dtbo $PREBUILT_PATH/kernel/dtb/
-
-echo "Removing non-supported overlays from prebuilt directory"
-# Remove the overlays that don't work with ARK Carrier
-file_names=(
-    "tegra234-p3767-camera-p3768-imx219-A.dtbo"
-    "tegra234-p3767-camera-p3768-imx219-ark-quad.dtbo"
-    "tegra234-p3767-camera-p3768-imx219-C.dtbo"
-    "tegra234-p3767-camera-p3768-imx219-dual.dtbo"
-    "tegra234-p3767-camera-p3768-imx219-imx477.dtbo"
-    "tegra234-p3767-camera-p3768-imx477-A.dtbo"
-    "tegra234-p3767-camera-p3768-imx477-C.dtbo"
-    "tegra234-p3767-camera-p3768-imx477-dual-4lane.dtbo"
-    "tegra234-p3767-camera-p3768-imx477-dual.dtbo"
-    "tegra234-p3767-camera-p3768-imx477-imx219.dtbo"
-    "tegra234-p3767-camera-p3768-ov5647-single.dtbo"
-)
-
-for file in "${file_names[@]}"
-do
-    filepath="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/boot/$file"
-    if [ -e "$filepath" ]; then
-        echo "Removing $file..."
-        sudo rm $filepath
-    fi
-
-    filepath="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/kernel/dtb/$file"
-    if [ -e "$filepath" ]; then
-        echo "Removing $file..."
-        sudo rm $filepath
-    fi
+# Remove stale kernel-built dtbo files from prebuilt that aren't in the source build
+# Only check tegra*/ark_* files to preserve UEFI dtbos (AcpiBoot, BootOrder*, etc.)
+for dir in $PREBUILT_PATH/rootfs/boot $PREBUILT_PATH/kernel/dtb; do
+    for f in "$dir"/tegra*.dtbo "$dir"/ark_*.dtbo; do
+        [ -e "$f" ] || continue
+        filename=$(basename "$f")
+        found=false
+        for src in "${source_dtbos[@]}"; do
+            if [ "$filename" = "$src" ]; then
+                found=true
+                break
+            fi
+        done
+        if [ "$found" = false ]; then
+            echo "  Removing stale: $filename"
+            sudo rm -f "$f"
+        fi
+    done
 done

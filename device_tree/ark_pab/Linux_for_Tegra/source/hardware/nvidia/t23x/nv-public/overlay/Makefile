@@ -47,8 +47,6 @@ dtbo-y += tegra234-p3737-camera-e3333-overlay.dtbo
 dtbo-y += tegra234-p3737-camera-imx185-overlay.dtbo
 # dtbo-y += tegra234-p3767-camera-p3768-imx219-dual.dtbo
 # dtbo-y += tegra234-p3767-camera-p3768-imx477-dual.dtbo
-# dtbo-y += tegra234-p3767-camera-p3768-imx477-dual-4lane.dtbo
-# dtbo-y += tegra234-p3767-camera-p3768-imx477-imx219.dtbo
 dtbo-y += tegra234-p3737-camera-eCAM130A-overlay.dtbo
 dtbo-y += tegra234-p3737-camera-dual-hawk-ar0234-e3653-overlay.dtbo
 dtbo-y += tegra234-p3737-camera-imx390-overlay.dtbo
@@ -62,15 +60,10 @@ dtbo-y += tegra234-p3737-camera-p3762-a00-overlay.dtbo
 dtbo-y += tegra234-p3740-camera-p3783-a00-overlay.dtbo
 # dtbo-y += tegra234-p3767-camera-p3768-imx219-C.dtbo
 # dtbo-y += tegra234-p3767-camera-p3768-imx219-A.dtbo
-# dtbo-y += tegra234-p3767-camera-p3768-imx219-imx477.dtbo
-# dtbo-y += tegra234-p3767-camera-p3768-imx477-C.dtbo
-# dtbo-y += tegra234-p3767-camera-p3768-imx477-A.dtbo
 dtbo-y += tegra234-p3767-camera-p3768-ark-imx477-single.dtbo
 dtbo-y += tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo
 dtbo-y += tegra234-p3767-camera-p3768-ark-imx219-single.dtbo
 dtbo-y += tegra234-p3767-camera-p3768-ark-arducam-single.dtbo
-dtbo-y += tegra234-p3767-camera-p3768-ark-imx477-dual-4lane.dtbo
-dtbo-y += tegra234-p3767-camera-p3768-ark-imx477-single-4lane.dtbo
 dtbo-y += ark_i2s_gpio.dtbo
 
 ifneq ($(dtb-y),)
