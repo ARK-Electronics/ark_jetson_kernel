@@ -38,7 +38,7 @@ Once the setup script is finished you can build the kernel.
 
 You can optionally add your WiFi network after building and before flashing:
 ```
-./add_wifi_network.sh YourNetworkName YourPassword
+./scripts/add_wifi_network.sh YourNetworkName YourPassword
 ```
 
 If you didn't configure the WiFi network before flashing, you can ssh in over the micro USB and use network manager to add your network:
@@ -143,7 +143,10 @@ sudo nvpmodel -m 0
 ---
 
 ### Camera Support
-See [cameras.md](cameras.md) for tested cameras, overlays, and test commands (GStreamer, v4l2-ctl).
+See [docs/cameras.md](docs/cameras.md) for tested cameras, overlays, and test commands (GStreamer, v4l2-ctl).
+
+### 10GbE Ethernet (Auvidea M20E)
+See [docs/10gbe_ethernet.md](docs/10gbe_ethernet.md) for using the Auvidea M20E M.2 10GbE adapter with a USB boot drive.
 
 ---
 
@@ -169,7 +172,7 @@ cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Teg
 ```
 And copy the dtbs if you've made changes to the device tree:
 ```
-copy_dtbs_to_prebuilt.sh
+scripts/copy_dtbs_to_prebuilt.sh
 ```
 Navigate back to prebuilt workspace and flash the image:
 ```

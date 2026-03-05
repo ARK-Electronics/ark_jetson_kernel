@@ -9,8 +9,10 @@ fi
 
 SSID="$1"
 PASSWORD="$2"
-TEMPLATE="ConnectionTemplate.nmconnection"
-DEST_DIR="prebuilt/Linux_for_Tegra/rootfs/etc/NetworkManager/system-connections"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+TEMPLATE="$SCRIPT_DIR/ConnectionTemplate.nmconnection"
+DEST_DIR="$ROOT_DIR/prebuilt/Linux_for_Tegra/rootfs/etc/NetworkManager/system-connections"
 OUTPUT_FILE="${DEST_DIR}/${SSID}.nmconnection"
 
 sudo mkdir -p "${DEST_DIR}"

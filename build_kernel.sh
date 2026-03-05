@@ -70,12 +70,12 @@ find "$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/hardware/nvidia
 cd Linux_for_Tegra/source
 
 # Apply Jetvariety patch
-PATCH_FILE="$ARK_JETSON_KERNEL_DIR/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch"
+PATCH_FILE="$ARK_JETSON_KERNEL_DIR/patches/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch"
 echo "Checking if jetvariety patch has already been applied..."
 if patch -p1 -R --dry-run --force < "$PATCH_FILE" &>/dev/null; then
     echo "Patch is already applied."
     # NOTE: use this command to unapply the patch
-    # patch -p1 -R < /home/jake/code/ark/ark_jetson_kernel/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch
+    # patch -p1 -R < /home/jake/code/ark/ark_jetson_kernel/patches/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch
 else
     echo "Patch not yet applied. Applying now..."
 
@@ -138,10 +138,10 @@ fi
 
 echo "Copying kernel Image to prebuilt"
 cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
-$ARK_JETSON_KERNEL_DIR/copy_dtbs_to_prebuilt.sh
+$ARK_JETSON_KERNEL_DIR/scripts/copy_dtbs_to_prebuilt.sh
 
 # NOTE: the camera params file is camera specific. This override file is for the IMX219
-# $ARK_JETSON_KERNEL_DIR/copy_camera_params_to_prebuilt.sh
+# $ARK_JETSON_KERNEL_DIR/scripts/copy_camera_params_to_prebuilt.sh
 
 popd
 
