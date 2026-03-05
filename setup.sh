@@ -85,7 +85,7 @@ echo "Applying binaries"
 sudo Linux_for_Tegra/apply_binaries.sh --debug
 
 echo "Setting up login credentials for the Jetson"
-sudo -E $ARK_JETSON_KERNEL_DIR/configure_user.sh
+sudo -E $ARK_JETSON_KERNEL_DIR/scripts/configure_user.sh
 
 popd
 

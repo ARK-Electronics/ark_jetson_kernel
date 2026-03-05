@@ -3,12 +3,12 @@ You may need to change the interface names (enxf69cefb27da8 and wlo1) and subnet
 
 #### Desktop
 ```
-./share_wifi.sh
+./scripts/share_wifi.sh
 ```
 
 Reset the state on the desktop
 ```
-./stop_share_wifi.sh
+./scripts/stop_share_wifi.sh
 ```
 
 #### Jetson
