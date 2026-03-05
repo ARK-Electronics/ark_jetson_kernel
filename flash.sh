@@ -12,7 +12,7 @@ while [[ $# -gt 0 ]]; do
             USE_INITRD=false
             shift ;;
         --usb)
-            STORAGE_DEV="sda1"
+            STORAGE_DEV="sda"
             shift ;;
         --no-super)
             FLASH_TARGET="jetson-orin-nano-devkit"
