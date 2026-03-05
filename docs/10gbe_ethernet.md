@@ -10,13 +10,11 @@ The [Auvidea M20E](https://auvidea.eu/product/m20e-m-2-10gbe/) is an M.2 (M-key)
 
 ## Step 1: Flash to USB Drive
 
-Flash the ARK kernel image onto a USB drive instead of NVMe. Use the `--sdcard` flag with the USB drive connected:
+Flash the ARK kernel image onto a USB thumb drive instead of NVMe:
 
 ```
-./flash.sh --sdcard
+./flash.sh --usb
 ```
-
-> **Note:** The `--sdcard` flag uses the non-initrd flash path which targets `mmcblk0p1`. You may need to adjust the storage device target depending on how the USB drive enumerates. Check `lsblk` on the Jetson in recovery mode.
 
 ## Step 2: Install the M20E
 
