@@ -16,6 +16,7 @@ pushd .
 
 # Interactive selection for target platform
 echo "Please select the target platform:"
+echo -e "\033[3mNote: PAB Rev3 is not the same as PAB_V3. PAB_V3 is a separate product.\033[0m"
 echo "1) PAB"
 echo "2) JAJ"
 echo "3) PAB_V3"
