@@ -64,6 +64,13 @@ done
 
 pushd .
 cd prebuilt/Linux_for_Tegra/
+
+# Workaround: NVIDIA's "minimal" UEFI (introduced in JetPack 6.2+) fails to boot
+# the initrd flash kernel on some Orin NX hardware, causing flash to hang at
+# "Waiting for target to boot-up...". Force the full UEFI image for RCM boot.
+sed -i 's/^RCM_UEFIBL=.*$/RCM_UEFIBL="";/' p3767.conf.common
+sed -i 's/^RCM_TBCFILE=.*$/RCM_TBCFILE="";/' p3767.conf.common
+
 if [ "$USE_INITRD" = true ]; then
     # NVMe flash
     sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device "$STORAGE_DEV" \
