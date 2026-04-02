@@ -60,6 +60,7 @@ dtbo-y += tegra234-p3737-camera-p3762-a00-overlay.dtbo
 dtbo-y += tegra234-p3740-camera-p3783-a00-overlay.dtbo
 dtbo-y += tegra234-p3767-camera-p3768-imx219-C.dtbo
 dtbo-y += tegra234-p3767-camera-p3768-imx219-A.dtbo
+dtbo-y += tegra234-p3767-camera-p3768-ar0234-dual.dtbo
 dtbo-y += ark_i2s_gpio.dtbo
 
 ifneq ($(dtb-y),)
