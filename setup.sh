@@ -143,6 +143,15 @@ echo "CONFIG_RTL8187=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_RTW88=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_RTW89=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 
+# MediaTek MT76x2U (MT7612U USB adapter)
+echo "CONFIG_MT76x2U=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_MT76x2_COMMON=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_MT76x02_LIB=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_MT76x02_USB=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_MT76_USB=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_MT76_CORE=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+echo "CONFIG_MT76_LEDS=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
+
 # Bluetooth
 echo "CONFIG_BT_INTEL=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
 echo "CONFIG_BT_BCM=y" >> kernel/kernel-jammy-src/arch/arm64/configs/defconfig
