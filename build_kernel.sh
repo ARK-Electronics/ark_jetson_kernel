@@ -70,30 +70,50 @@ find "$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/hardware/nvidia
 
 cd Linux_for_Tegra/source
 
-# Apply Jetvariety patch
-PATCH_FILE="$ARK_JETSON_KERNEL_DIR/patches/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch"
-echo "Checking if jetvariety patch has already been applied..."
-if patch -p1 -R --dry-run --force < "$PATCH_FILE" &>/dev/null; then
-    echo "Patch is already applied."
-    # NOTE: use this command to unapply the patch
-    # patch -p1 -R < /home/jake/code/ark/ark_jetson_kernel/patches/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch
-else
-    echo "Patch not yet applied. Applying now..."
+# Apply a patch idempotently. Skips if already applied; errors if it doesn't
+# apply cleanly. Args: $1 patch file, $2 label for logs, $3 directory to apply from.
+apply_patch() {
+    local patch_file="$1"
+    local label="$2"
+    local apply_dir="$3"
 
-    # Check if the patch can be applied cleanly
-    if patch -p1 --dry-run --force < "$PATCH_FILE" &>/dev/null; then
-        # Actually apply the patch
-        if patch -p1 --force < "$PATCH_FILE"; then
-            echo "Patch applied successfully."
+    pushd "$apply_dir" > /dev/null
+    echo "Checking if $label patch has already been applied..."
+    if patch -p1 -R --dry-run --force < "$patch_file" &>/dev/null; then
+        echo "  $label patch is already applied."
+    elif patch -p1 --dry-run --force < "$patch_file" &>/dev/null; then
+        echo "  Applying $label patch..."
+        if patch -p1 --force < "$patch_file"; then
+            echo "  $label patch applied successfully."
         else
-            echo "Error: Failed to apply patch."
+            echo "  Error: Failed to apply $label patch."
+            popd > /dev/null
             exit 1
         fi
     else
-        echo "Error: Patch cannot be applied cleanly."
+        echo "  Error: $label patch cannot be applied cleanly to $apply_dir."
+        popd > /dev/null
         exit 1
     fi
-fi
+    popd > /dev/null
+}
+
+# Jetvariety: Arducam CSI2 driver additions (applies under Linux_for_Tegra/source)
+apply_patch \
+    "$ARK_JETSON_KERNEL_DIR/patches/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch" \
+    "Jetvariety" \
+    "."
+
+# pinctrl-tegra SFSEL: restore original PADCTL SFIO bit on gpio release instead
+# of unconditionally setting it. Fixes the JP 6.2.1 regression where pins flip
+# back to SFIO (alternate function) mode when userspace releases a GPIO line,
+# causing customer-facing pins to drift after an app exits. Bundled in r36.5 /
+# JP 6.2.2 by default — drop this patch once we rebase onto that. Source:
+# https://forums.developer.nvidia.com/t/40hdr-spi1-gpio-padctl-register-bit-10-effect-by-gpiod-tools-in-jp6/301171
+apply_patch \
+    "$ARK_JETSON_KERNEL_DIR/patches/pinctrl-tegra-sfsel.patch" \
+    "pinctrl-tegra-sfsel" \
+    "kernel/kernel-jammy-src"
 
 echo "Building the kernel for $TARGET platform"
 make -C kernel && make modules && make dtbs
