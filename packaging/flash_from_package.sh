@@ -263,6 +263,20 @@ fi
 
 FLASH_DIR=$(dirname "$FLASH_SCRIPT")
 
+# --- Display package build info if present ---
+# generate_flash_package.sh embeds BUILD_INFO.txt at the top of the tarball;
+# printing it here records the source commit in the per-run flash log.
+
+BUILD_INFO=$(sudo find "$EXTRACT_DIR" -maxdepth 3 -name "BUILD_INFO.txt" 2>/dev/null | head -1 || true)
+if [ -n "$BUILD_INFO" ]; then
+    echo ""
+    echo "========================================="
+    echo "  Package build info"
+    echo "========================================="
+    sudo cat "$BUILD_INFO"
+    echo "========================================="
+fi
+
 # --- Wait for Jetson and flash ---
 
 echo ""
