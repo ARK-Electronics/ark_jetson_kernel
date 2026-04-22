@@ -28,6 +28,19 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec > >(tee "$SCRIPT_DIR/flash.log.txt") 2>&1
 
+# Log ark_jetson_kernel source version so flash.log.txt records exactly
+# which commit built the image being flashed.
+GIT_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
+GIT_DESCRIBE=$(git -C "$SCRIPT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
+GIT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+echo "========================================="
+echo "  ark_jetson_kernel"
+echo "  Date:     $(date -Iseconds)"
+echo "  Branch:   $GIT_BRANCH"
+echo "  Commit:   $GIT_COMMIT"
+echo "  Describe: $GIT_DESCRIBE"
+echo "========================================="
+
 # Pre-flash target confirmation
 LAST_TARGET_FILE="$SCRIPT_DIR/source_build/LAST_BUILT_TARGET"
 if [ -f "$LAST_TARGET_FILE" ]; then

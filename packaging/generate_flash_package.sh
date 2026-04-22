@@ -33,6 +33,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 exec > >(tee "$ROOT_DIR/generate_flash_package.log.txt") 2>&1
 
+# Capture ark_jetson_kernel source version so it can be logged here and
+# embedded in the package (see BUILD_INFO.txt below).
+GIT_COMMIT=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
+GIT_DESCRIBE=$(git -C "$ROOT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
+GIT_BRANCH=$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE=$(date -Iseconds)
+BUILD_HOST=$(hostname)
+BUILD_USER=$(whoami)
+echo "========================================="
+echo "  ark_jetson_kernel"
+echo "  Date:     $BUILD_DATE"
+echo "  Branch:   $GIT_BRANCH"
+echo "  Commit:   $GIT_COMMIT"
+echo "  Describe: $GIT_DESCRIBE"
+echo "========================================="
+
 # Validate that a kernel has been built
 LAST_TARGET_FILE="$ROOT_DIR/source_build/LAST_BUILT_TARGET"
 if [ ! -f "$LAST_TARGET_FILE" ]; then
@@ -107,6 +123,33 @@ if [ ! -f "$MFI_FILE" ]; then
     ls -la mfi_*.tar.gz 2>/dev/null
     exit 1
 fi
+
+# Embed BUILD_INFO.txt so customers can identify which ark_jetson_kernel
+# commit produced their flash package. tar --append requires an uncompressed
+# archive, so we decompress, append, and recompress.
+BUILD_INFO_DIR=$(mktemp -d)
+cat > "$BUILD_INFO_DIR/BUILD_INFO.txt" << EOF
+ark_jetson_kernel flash package
+===============================
+Build date:    $BUILD_DATE
+Build host:    $BUILD_HOST
+Build user:    $BUILD_USER
+Branch:        $GIT_BRANCH
+Commit:        $GIT_COMMIT
+Describe:      $GIT_DESCRIBE
+
+Target:        $TARGET
+Flash target:  $FLASH_TARGET
+Storage:       $STORAGE ($STORAGE_DEV)
+Package name:  ${PACKAGE_NAME}.tar.gz
+EOF
+
+echo "Embedding BUILD_INFO.txt (decompressing, appending, recompressing — may take a minute)..."
+sudo gunzip "$MFI_FILE"
+MFI_TAR="${MFI_FILE%.gz}"
+sudo tar --append -f "$MFI_TAR" -C "$BUILD_INFO_DIR" BUILD_INFO.txt
+sudo gzip "$MFI_TAR"
+rm -rf "$BUILD_INFO_DIR"
 
 # Move to project root with descriptive name
 OUTPUT_FILE="$ROOT_DIR/${PACKAGE_NAME}.tar.gz"
