@@ -16,6 +16,8 @@ chmod +x flash_from_package.sh
 
 The script downloads the latest release, reassembles if needed, and flashes. See [packaging/](packaging/) for more details.
 
+Each run is logged to `~/.ark-jetson-cache/<version>/logs/flash-<timestamp>.log`. If you're asked to share a flash log for support, grab the most recent file from that directory.
+
 ## Building from Source
 
 If you need to customize the kernel or device tree, clone this repository and follow the steps below.
