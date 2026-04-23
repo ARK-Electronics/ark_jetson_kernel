@@ -4,9 +4,9 @@
 # Downloads the package from GitHub Releases, reassembles if split, and flashes.
 # No build tools or kernel source needed — just a Linux host with USB.
 #
-# Each version is cached independently in ~/.ark-jetson-cache/<version>/ so you
-# can switch between versions without re-downloading. Re-running after a failure
-# picks up where it left off (partial downloads, extractions, etc. are handled).
+# Releases that contain multiple carrier targets (PAB, PAB_V3, JAJ) prompt
+# interactively to pick which one to flash. Each (version, target) is cached
+# independently in ~/.ark-jetson-cache/<version>/<target>/.
 #
 # Usage: ./flash_from_package.sh [version]
 #        ./flash_from_package.sh              # uses latest release
@@ -140,7 +140,54 @@ else
     fi
     echo "Release: $RELEASE_TAG"
 
-    CACHE_DIR="$CACHE_BASE/$RELEASE_TAG"
+    # --- Detect carrier targets in the release ---
+    # Asset filenames are ark-<target>-<storage>[-super].{tar.gz,part.*}. The
+    # target slug follows the same convention as build_kernel.sh's TARGET,
+    # lowercased with underscores replaced by dashes.
+    KNOWN_TARGETS=("pab" "jaj" "pab-v3")
+    TARGETS_IN_RELEASE=()
+    for t in "${KNOWN_TARGETS[@]}"; do
+        if echo "$release_json" | grep -qE "\"name\": *\"ark-$t-(nvme|sdcard)"; then
+            TARGETS_IN_RELEASE+=("$t")
+        fi
+    done
+
+    if [ ${#TARGETS_IN_RELEASE[@]} -eq 0 ]; then
+        echo "ERROR: No ark-<target>-* assets found in release $RELEASE_TAG."
+        echo "Expected at least one of: ${KNOWN_TARGETS[*]}"
+        exit 1
+    fi
+
+    # --- Select target ---
+    if [ ${#TARGETS_IN_RELEASE[@]} -eq 1 ]; then
+        TARGET="${TARGETS_IN_RELEASE[0]}"
+        echo "Target: $TARGET (only target in release)"
+    else
+        echo ""
+        echo "Please select the target platform:"
+        echo -e "\033[3mNote: PAB Rev3 is not the same as PAB_V3. PAB_V3 is a separate product.\033[0m"
+        i=1
+        for t in "${TARGETS_IN_RELEASE[@]}"; do
+            case "$t" in
+                pab)    label="PAB" ;;
+                pab-v3) label="PAB_V3" ;;
+                jaj)    label="JAJ" ;;
+                *)      label="$t" ;;
+            esac
+            echo "$i) $label"
+            i=$((i+1))
+        done
+        read -rp "Enter your choice (1-${#TARGETS_IN_RELEASE[@]}): " choice
+        if ! [[ "$choice" =~ ^[0-9]+$ ]] || \
+           [ "$choice" -lt 1 ] || [ "$choice" -gt "${#TARGETS_IN_RELEASE[@]}" ]; then
+            echo "Invalid choice. Exiting."
+            exit 1
+        fi
+        TARGET="${TARGETS_IN_RELEASE[$((choice-1))]}"
+        echo "Target: $TARGET"
+    fi
+
+    CACHE_DIR="$CACHE_BASE/$RELEASE_TAG/$TARGET"
 fi
 
 EXTRACT_DIR="$CACHE_DIR/extracted"
@@ -207,6 +254,13 @@ else
 
                 # Skip the script itself if attached to the release
                 if [ "$filename" = "flash_from_package.sh" ]; then
+                    continue
+                fi
+
+                # Only download assets matching the selected target. The
+                # storage token (nvme|sdcard) follows the target slug so
+                # pab doesn't spuriously match pab-v3-*.
+                if ! [[ "$filename" =~ ^ark-${TARGET}-(nvme|sdcard) ]]; then
                     continue
                 fi
 

@@ -159,6 +159,26 @@ mv "$MFI_FILE" "$OUTPUT_FILE"
 FILE_SIZE=$(stat -c%s "$OUTPUT_FILE")
 MAX_SIZE=$((2 * 1024 * 1024 * 1024))
 
+# Build the sidecar BUILD_INFO.txt content once; used below alongside tarball or
+# inside split dir. Lets publish_release.sh verify same-commit across targets
+# without decompressing multi-GB tarballs.
+SIDECAR_CONTENT=$(cat << EOF
+ark_jetson_kernel flash package
+===============================
+Build date:    $BUILD_DATE
+Build host:    $BUILD_HOST
+Build user:    $BUILD_USER
+Branch:        $GIT_BRANCH
+Commit:        $GIT_COMMIT
+Describe:      $GIT_DESCRIBE
+
+Target:        $TARGET
+Flash target:  $FLASH_TARGET
+Storage:       $STORAGE ($STORAGE_DEV)
+Package name:  ${PACKAGE_NAME}.tar.gz
+EOF
+)
+
 if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
     echo ""
     echo "Package exceeds 2GB ($(numfmt --to=iec-i --suffix=B "$FILE_SIZE")) — splitting for GitHub Releases..."
@@ -167,6 +187,9 @@ if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
     split -b 1900m "$OUTPUT_FILE" "$SPLIT_DIR/${PACKAGE_NAME}.part."
     SHA256=$(sha256sum "$OUTPUT_FILE" | cut -d' ' -f1)
     rm -f "$OUTPUT_FILE"
+
+    # Sidecar next to split parts
+    echo "$SIDECAR_CONTENT" > "$SPLIT_DIR/BUILD_INFO.txt"
 
     # Create reassembly script
     cat > "$SPLIT_DIR/reassemble.sh" << 'EOF'
@@ -190,6 +213,9 @@ EOF
     echo "  Original SHA256: $SHA256"
     echo "========================================="
 else
+    # Sidecar next to the single tarball
+    echo "$SIDECAR_CONTENT" > "${OUTPUT_FILE%.tar.gz}.BUILD_INFO.txt"
+
     echo ""
     echo "========================================="
     echo "  Flash package generated successfully"
