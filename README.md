@@ -2,7 +2,12 @@
 
 This repository contains instructions and scripts for flashing your Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier.
 
-**Note:** This has only been tested with Ubuntu 22.04
+| Component | Version |
+| --- | --- |
+| JetPack | 6.2.1 |
+| L4T (BSP) | R36.4.4 |
+| Kernel | Linux 5.15 |
+| Host OS (tested) | Ubuntu 22.04 |
 
 ## Building from Source
 
