@@ -63,7 +63,7 @@ Python — install `Jetson.GPIO` 2.1.12 or newer first; the apt-shipped version 
 sudo pip3 install 'Jetson.GPIO>=2.1.12'
 ```
 
-The example below jumpers HDR40 pin 40 (DOUT) to pin 38 (DIN) and toggles HIGH/LOW/HIGH/LOW, mirroring `scripts/test_i2s_gpio_loopback.sh`:
+The example below jumpers HDR40 pin 40 (DOUT) to pin 38 (DIN) and toggles HIGH/LOW/HIGH/LOW as a loopback test:
 
 ```python
 import time
