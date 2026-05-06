@@ -4,6 +4,10 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec > >(tee "$SCRIPT_DIR/build.log.txt") 2>&1
 
+# Refuse to build against a missing or stale BSP (points user at ./setup.sh).
+source "$SCRIPT_DIR/scripts/check_bsp.sh"
+require_bsp "$SCRIPT_DIR"
+
 START_TIME=$(date +%s)
 
 sudo -v
