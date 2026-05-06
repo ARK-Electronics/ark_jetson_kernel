@@ -57,14 +57,42 @@ gpioget $(gpiofind PI.01)
 
 Without `--mode=signal`, `gpioset` exits immediately after writing. The value still persists in the OUTPUT_VAL register thanks to the SFSEL patch, but the line is no longer "owned" — the next consumer to request it wins.
 
-Python:
+Python — install `Jetson.GPIO` 2.1.12 or newer first; the apt-shipped version doesn't recognize the Orin Nano Super (`p3768-0000+p3767-0005-super`) and fails with `Could not determine Jetson model`:
+
+```bash
+sudo pip3 install 'Jetson.GPIO>=2.1.12'
+```
+
+The example below jumpers HDR40 pin 40 (DOUT) to pin 38 (DIN) and toggles HIGH/LOW/HIGH/LOW as a loopback test:
 
 ```python
+import time
 import Jetson.GPIO as GPIO
+
 GPIO.setmode(GPIO.BOARD)
-GPIO.setup(40, GPIO.OUT, initial=GPIO.LOW)
-GPIO.output(40, GPIO.HIGH)
+GPIO.setup(40, GPIO.OUT, initial=GPIO.LOW)  # I2S0_DOUT
+GPIO.setup(38, GPIO.IN)                     # I2S0_DIN
+
+try:
+    for level in (GPIO.HIGH, GPIO.LOW, GPIO.HIGH, GPIO.LOW):
+        GPIO.output(40, level)
+        time.sleep(0.2)
+        got = GPIO.input(38)
+        label = "HIGH" if level else "LOW"
+        result = "PASS" if got == level else f"FAIL (read {got})"
+        print(f"DOUT=40 {label}  DIN=38 {got}  {result}")
+finally:
+    GPIO.cleanup()
 ```
+
+Expect two cosmetic warnings on first run — both are harmless and the script still works:
+
+```
+WARNING: Carrier board is not from a Jetson Developer Kit.
+UserWarning: Could not open /dev/mem for pinmux check.
+```
+
+The first is `Jetson.GPIO` noticing this isn't NVIDIA's branded p3768 devkit baseboard — we don't impersonate the devkit board IDs in the device tree, so the library prints once at module load. The second is the library trying to validate the requested pin direction against the PADCTL register via `/dev/mem`, which non-root users can't open. Run with `sudo` to silence the second warning and actually get the pinmux check.
 
 ### Reading inputs
 
