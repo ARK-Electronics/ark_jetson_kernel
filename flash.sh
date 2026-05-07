@@ -28,6 +28,10 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec > >(tee "$SCRIPT_DIR/flash.log.txt") 2>&1
 
+# Refuse to flash a missing or stale BSP (points user at ./setup.sh).
+source "$SCRIPT_DIR/scripts/check_bsp.sh"
+require_bsp "$SCRIPT_DIR"
+
 # Log ark_jetson_kernel source version so flash.log.txt records exactly
 # which commit built the image being flashed.
 GIT_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
