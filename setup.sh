@@ -4,14 +4,23 @@
 #   --force, -y   Skip the confirmation prompt before deleting an existing
 #                 prebuilt/ or source_build/ (intended for CI / scripted runs).
 
-# Log output to file while keeping terminal output
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec > >(tee "$SCRIPT_DIR/setup.log.txt") 2>&1
+export ARK_JETSON_KERNEL_DIR="$SCRIPT_DIR"
 
 # Pulls in EXPECTED_BSP_*, BSP_URL, ROOT_FS_URL, PUBLIC_SOURCES_URL,
 # TOOLCHAIN_URL, and the detect_bsp_version / require_bsp helpers.
 # bsp_version.env is the single source of truth — edit it to bump versions.
 source "$SCRIPT_DIR/scripts/check_bsp.sh"
+
+# Auto-containerize on hosts other than Ubuntu 22.04. See docs/build_host.md.
+source "$SCRIPT_DIR/scripts/container_runner.sh"
+
+# Log output to file while keeping terminal output. Skip when re-execing into
+# the build container — the in-container run will tee the same bind-mounted
+# file itself, and overlapping tees would garble the log.
+if ! needs_container; then
+    exec > >(tee "$SCRIPT_DIR/setup.log.txt") 2>&1
+fi
 
 FORCE=0
 for arg in "$@"; do
@@ -30,7 +39,9 @@ done
 # Confirm before destroying an existing setup. Done before any sudo prompt so
 # an aborting user never has to authenticate. Users may have hand-edited
 # kernel sources under source_build/ and we don't want to silently nuke them.
-if [ -d "$SCRIPT_DIR/prebuilt" ] || [ -d "$SCRIPT_DIR/source_build" ]; then
+# Skipped inside the build container — the host pass already confirmed.
+if [ -z "$IN_BUILD_CONTAINER" ] && \
+   ([ -d "$SCRIPT_DIR/prebuilt" ] || [ -d "$SCRIPT_DIR/source_build" ]); then
     detect_bsp_version "$SCRIPT_DIR"
     case $? in
         0)
@@ -56,6 +67,11 @@ if [ -d "$SCRIPT_DIR/prebuilt" ] || [ -d "$SCRIPT_DIR/source_build" ]; then
     else
         echo "(--force specified, proceeding without confirmation)"
     fi
+fi
+
+# Re-exec inside the 22.04 build container if needed. Does not return.
+if needs_container; then
+    run_in_container "$0" "$@"
 fi
 
 function cleanup() {
@@ -102,40 +118,9 @@ sudo_refresh_loop &
 SUDO_PID=$!
 START_TIME=$(date +%s)
 
-export ARK_JETSON_KERNEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export L4T_RELEASE_PACKAGE=$(basename $BSP_URL)
 export SAMPLE_FS_PACKAGE=$(basename $ROOT_FS_URL)
 export BOARD="jetson-orin-nano-devkit-super"
-
-# If a previous setup is present, summarize it and confirm before deletion —
-# users may have hand-edited kernel sources under source_build/.
-if [ -d "$SCRIPT_DIR/prebuilt" ] || [ -d "$SCRIPT_DIR/source_build" ]; then
-    detect_bsp_version "$SCRIPT_DIR"
-    case $? in
-        0)
-            echo "Existing setup detected: BSP ${DETECTED_BSP_RELEASE}.${DETECTED_BSP_REVISION} (matches expected)."
-            ;;
-        2)
-            echo "Existing setup detected: BSP ${DETECTED_BSP_RELEASE}.${DETECTED_BSP_REVISION}"
-            echo "  This repo now requires:  BSP ${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}"
-            ;;
-        1)
-            echo "Existing prebuilt/ or source_build/ detected (incomplete or unrecognized BSP version)."
-            ;;
-    esac
-    echo ""
-    echo "Re-running setup will DELETE prebuilt/ and source_build/ and re-download ~5GB."
-    echo "Any local edits in those directories will be lost."
-    if [ $FORCE -eq 0 ]; then
-        read -p "Continue? (y/N): " confirm
-        if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-            echo "Setup aborted."
-            exit 0
-        fi
-    else
-        echo "(--force specified, proceeding without confirmation)"
-    fi
-fi
 
 # remove previous
 sudo rm -rf source_build
