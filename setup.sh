@@ -152,6 +152,19 @@ sudo Linux_for_Tegra/tools/l4t_flash_prerequisites.sh
 # Fresh systems could be missing these packages
 sudo apt-get install make build-essential flex bison libssl-dev -y
 
+# Force-register the qemu-aarch64 binfmt handler in the kernel. binfmt-support
+# normally does this via its init script, but in the docker container the
+# postinst's `invoke-rc.d binfmt-support start` is denied by the base image's
+# policy-rc.d (Debian convention: containers don't run init, so service starts
+# are forbidden during package config). Without registration the kernel can't
+# route aarch64 ELFs through qemu-user-static, and apply_binaries.sh's
+# chroot+dpkg fails with "Exec format error". Hosts with qemu-user-static
+# already installed natively (binfmt_misc is kernel-global) hit the early-out.
+if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+    echo "Registering qemu-aarch64 binfmt handler"
+    sudo update-binfmts --enable qemu-aarch64
+fi
+
 echo "Applying binaries"
 sudo Linux_for_Tegra/apply_binaries.sh --debug
 
