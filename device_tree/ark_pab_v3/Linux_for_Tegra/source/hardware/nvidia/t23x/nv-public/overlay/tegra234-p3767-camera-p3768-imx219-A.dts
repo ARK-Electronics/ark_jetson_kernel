@@ -28,7 +28,7 @@
 					vi_port0: port@0 {
 						reg = <0>;
 						rbpcv2_imx219_vi_in0: endpoint {
-							port-index = <1>;
+							port-index = <0>;
 							bus-width = <2>;
 							remote-endpoint = <&rbpcv2_imx219_csi_out0>;
 						};
@@ -110,7 +110,7 @@
 								csi_chan0_port0: port@0 {
 									reg = <0>;
 									rbpcv2_imx219_csi_in0: endpoint@0 {
-										port-index = <1>;
+										port-index = <0>;
 										bus-width = <2>;
 										remote-endpoint = <&rbpcv2_imx219_out0>;
 									};
@@ -233,7 +233,7 @@
 							mode0 { /* IMX219_MODE_3280x2464_21FPS */
 								mclk_khz = "24000";
 								num_lanes = "2";
-								tegra_sinterface = "serial_b";
+								tegra_sinterface = "serial_a";
 								lane_polarity = "6";
 								phy_mode = "DPHY";
 								discontinuous_clk = "yes";
@@ -271,7 +271,7 @@
 							mode1 { /* IMX219_MODE_3280x1848_28FPS */
 								mclk_khz = "24000";
 								num_lanes = "2";
-								tegra_sinterface = "serial_b";
+								tegra_sinterface = "serial_a";
 								lane_polarity = "6";
 								phy_mode = "DPHY";
 								discontinuous_clk = "yes";
@@ -309,7 +309,7 @@
 							mode2 { /* IMX219_MODE_1920x1080_30FPS */
 								mclk_khz = "24000";
 								num_lanes = "2";
-								tegra_sinterface = "serial_b";
+								tegra_sinterface = "serial_a";
 								lane_polarity = "6";
 								phy_mode = "DPHY";
 								discontinuous_clk = "yes";
@@ -347,7 +347,7 @@
 							mode3 { /* IMX219_MODE_1640x1232_30FPS */
 								mclk_khz = "24000";
 								num_lanes = "2";
-								tegra_sinterface = "serial_b";
+								tegra_sinterface = "serial_a";
 								lane_polarity = "6";
 								phy_mode = "DPHY";
 								discontinuous_clk = "yes";
@@ -385,7 +385,7 @@
 							mode4 { /* IMX219_MODE_1280x720_60FPS */
 								mclk_khz = "24000";
 								num_lanes = "2";
-								tegra_sinterface = "serial_b";
+								tegra_sinterface = "serial_a";
 								lane_polarity = "6";
 								phy_mode = "DPHY";
 								discontinuous_clk = "yes";
@@ -427,7 +427,7 @@
 									reg = <0>;
 									rbpcv2_imx219_out0: endpoint {
 										status = "okay";
-										port-index = <1>;
+										port-index = <0>;
 										bus-width = <2>;
 										remote-endpoint = <&rbpcv2_imx219_csi_in0>;
 									};
