@@ -74,9 +74,16 @@ if needs_container; then
     run_in_container "$0" "$@"
 fi
 
+# Fail fast on any error past this point. Above this line is an interactive
+# `read -p` whose EOF would trip set -e; below is automated work where any
+# silent failure (e.g. a partial apply_binaries.sh) leaves the rootfs broken
+# and the user later hits "BSP not set up" from build_kernel.sh.
+set -e -o pipefail
+
 function cleanup() {
-	kill -9 $SUDO_PID
-	exit 0
+	if [ -n "${SUDO_PID:-}" ]; then
+		kill -9 "$SUDO_PID" 2>/dev/null || true
+	fi
 }
 
 function sudo_refresh_loop() {
@@ -110,7 +117,7 @@ function download_with_retry() {
 	fi
 }
 
-trap cleanup SIGINT SIGTERM
+trap cleanup EXIT
 
 # keep sudo credentials alive in the background
 sudo -v
@@ -251,9 +258,31 @@ popd
 
 popd
 
+# Sanity-check that the staged BSP is actually present and the right version.
+# Catches the silent-failure mode where an earlier step partially succeeded
+# but left the rootfs incomplete — without this, "Setup complete" would print
+# and the user would only discover the problem when build_kernel.sh fails.
+# Capture rc via `|| rc=$?` so detect_bsp_version's non-zero returns don't
+# trip set -e before we reach the case dispatch.
+bsp_rc=0
+detect_bsp_version "$SCRIPT_DIR" || bsp_rc=$?
+case $bsp_rc in
+	0) ;;
+	1)
+		echo "ERROR: setup finished but prebuilt/Linux_for_Tegra/rootfs/etc/nv_tegra_release"
+		echo "       is missing. Some earlier step in setup.sh failed silently."
+		echo "       Review setup.log.txt for the underlying error."
+		exit 1
+		;;
+	2)
+		echo "ERROR: staged BSP version mismatch."
+		echo "       Found:    ${DETECTED_BSP_RELEASE}.${DETECTED_BSP_REVISION}"
+		echo "       Expected: ${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}"
+		exit 1
+		;;
+esac
+
 END_TIME=$(date +%s)
 TOTAL_TIME=$((${END_TIME}-${START_TIME}))
 echo "Setup complete in $(date -d@${TOTAL_TIME} -u +%H:%M:%S)"
 echo "You can now build the kernel with ./build_kernel.sh"
-
-cleanup
