@@ -251,7 +251,7 @@ mkdir -p $HOME/l4t-gcc
 cd $HOME/l4t-gcc
 
 TOOLCHAIN_FILENAME=$(basename "$TOOLCHAIN_URL")
-TOOLCHAIN_DIRNAME=${FILENAME%.bz2}
+TOOLCHAIN_DIRNAME=${TOOLCHAIN_FILENAME%.tar.bz2}
 
 if [ ! -f "$TOOLCHAIN_FILENAME" ]; then
 	echo "Downloading Jetson bootlin toolchain"
