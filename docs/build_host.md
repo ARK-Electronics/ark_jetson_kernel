@@ -11,6 +11,8 @@ NVIDIA's documented build host for L4T R36.4.4 / JetPack 6.2.1 is **Ubuntu 22.04
 
 The repo bind-mounts itself into the container at `/workspace` and the bootlin cross-toolchain at `/root/l4t-gcc`, so build artifacts (`prebuilt/`, `source_build/`) and the toolchain persist on the host across container runs.
 
+The container runs as root, so everything it writes through the bind mounts (`prebuilt/`, `source_build/`, `~/l4t-gcc`) ends up `root`-owned on the host. The same is partially true of a native-22.04 build (`apply_binaries.sh` and friends `sudo`-write a lot of `prebuilt/`), so the practical impact is the same: use `sudo rm -rf` if you want to wipe `prebuilt/` or `source_build/` by hand. `setup.sh --force` already does this for you.
+
 `flash.sh` always runs on the host — it transfers already-built artifacts to the device over USB and gains nothing from containerization.
 
 ## Why 22.04 specifically — the kmod incompatibility
