@@ -33,7 +33,19 @@ ensure_docker() {
         echo "Docker not installed — installing via apt (requires sudo)..."
         sudo apt-get update
         sudo apt-get install -y docker.io
-        # apt should start dockerd via systemd post-install, but be defensive.
+    fi
+
+    # Quick path: daemon is reachable without sudo and we're done.
+    if docker info >/dev/null 2>&1; then
+        DOCKER_CMD=(docker)
+        return
+    fi
+
+    # Probe failed — either the daemon is stopped or the user isn't in the
+    # docker group. Try starting the daemon first (covers a fresh apt install
+    # and the "installed but service stopped" case); then re-probe and fall
+    # back to sudo docker if the only remaining issue is group membership.
+    if command -v systemctl >/dev/null 2>&1; then
         sudo systemctl is-active docker >/dev/null 2>&1 || sudo systemctl start docker
     fi
 
@@ -69,13 +81,23 @@ run_in_container() {
 
     mkdir -p "$HOME/l4t-gcc"
     echo "Re-executing $(basename "$script_path") in 22.04 build container..."
+
+    # Only request a TTY when our own stdin and stdout are terminals — `docker
+    # run -t` against a non-TTY fd (CI, output redirection, a pipe) errors
+    # with "the input device is not a TTY" before the build can start. `-i`
+    # stays unconditional so the interactive prompt still works from a shell.
+    local tty_flags=(-i)
+    if [ -t 0 ] && [ -t 1 ]; then
+        tty_flags+=(-t)
+    fi
+
     # SYS_ADMIN + apparmor=unconfined: NVIDIA's l4t_create_default_user.sh and
     # other rootfs-customization helpers chroot into the staged rootfs and
     # mount-bind /proc, /sys, /dev. Docker's default seccomp/AppArmor profile
     # blocks mount(2), so we relax both for the build container. The container
     # is ephemeral (--rm) and runs only the kernel build, so the broader
     # privilege scope is acceptable.
-    exec "${DOCKER_CMD[@]}" run --rm -it \
+    exec "${DOCKER_CMD[@]}" run --rm "${tty_flags[@]}" \
         --cap-add=SYS_ADMIN \
         --security-opt apparmor=unconfined \
         -v "$repo_dir:/workspace" \
