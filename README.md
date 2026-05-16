@@ -9,6 +9,8 @@ This repository contains instructions and scripts for flashing your Jetson **Ori
 | Kernel | Linux 5.15 |
 | Host OS | Ubuntu 22.04 |
 
+> **Building on a non-22.04 host?** `setup.sh` and `build_kernel.sh` auto-containerize themselves in a 22.04 docker image (docker is auto-installed via apt if missing). See [docs/build_host.md](docs/build_host.md) for why we pin to 22.04.
+
 ## Building from Source
 
 If you need to customize the kernel or device tree, clone this repository and follow the steps below.
@@ -22,9 +24,10 @@ The script will configure the default user, password, and hostname as `jetson`.
 ```
 
 ### 2. Build
-Once the setup script is finished you can build the kernel.
+Once the setup script is finished you can build the kernel. Pass the target platform as an argument, or run with no argument for an interactive prompt.
 ```
-./build_kernel.sh
+./build_kernel.sh           # interactive prompt
+./build_kernel.sh PAB_V3    # non-interactive: PAB | JAJ | PAB_V3
 ```
 
 ### 3. Add WiFi (optional)

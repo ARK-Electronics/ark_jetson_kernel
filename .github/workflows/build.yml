@@ -1,0 +1,31 @@
+name: Build kernel
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache bootlin toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/l4t-gcc
+          key: l4t-gcc-${{ hashFiles('bsp_version.env') }}
+
+      - name: Setup BSP
+        run: ./setup.sh --force
+
+      - name: Build kernel for PAB
+        run: ./build_kernel.sh PAB
+
+      - name: Upload kernel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-PAB
+          path: prebuilt/Linux_for_Tegra/kernel/
+          retention-days: 14

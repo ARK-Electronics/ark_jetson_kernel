@@ -1,49 +1,67 @@
 #!/bin/bash
 
-# Log output to file while keeping terminal output
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec > >(tee "$SCRIPT_DIR/build.log.txt") 2>&1
+export ARK_JETSON_KERNEL_DIR="$SCRIPT_DIR"
+
+# Auto-containerize on hosts other than Ubuntu 22.04. See docs/build_host.md.
+source "$SCRIPT_DIR/scripts/container_runner.sh"
+
+# Log output to file while keeping terminal output. Skip when re-execing into
+# the build container — the in-container run will tee the same bind-mounted
+# file itself, and overlapping tees would garble the log.
+if ! needs_container; then
+    exec > >(tee "$SCRIPT_DIR/build.log.txt") 2>&1
+fi
 
 # Refuse to build against a missing or stale BSP (points user at ./setup.sh).
 source "$SCRIPT_DIR/scripts/check_bsp.sh"
 require_bsp "$SCRIPT_DIR"
 
+# Target selection. Accept positional arg (PAB | JAJ | PAB_V3) for CI/scripted
+# use; fall back to interactive prompt for human shells. Done on the host
+# before any container handoff so the in-container pass always sees the arg.
+if [ -n "$1" ]; then
+    case "$1" in
+        PAB|JAJ|PAB_V3) TARGET="$1" ;;
+        *)
+            echo "Invalid target: $1. Must be PAB, JAJ, or PAB_V3." >&2
+            exit 1
+            ;;
+    esac
+elif [ -t 0 ]; then
+    echo "Please select the target platform:"
+    echo -e "\033[3mNote: PAB Rev3 is not the same as PAB_V3. PAB_V3 is a separate product.\033[0m"
+    echo "1) PAB"
+    echo "2) JAJ"
+    echo "3) PAB_V3"
+    read -p "Enter your choice (1, 2, or 3): " choice
+    case $choice in
+        1) TARGET="PAB" ;;
+        2) TARGET="JAJ" ;;
+        3) TARGET="PAB_V3" ;;
+        *) echo "Invalid choice. Exiting."; exit 1 ;;
+    esac
+else
+    echo "ERROR: target required (PAB | JAJ | PAB_V3) when running non-interactively." >&2
+    echo "Usage: $0 [PAB | JAJ | PAB_V3]" >&2
+    exit 1
+fi
+DT_SOURCE="ark_$(echo "$TARGET" | tr '[:upper:]' '[:lower:]')"
+export TARGET
+
+# Re-exec inside the 22.04 build container if needed. Does not return.
+if needs_container; then
+    run_in_container "$0" "$TARGET"
+fi
+
 START_TIME=$(date +%s)
 
 sudo -v
-export ARK_JETSON_KERNEL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
 export KERNEL_HEADERS=$ARK_JETSON_KERNEL_DIR/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
 export INSTALL_MOD_PATH=$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/
 
 pushd .
-
-# Interactive selection for target platform
-echo "Please select the target platform:"
-echo -e "\033[3mNote: PAB Rev3 is not the same as PAB_V3. PAB_V3 is a separate product.\033[0m"
-echo "1) PAB"
-echo "2) JAJ"
-echo "3) PAB_V3"
-read -p "Enter your choice (1, 2, or 3): " choice
-
-case $choice in
-    1)
-        export TARGET="PAB"
-        DT_SOURCE="ark_pab"
-        ;;
-    2)
-        export TARGET="JAJ"
-        DT_SOURCE="ark_jaj"
-        ;;
-    3)
-        export TARGET="PAB_V3"
-        DT_SOURCE="ark_pab_v3"
-        ;;
-    *)
-        echo "Invalid choice. Exiting."
-        exit 1
-        ;;
-esac
 
 # Auto-clean on target switch to prevent stale build artifacts
 LAST_TARGET_FILE="$ARK_JETSON_KERNEL_DIR/source_build/LAST_BUILT_TARGET"
