@@ -126,9 +126,5 @@ jobs:
 
           gh release create "$TAG" \
             --title "${PRODUCT_UPPER} v${VERSION}" \
-            --notes-file /tmp/release-notes.md
-
-          for f in "${RELEASE_FILES[@]}"; do
-            echo "Uploading $(basename "$f")..."
-            gh release upload "$TAG" "$f"
-          done
+            --notes-file /tmp/release-notes.md \
+            "${RELEASE_FILES[@]}"

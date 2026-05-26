@@ -39,6 +39,11 @@ TARGET=$(cat "$LAST_TARGET_FILE")
 PRODUCT=$(echo "$TARGET" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
 TAG="${PRODUCT}-${VERSION}"
 
+if ! git -C "$ROOT_DIR" diff-index --quiet HEAD --; then
+    echo "ERROR: Working tree has uncommitted changes. Commit or stash before releasing."
+    exit 1
+fi
+
 if git -C "$ROOT_DIR" rev-parse "$TAG" >/dev/null 2>&1; then
     echo "ERROR: Tag '$TAG' already exists."
     exit 1
