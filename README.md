@@ -11,6 +11,26 @@ This repository contains instructions and scripts for flashing your Jetson **Ori
 
 > **Building on a non-22.04 host?** `setup.sh` and `build_kernel.sh` auto-containerize themselves in a 22.04 docker image (docker is auto-installed via apt if missing). See [docs/build_host.md](docs/build_host.md) for why we pin to 22.04.
 
+## Prebuilt Images (Recommended)
+
+Flash a Jetson without building from source. Download and run the flash script for your carrier board:
+
+```
+curl -LO https://github.com/ARK-Electronics/ark_jetson_kernel/releases/download/<tag>/flash_from_package.sh
+chmod +x flash_from_package.sh
+./flash_from_package.sh <tag>
+```
+
+Replace `<tag>` with a release tag for your product (e.g. `pab-6.2.1.1`, `jaj-6.2.1.1`, `pab-v3-6.2.1.1`). Or pass just the product name to flash the latest release:
+
+```
+./flash_from_package.sh pab       # latest PAB release
+./flash_from_package.sh jaj       # latest JAJ release
+./flash_from_package.sh pab-v3    # latest PAB_V3 release
+```
+
+Requires Ubuntu 22.04 host with USB connection. Put the Jetson in recovery mode before running. See [Releases](https://github.com/ARK-Electronics/ark_jetson_kernel/releases) for available versions.
+
 ## Building from Source
 
 If you need to customize the kernel or device tree, clone this repository and follow the steps below.
