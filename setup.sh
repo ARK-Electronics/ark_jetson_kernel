@@ -150,7 +150,7 @@ sudo tar xpf $SAMPLE_FS_PACKAGE -C Linux_for_Tegra/rootfs/
 echo "Satisfying prerequisites"
 sudo Linux_for_Tegra/tools/l4t_flash_prerequisites.sh
 # Fresh systems could be missing these packages
-sudo apt-get install make build-essential flex bison libssl-dev -y
+sudo apt-get install make build-essential bc flex bison libssl-dev -y
 
 # Force-register the qemu-aarch64 binfmt handler in the kernel. binfmt-support
 # normally does this via its init script, but in the docker container the
