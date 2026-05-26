@@ -37,7 +37,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main
         with:
           tool-cache: true
           android: true
@@ -98,6 +98,11 @@ jobs:
               [ -f "$part" ] && RELEASE_FILES+=("$part")
             done
           done
+          if [ ${#RELEASE_FILES[@]} -eq 0 ]; then
+            echo "::error::No flash package artifacts found (ark-*.tar.gz or ark-*_split/)"
+            exit 1
+          fi
+
           RELEASE_FILES+=("packaging/flash_from_package.sh")
 
           echo "Release assets:"

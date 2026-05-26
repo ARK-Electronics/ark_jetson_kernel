@@ -95,7 +95,7 @@ RELEASE_TAG=""
 
 if is_product_name "$INPUT"; then
     echo "Finding latest $INPUT release..."
-    releases_json=$(curl -sL "${API_URL}?per_page=50")
+    releases_json=$(curl -sfL "${API_URL}?per_page=100")
 
     RELEASE_TAG=$(echo "$releases_json" \
         | grep -o '"tag_name": *"[^"]*"' \
@@ -157,7 +157,7 @@ else
         echo "Using cached download: $(basename "$TARBALL")"
     else
         echo "Fetching release $RELEASE_TAG..."
-        release_json=$(curl -sL "$API_URL/tags/$RELEASE_TAG")
+        release_json=$(curl -sfL "$API_URL/tags/$RELEASE_TAG")
 
         if echo "$release_json" | grep -q '"message"'; then
             msg=$(echo "$release_json" | grep -o '"message": *"[^"]*"' | head -1)
@@ -191,7 +191,7 @@ else
             fi
 
             echo "  Downloading $filename..."
-            curl -L --progress-bar -o "$CACHE_DIR/$filename.tmp" "$url"
+            curl -fL --progress-bar -o "$CACHE_DIR/$filename.tmp" "$url"
             mv "$CACHE_DIR/$filename.tmp" "$CACHE_DIR/$filename"
         done <<< "$assets"
         echo ""
