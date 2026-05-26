@@ -100,11 +100,9 @@ if is_product_name "$INPUT"; then
     RELEASE_TAG=$(echo "$releases_json" \
         | grep -o '"tag_name": *"[^"]*"' \
         | sed 's/"tag_name": *"//;s/"//' \
-        | while read -r tag; do
-            case "$tag" in
-                ${INPUT}-[0-9]*) echo "$tag"; break ;;
-            esac
-        done)
+        | grep "^${INPUT}-[0-9]" \
+        | sort -V \
+        | tail -1)
 
     if [ -z "$RELEASE_TAG" ]; then
         echo "ERROR: No releases found for product '$INPUT'"
