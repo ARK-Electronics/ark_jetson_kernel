@@ -1,100 +1,62 @@
 #!/bin/bash
 
-# Publishes generated flash package(s) to GitHub Releases.
-# Tags the commit, creates a release, and uploads the files.
+# Creates a per-product release tag and pushes it. CI handles the build and
+# release creation.
 #
 # Usage: ./publish_release.sh <version>
-#   e.g. ./publish_release.sh v1.0.0
+#   e.g. ./publish_release.sh 6.2.1.1
+#
+# Reads LAST_BUILT_TARGET to determine the product prefix.
+# The resulting tag is e.g. pab-6.2.1.1
 
 set -e
 
 if [ $# -lt 1 ]; then
     echo "Usage: ./publish_release.sh <version>"
-    echo "  e.g. ./publish_release.sh v1.0.0"
+    echo "  e.g. ./publish_release.sh 6.2.1.1"
+    echo ""
+    echo "Reads LAST_BUILT_TARGET to determine the product prefix."
+    echo "Creates and pushes a tag — CI handles the rest."
     exit 1
 fi
 
 VERSION="$1"
-
-# Check gh is available
-if ! command -v gh &>/dev/null; then
-    echo "ERROR: gh (GitHub CLI) not installed. Install with: sudo apt install gh"
-    exit 1
-fi
-
-# Find tarballs and/or split part files (not reassemble.sh — the flash script handles that)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-RELEASE_FILES=()
 
-for f in "$ROOT_DIR"/ark-*.tar.gz; do
-    [ -f "$f" ] || continue
-    RELEASE_FILES+=("$f")
-done
-
-for d in "$ROOT_DIR"/ark-*_split; do
-    [ -d "$d" ] || continue
-    for part in "$d"/*.part.*; do
-        [ -f "$part" ] || continue
-        RELEASE_FILES+=("$part")
-    done
-done
-
-if [ ${#RELEASE_FILES[@]} -eq 0 ]; then
-    echo "ERROR: No ark-*.tar.gz or ark-*_split/ found in project root."
-    echo "Run packaging/generate_flash_package.sh first."
+if ! echo "$VERSION" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then
+    echo "ERROR: Version must be digits and dots (e.g. 6.2.1.1), got: $VERSION"
     exit 1
 fi
 
-# Always include flash_from_package.sh
-if [ -f "$SCRIPT_DIR/flash_from_package.sh" ]; then
-    RELEASE_FILES+=("$SCRIPT_DIR/flash_from_package.sh")
-else
-    echo "WARNING: flash_from_package.sh not found, release will not include flash script."
+LAST_TARGET_FILE="$ROOT_DIR/source_build/LAST_BUILT_TARGET"
+if [ ! -f "$LAST_TARGET_FILE" ]; then
+    echo "ERROR: No LAST_BUILT_TARGET found. Run build_kernel.sh first."
+    exit 1
 fi
 
-echo "Files to upload:"
-for f in "${RELEASE_FILES[@]}"; do
-    echo "  $(basename "$f") ($(du -h "$f" | cut -f1))"
-done
+TARGET=$(cat "$LAST_TARGET_FILE")
+PRODUCT=$(echo "$TARGET" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+TAG="${PRODUCT}-${VERSION}"
+
+if git -C "$ROOT_DIR" rev-parse "$TAG" >/dev/null 2>&1; then
+    echo "ERROR: Tag '$TAG' already exists."
+    exit 1
+fi
+
+echo "Target:  $TARGET"
+echo "Product: $PRODUCT"
+echo "Tag:     $TAG"
 echo ""
+read -p "Create and push tag '$TAG'? [y/N] " confirm
+if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+    echo "Aborted."
+    exit 0
+fi
 
-# Tag and push
-git tag -a "$VERSION" -m "$VERSION"
-git push origin "$VERSION"
-echo "Tagged and pushed: $VERSION"
-
-# Build release notes
-NOTES="## ARK Carrier Board Image $VERSION
-
-### Flashing
-
-Download and run the flash script:
-\`\`\`
-curl -LO https://github.com/ARK-Electronics/ark_jetson_kernel/releases/download/${VERSION}/flash_from_package.sh
-chmod +x flash_from_package.sh
-./flash_from_package.sh ${VERSION}
-\`\`\`
-
-The script downloads the package, reassembles it if split, and flashes the Jetson.
-
-**Requirements:** Ubuntu 22.04 host with USB connection. Put the Jetson in recovery mode (hold Force Recovery button while powering on) before or during the script — it will wait for detection.
-
-Supports all Orin Nano/NX module variants — the correct DTB is selected automatically at flash time."
-
-# Create release, then upload files one at a time
-echo ""
-echo "Creating GitHub release..."
-gh release create "$VERSION" \
-    --title "$VERSION" \
-    --notes "$NOTES"
-
-for f in "${RELEASE_FILES[@]}"; do
-    echo "Uploading $(basename "$f") ($(du -h "$f" | cut -f1))..."
-    gh release upload "$VERSION" "$f"
-    echo "  Done."
-done
+git -C "$ROOT_DIR" tag -a "$TAG" -m "$TAG"
+git -C "$ROOT_DIR" push origin "$TAG"
 
 echo ""
-echo "All uploads complete!"
-echo "Release: $(gh release view "$VERSION" --json url -q .url)"
+echo "Tag '$TAG' pushed. CI will build and create the release."
+echo "Monitor: https://github.com/ARK-Electronics/ark_jetson_kernel/actions"

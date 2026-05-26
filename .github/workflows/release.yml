@@ -1,0 +1,134 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'pab-[0-9]*'
+      - 'jaj-[0-9]*'
+      - 'pab-v3-[0-9]*'
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    permissions:
+      contents: write
+
+    steps:
+      - name: Parse tag
+        id: parse
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            pab-v3-*) PRODUCT="pab-v3"; VERSION="${TAG#pab-v3-}"; TARGET="PAB_V3" ;;
+            pab-*)    PRODUCT="pab";    VERSION="${TAG#pab-}";    TARGET="PAB" ;;
+            jaj-*)    PRODUCT="jaj";    VERSION="${TAG#jaj-}";    TARGET="JAJ" ;;
+            *) echo "::error::Unrecognized tag format: $TAG"; exit 1 ;;
+          esac
+          echo "product=$PRODUCT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "Parsed tag: product=$PRODUCT version=$VERSION target=$TARGET"
+
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Install flash prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            abootimg binfmt-support binutils cpio cpp curl \
+            device-tree-compiler dosfstools \
+            iproute2 iputils-ping lbzip2 libxml2-utils lz4 \
+            netcat-openbsd nfs-kernel-server openssl \
+            python3-yaml qemu-user-static rsync sshpass \
+            udev usbutils uuid-runtime whois xmlstarlet zstd
+
+      - name: Cache bootlin toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/l4t-gcc
+          key: l4t-gcc-${{ hashFiles('bsp_version.env') }}
+
+      - name: Setup BSP
+        run: ./setup.sh --force
+
+      - name: Build kernel
+        run: ./build_kernel.sh ${{ steps.parse.outputs.target }}
+
+      - name: Generate flash package
+        run: ./packaging/generate_flash_package.sh
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PRODUCT="${{ steps.parse.outputs.product }}"
+          VERSION="${{ steps.parse.outputs.version }}"
+          TARGET="${{ steps.parse.outputs.target }}"
+
+          source bsp_version.env
+          L4T_VERSION="${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}"
+
+          PRODUCT_UPPER=$(echo "$PRODUCT" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+
+          # Collect release assets
+          RELEASE_FILES=()
+          for f in ark-*.tar.gz; do
+            [ -f "$f" ] && RELEASE_FILES+=("$f")
+          done
+          for d in ark-*_split; do
+            [ -d "$d" ] || continue
+            for part in "$d"/*.part.*; do
+              [ -f "$part" ] && RELEASE_FILES+=("$part")
+            done
+          done
+          RELEASE_FILES+=("packaging/flash_from_package.sh")
+
+          echo "Release assets:"
+          for f in "${RELEASE_FILES[@]}"; do
+            echo "  $(basename "$f") ($(du -h "$f" | cut -f1))"
+          done
+
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+          REPO_URL="https://github.com/${GITHUB_REPOSITORY}"
+
+          cat > /tmp/release-notes.md <<EOF
+          ## ${PRODUCT_UPPER} v${VERSION}
+
+          L4T ${L4T_VERSION} (Jetpack ${JETPACK_VERSION}) | Built from \`${COMMIT_SHORT}\`
+
+          ### Flash
+
+          \`\`\`
+          curl -LO ${REPO_URL}/releases/download/${TAG}/flash_from_package.sh
+          chmod +x flash_from_package.sh
+          ./flash_from_package.sh ${TAG}
+          \`\`\`
+
+          Put the Jetson in recovery mode before running. Requires Ubuntu 22.04 host with USB connection. Supports all Orin Nano/NX module variants.
+          EOF
+
+          gh release create "$TAG" \
+            --title "${PRODUCT_UPPER} v${VERSION}" \
+            --notes-file /tmp/release-notes.md
+
+          for f in "${RELEASE_FILES[@]}"; do
+            echo "Uploading $(basename "$f")..."
+            gh release upload "$TAG" "$f"
+          done
