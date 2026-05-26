@@ -157,7 +157,7 @@ else
         echo "Using cached download: $(basename "$TARBALL")"
     else
         echo "Fetching release $RELEASE_TAG..."
-        release_json=$(curl -sfL "$API_URL/tags/$RELEASE_TAG")
+        release_json=$(curl -sL "$API_URL/tags/$RELEASE_TAG")
 
         if echo "$release_json" | grep -q '"message"'; then
             msg=$(echo "$release_json" | grep -o '"message": *"[^"]*"' | head -1)
