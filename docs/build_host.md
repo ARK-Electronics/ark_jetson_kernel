@@ -2,16 +2,16 @@
 
 ## Required host
 
-NVIDIA's documented build host for L4T R36.4.4 / JetPack 6.2.1 is **Ubuntu 22.04** (or 20.04). This repo's `setup.sh` and `build_kernel.sh` enforce that:
+NVIDIA's documented build host for L4T R36.4.4 / JetPack 6.2.1 is **Ubuntu 22.04** (or 20.04). This repo's `setup.sh` and `build.sh` enforce that:
 
 - On Ubuntu 22.04 they run natively.
 - On any other host they re-exec themselves inside a 22.04 docker container (`ark-jetson-builder:22.04`, built from `docker/Dockerfile` on first use).
 - If docker is missing on a non-22.04 host, the scripts auto-install it via `apt-get install -y docker.io` (requires sudo). On non-apt distros they hard-fail with a pointer to this document.
 - If the current user isn't in the `docker` group, the wrapper falls back to `sudo docker` so the build works without forcing a logout/relogin to pick up the new group. Add yourself to the `docker` group later if you'd rather avoid the per-invocation sudo: `sudo usermod -aG docker $USER` then re-login.
 
-The repo bind-mounts itself into the container at `/workspace` and the bootlin cross-toolchain at `/root/l4t-gcc`, so build artifacts (`prebuilt/`, `source_build/`) and the toolchain persist on the host across container runs.
+The repo bind-mounts itself into the container at `/workspace` and the bootlin cross-toolchain at `/root/l4t-gcc`, so build artifacts (`staging/`, `downloads/`) and the toolchain persist on the host across container runs.
 
-The container runs as root, so everything it writes through the bind mounts (`prebuilt/`, `source_build/`, `~/l4t-gcc`) ends up `root`-owned on the host. The same is partially true of a native-22.04 build (`apply_binaries.sh` and friends `sudo`-write a lot of `prebuilt/`), so the practical impact is the same: use `sudo rm -rf` if you want to wipe `prebuilt/` or `source_build/` by hand. `setup.sh --force` already does this for you.
+The container runs as root, so everything it writes through the bind mounts (`staging/`, `downloads/`, `~/l4t-gcc`) ends up `root`-owned on the host. The same is partially true of a native-22.04 build (`apply_binaries.sh` and friends `sudo`-write a lot of the staging rootfs), so the practical impact is the same: use `sudo rm -rf` if you want to wipe a staging directory by hand.
 
 `flash.sh` always runs on the host — it transfers already-built artifacts to the device over USB and gains nothing from containerization.
 
@@ -61,7 +61,7 @@ Containerization addresses the root cause and matches NVIDIA's documented suppor
 
 ## CI
 
-GitHub Actions has a native `ubuntu-22.04` runner, so CI runs the build natively without involving the container at all. See `.github/workflows/build.yml`. The bootlin toolchain is cached across runs keyed on `bsp_version.env`'s hash; the BSP/rootfs/sources tarballs (~5GB extracted) are re-fetched each run because `setup.sh` is destructive — caching them would require a more invasive `setup.sh` refactor.
+GitHub Actions has a native `ubuntu-22.04` runner, so CI runs the build natively without involving the container at all. See `.github/workflows/build.yml`. The bootlin toolchain is cached across runs keyed on `bsp_version.env`'s hash; the BSP/rootfs/sources tarballs are re-downloaded each run (caching ~5GB across runs is not worth the Actions cache churn).
 
 ## Verifying a healthy build
 

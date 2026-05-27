@@ -2,10 +2,15 @@
 
 # IMX219 ONLY
 # https://www.waveshare.com/wiki/IMX219-160_Camera
+#
+# Usage: copy_camera_params.sh <path-to-Linux_for_Tegra>
+
+L4T_DIR="${1:?Usage: copy_camera_params.sh <path-to-Linux_for_Tegra>}"
+
 DOWNLOAD_URL="https://files.waveshare.com/upload/e/eb/Camera_overrides.tar.gz"
 TAR_FILE="Camera_overrides.tar.gz"
 ISP_FILE="camera_overrides.isp"
-DEST_DIR="$ARK_JETSON_KERNEL_DIR/prebuilt/Linux_for_Tegra/rootfs/var/nvidia/nvcam/settings"
+DEST_DIR="$L4T_DIR/rootfs/var/nvidia/nvcam/settings"
 
 if [ -f "$DEST_DIR/$ISP_FILE" ]; then
     echo "Camera overrides file already exists at $DEST_DIR/$ISP_FILE"

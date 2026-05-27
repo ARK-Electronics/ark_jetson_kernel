@@ -9,7 +9,17 @@ This repository contains instructions and scripts for flashing your Jetson **Ori
 | Kernel | Linux 5.15 |
 | Host OS | Ubuntu 22.04 |
 
-> **Building on a non-22.04 host?** `setup.sh` and `build_kernel.sh` auto-containerize themselves in a 22.04 docker image (docker is auto-installed via apt if missing). See [docs/build_host.md](docs/build_host.md) for why we pin to 22.04.
+> **Building on a non-22.04 host?** `setup.sh` and `build.sh` auto-containerize themselves in a 22.04 docker image (docker is auto-installed via apt if missing). See [docs/build_host.md](docs/build_host.md) for why we pin to 22.04.
+
+## Products
+
+| Target | Carrier Board | Notes |
+| --- | --- | --- |
+| `PAB` | ARK Jetson PAB Carrier | DP bidir pinmux |
+| `JAJ` | ARK Just a Jetson Carrier | HDMI pinmux |
+| `PAB_V3` | ARK Jetson PAB V3 Carrier | Separate product (not PAB Rev3), KSZ8795 ethernet switch |
+
+Each product has its own device tree overlay and optional kernel config in `products/{TARGET}/`. Build artifacts are fully isolated in per-product staging directories — you can build all three and flash any of them without cross-contamination.
 
 ## Prebuilt Images (Recommended)
 
@@ -36,18 +46,17 @@ Requires a Debian/Ubuntu host with USB connection. Put the Jetson in recovery mo
 If you need to customize the kernel or device tree, clone this repository and follow the steps below.
 
 ### 1. Setup
-Run the **setup.sh** script to download the Jetson Orin Nano / NX Jetpack 6 BSP and kernel source.
-
-The script will configure the default user, password, and hostname as `jetson`.
+Download the BSP, root filesystem, and kernel source tarballs:
 ```
 ./setup.sh
 ```
 
 ### 2. Build
-Once the setup script is finished you can build the kernel. Pass the target platform as an argument, or run with no argument for an interactive prompt.
+Build a target. The first build stages the full L4T tree (extract, configure rootfs, apply patches) which takes several minutes. Subsequent builds skip staging and just recompile.
 ```
-./build_kernel.sh           # interactive prompt
-./build_kernel.sh PAB_V3    # non-interactive: PAB | JAJ | PAB_V3
+./build.sh PAB        # build one target
+./build.sh all        # build all three
+./build.sh PAB --clean  # wipe staging and rebuild from scratch
 ```
 
 ### 3. Add WiFi (optional)
@@ -69,7 +78,7 @@ Connect a micro USB cable to the port adjacent to the mini HDMI. Power on with t
 
 Flash the image:
 ```
-./flash.sh
+./flash.sh PAB
 ```
 
 #### Flash options
@@ -78,16 +87,16 @@ By default, `flash.sh` targets NVMe + Orin Super. For other configurations:
 
 ```
 # Flash to SD card (NVIDIA dev kit modules)
-./flash.sh --sdcard
+./flash.sh PAB --sdcard
 
 # Flash to USB thumb drive
-./flash.sh --usb
+./flash.sh PAB --usb
 
 # Flash non-super module variant
-./flash.sh --no-super
+./flash.sh PAB --no-super
 
 # Both
-./flash.sh --sdcard --no-super
+./flash.sh PAB --sdcard --no-super
 ```
 
 Once complete, SSH in via Micro USB or WiFi.
@@ -114,7 +123,7 @@ The sections below cover advanced topics for reference. Most users will not need
 ### Flashing the QSPI Bootloader
 You can flash just the QSPI bootloader and install a pre-flashed NVME afterwards ([NVIDIA Docs](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/FlashingSupport.html#examples)). If you are upgrading from Jetpack5 to Jetpack6 you must reflash the QSPI bootloader.
 ```
-cd prebuilt/Linux_for_Tegra/
+cd staging/PAB/Linux_for_Tegra/
 sudo ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit-super nvme0n1p1
 ```
 If the ./flash.sh command fails, try the l4t_initrd_flash.sh command:
@@ -166,34 +175,24 @@ See [docs/10gbe_ethernet.md](docs/10gbe_ethernet.md) for using the Auvidea M20E 
 
 ---
 
-### Building from Source
-The following steps have been automated for you in **build_kernel.sh**.
+### Manual Kernel Build (Advanced)
+The following steps are automated by `build.sh`. For manual builds, adjust the target directory as needed:
 
 #### Building the kernel, modules, and dtbs
-Navigate to the root of the kernel sources and build the kernel, modules, and dtbs:
 ```
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS=$PWD/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
-export INSTALL_MOD_PATH=$PWD/prebuilt/Linux_for_Tegra/rootfs/
-cd source_build/Linux_for_Tegra/source
+export KERNEL_HEADERS=$PWD/staging/PAB/Linux_for_Tegra/source/kernel/kernel-jammy-src
+export INSTALL_MOD_PATH=$PWD/staging/PAB/Linux_for_Tegra/rootfs/
+cd staging/PAB/Linux_for_Tegra/source
 make -C kernel && make modules && make dtbs
 ```
-Install the kernel rootfs into the prebuilt directory:
+Install the kernel into the staging directory:
 ```
 sudo -E make install -C kernel
 ```
-And copy the kernel image to the prebuilt directory:
+Copy the kernel image:
 ```
-cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../../prebuilt/Linux_for_Tegra/kernel/
-```
-And copy the dtbs if you've made changes to the device tree:
-```
-scripts/copy_dtbs_to_prebuilt.sh
-```
-Navigate back to prebuilt workspace and flash the image:
-```
-cd prebuilt/Linux_for_Tegra/
-sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml --erase-all --showlogs --network usb0 jetson-orin-nano-devkit-super nvme0n1p1
+cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../../kernel/
 ```
 
 ---
@@ -202,14 +201,14 @@ sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device nvme0n1p1 -p "-c
 The camera overlays can be built and installed onto the Jetson without needing to reflash.
 ```
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS=$PWD/source_build/Linux_for_Tegra/source/kernel/kernel-jammy-src
-cd source_build/Linux_for_Tegra/source/
+export KERNEL_HEADERS=$PWD/staging/PAB/Linux_for_Tegra/source/kernel/kernel-jammy-src
+cd staging/PAB/Linux_for_Tegra/source/
 make dtbs
 ```
 
 Copy the overlay DTB to the Jetson via Micro-USB:
 ```
-DTB_PATH="$PWD/source_build/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs/"
+DTB_PATH="staging/PAB/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs/"
 OVERLAY_DTB=<your_overlay>
 scp $DTB_PATH/$OVERLAY_DTB jetson@192.168.55.1:~
 ```
@@ -254,7 +253,7 @@ nvargus_nvraw --lps
 ---
 
 ### Notes on Building the Kernel and Modifying the Device Tree
-To make changes to the kernel device tree you must build the kernel from source. After building from source you will copy over the new **tegra234-p3768-0000+p3767-<SKU>-nv.dtb** device tree binary to the corresponding location in the prebuilt directory and flash using the same method.
+To make changes to the kernel device tree you must build the kernel from source. After building from source, the device tree binaries are installed into the staging directory and included in the next flash.
 
 Note that there are different device tree binaries depending on the module and RAM. <br>
 https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/HR/JetsonModuleAdaptationAndBringUp/JetsonOrinNxNanoSeries.html#porting-the-linux-kernel-device-tree <br>
@@ -263,4 +262,4 @@ https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/HR/JetsonModuleAdap
 **Orin Nano 8GB-DRAM**  : tegra234-p3768-0000+p3767-**0003**-nv.dtb <br>
 **Orin Nano 4GB-DRAM**  : tegra234-p3768-0000+p3767-**0004**-nv.dtb <br>
 
-The device tree files for Jetson Orin Nano/NX can be found in the kernel source directory at **Linux_for_Tegra/source/hardware/nvidia/t23x/nv-public**. We apply an overlay of modified files from the **device_tree** directory for both PAB and JaJ targets. If you want to modify the device tree you will need to modify the files there and and copy them into the correct location in the source_build. <br>
+The device tree source files for each product live in `products/{TARGET}/device_tree/`. These are overlaid onto the NVIDIA kernel source during build. To modify the device tree, edit the files in the product directory and re-run `./build.sh <TARGET>`.

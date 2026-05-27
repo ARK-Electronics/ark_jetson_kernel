@@ -1,11 +1,15 @@
-jetson_linux_r35.3.1_aarch64.tbz2
-tegra_linux_sample-root-filesystem_r35.3.1_aarch64.tbz2
-ark_jetson_compiled_device_tree_files/
+# Per-product staging directories (created by build.sh)
+staging/
+
+# Cached BSP/rootfs/source tarballs (created by setup.sh)
+downloads/
+
+# Legacy directories (pre-refactor)
 prebuilt/
 source_build/
-output.txt
+ark_jetson_compiled_device_tree_files/
 
-# Log files
+# Legacy log files (now written to staging/)
 setup.log.txt
 build.log.txt
 flash.log.txt
@@ -14,3 +18,6 @@ generate_flash_package.log.txt
 # Flash packages
 ark-*.tar.gz
 *_split/
+
+# Misc
+output.txt

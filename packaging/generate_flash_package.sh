@@ -3,17 +3,22 @@
 # Generates a self-contained massflash package (.tar.gz) from a built kernel image.
 # The package can be flashed on any Linux host without build tools or kernel source.
 #
-# Prerequisites: Run setup.sh and build_kernel.sh first.
+# Prerequisites: Run setup.sh and build.sh first.
 #
-# Usage: ./generate_flash_package.sh [--sdcard] [--no-super]
+# Usage: ./generate_flash_package.sh <TARGET> [--sdcard] [--no-super]
 
-# Defaults: NVMe + super (same as flash.sh)
+# ── Argument parsing ────────────────────────────────────────────────────────
+
 STORAGE="nvme"
 STORAGE_DEV="nvme0n1p1"
 FLASH_TARGET="jetson-orin-nano-devkit-super"
+TARGET=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        PAB|JAJ|PAB_V3)
+            TARGET="$1"
+            shift ;;
         --sdcard)
             STORAGE="sdcard"
             STORAGE_DEV="mmcblk0p1"
@@ -22,19 +27,22 @@ while [[ $# -gt 0 ]]; do
             FLASH_TARGET="jetson-orin-nano-devkit"
             shift ;;
         *)
-            echo "Unknown option: $1"
-            echo "Usage: ./generate_flash_package.sh [--sdcard] [--no-super]"
+            echo "Unknown option: $1" >&2
+            echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3> [--sdcard] [--no-super]" >&2
             exit 1 ;;
     esac
 done
 
-# Log output to file while keeping terminal output
+if [ -z "$TARGET" ]; then
+    echo "ERROR: target required (PAB | JAJ | PAB_V3)." >&2
+    echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3> [--sdcard] [--no-super]" >&2
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-exec > >(tee "$ROOT_DIR/generate_flash_package.log.txt") 2>&1
+exec > >(tee "$ROOT_DIR/staging/$TARGET/generate_flash_package.log.txt") 2>&1
 
-# Capture ark_jetson_kernel source version so it can be logged here and
-# embedded in the package (see BUILD_INFO.txt below).
 GIT_COMMIT=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_DESCRIBE=$(git -C "$ROOT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -49,27 +57,17 @@ echo "  Commit:   $GIT_COMMIT"
 echo "  Describe: $GIT_DESCRIBE"
 echo "========================================="
 
-# Validate that a kernel has been built
-LAST_TARGET_FILE="$ROOT_DIR/source_build/LAST_BUILT_TARGET"
-if [ ! -f "$LAST_TARGET_FILE" ]; then
-    echo "ERROR: No LAST_BUILT_TARGET file found. Run build_kernel.sh first."
-    exit 1
-fi
-TARGET=$(cat "$LAST_TARGET_FILE")
-
-L4T_DIR="$ROOT_DIR/prebuilt/Linux_for_Tegra"
+L4T_DIR="$ROOT_DIR/staging/$TARGET/Linux_for_Tegra"
 if [ ! -d "$L4T_DIR" ]; then
-    echo "ERROR: prebuilt/Linux_for_Tegra not found. Run setup.sh and build_kernel.sh first."
+    echo "ERROR: staging/$TARGET/Linux_for_Tegra not found. Run build.sh $TARGET first." >&2
     exit 1
 fi
 
 if [ ! -f "$L4T_DIR/kernel/Image" ]; then
-    echo "ERROR: Kernel Image not found in prebuilt. Run build_kernel.sh first."
+    echo "ERROR: Kernel Image not found in staging/$TARGET/. Run build.sh $TARGET first." >&2
     exit 1
 fi
 
-# Build descriptive output filename
-# e.g. ark-pab-v3-nvme-super.tar.gz
 TARGET_LOWER=$(echo "$TARGET" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
 PACKAGE_NAME="ark-${TARGET_LOWER}-${STORAGE}"
 if [[ "$FLASH_TARGET" == *"-super" ]]; then
@@ -84,7 +82,6 @@ echo "  Board:   $FLASH_TARGET"
 echo "  Output:  ${PACKAGE_NAME}.tar.gz"
 echo "========================================="
 
-# NOTE: The flash tool auto-detects the actual module variant at flash time.
 export BOARDID=3767
 export FAB=300
 export BOARDSKU=0000
@@ -93,14 +90,9 @@ sudo -v
 
 cd "$L4T_DIR"
 
-# NVIDIA's l4t_initrd_flash.sh calls fill_devpaths (USB device scan) unconditionally,
-# even with --no-flash. On headless CI runners there are no USB host controllers, so
-# the find on /sys/bus/usb/devices/usb*/ fails and aborts the script. The devpaths
-# result is never used when --no-flash is set, so skip the scan entirely.
 sed -i 's/^fill_devpaths$/if [ "${no_flash}" = "0" ]; then fill_devpaths; fi/' \
     ./tools/kernel_flash/l4t_initrd_flash.sh
 
-# Generate the massflash package
 if [ "$STORAGE" = "nvme" ]; then
     sudo -E ./tools/kernel_flash/l4t_initrd_flash.sh \
         --no-flash --massflash 1 \
@@ -110,7 +102,6 @@ if [ "$STORAGE" = "nvme" ]; then
         --erase-all --network usb0 \
         "$FLASH_TARGET" "$STORAGE_DEV"
 else
-    # SD card
     sudo -E ./tools/kernel_flash/l4t_initrd_flash.sh \
         --no-flash --massflash 1 \
         --network usb0 \
@@ -122,7 +113,6 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Find the generated mfi tarball
 MFI_FILE="mfi_${FLASH_TARGET}.tar.gz"
 if [ ! -f "$MFI_FILE" ]; then
     echo "ERROR: Expected output file '$MFI_FILE' not found."
@@ -131,9 +121,6 @@ if [ ! -f "$MFI_FILE" ]; then
     exit 1
 fi
 
-# Embed BUILD_INFO.txt so customers can identify which ark_jetson_kernel
-# commit produced their flash package. tar --append requires an uncompressed
-# archive, so we decompress, append, and recompress.
 BUILD_INFO_DIR=$(mktemp -d)
 cat > "$BUILD_INFO_DIR/BUILD_INFO.txt" << EOF
 ark_jetson_kernel flash package
@@ -158,11 +145,9 @@ sudo tar --append -f "$MFI_TAR" -C "$BUILD_INFO_DIR" BUILD_INFO.txt
 sudo gzip "$MFI_TAR"
 rm -rf "$BUILD_INFO_DIR"
 
-# Move to project root with descriptive name
 OUTPUT_FILE="$ROOT_DIR/${PACKAGE_NAME}.tar.gz"
 mv "$MFI_FILE" "$OUTPUT_FILE"
 
-# Check size and split if >2GB (GitHub Releases limit)
 FILE_SIZE=$(stat -c%s "$OUTPUT_FILE")
 MAX_SIZE=$((2 * 1024 * 1024 * 1024))
 
@@ -175,10 +160,8 @@ if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
     SHA256=$(sha256sum "$OUTPUT_FILE" | cut -d' ' -f1)
     rm -f "$OUTPUT_FILE"
 
-    # Create reassembly script
     cat > "$SPLIT_DIR/reassemble.sh" << 'EOF'
 #!/bin/bash
-# Reassemble split flash package parts into a single tarball
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUTPUT=$(ls "$SCRIPT_DIR"/*.part.aa | sed 's/\.part\.aa$/.tar.gz/')
 echo "Reassembling parts..."

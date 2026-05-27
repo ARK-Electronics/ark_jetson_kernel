@@ -31,8 +31,8 @@ Releases are driven by git tags. Push a tag matching `{product}-{version}` and C
 Build the kernel for your target, then tag and push:
 
 ```
-./build_kernel.sh PAB
-./packaging/publish_release.sh 6.2.1.1    # creates tag pab-6.2.1.1 and pushes
+./build.sh PAB
+./packaging/publish_release.sh PAB 6.2.1.1    # creates tag pab-6.2.1.1 and pushes
 ```
 
 Or tag manually:
@@ -57,10 +57,10 @@ git push origin pab-6.2.1.1 jaj-6.2.1.1 pab-v3-6.2.1.1
 
 ## Generating a Flash Package (local)
 
-After running `build_kernel.sh`, generate a flash package locally:
+After running `build.sh`, generate a flash package locally:
 
 ```
-./packaging/generate_flash_package.sh
+./packaging/generate_flash_package.sh PAB
 ```
 
 No Jetson needs to be connected. The package includes DTBs for all module variants (Orin Nano 4GB/8GB, Orin NX 8GB/16GB) — the correct one is selected automatically at flash time.

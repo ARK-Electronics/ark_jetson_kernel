@@ -17,15 +17,15 @@ jobs:
           path: ~/l4t-gcc
           key: l4t-gcc-${{ hashFiles('bsp_version.env') }}
 
-      - name: Setup BSP
+      - name: Download BSP
         run: ./setup.sh --force
 
       - name: Build kernel for PAB
-        run: ./build_kernel.sh PAB
+        run: ./build.sh PAB
 
       - name: Upload kernel artifacts
         uses: actions/upload-artifact@v4
         with:
           name: kernel-PAB
-          path: prebuilt/Linux_for_Tegra/kernel/
+          path: staging/PAB/Linux_for_Tegra/kernel/
           retention-days: 14

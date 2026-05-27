@@ -3,39 +3,39 @@
 # Creates a per-product release tag and pushes it. CI handles the build and
 # release creation.
 #
-# Usage: ./publish_release.sh <version>
-#   e.g. ./publish_release.sh 6.2.1.1
+# Usage: ./publish_release.sh <TARGET> <version>
+#   e.g. ./publish_release.sh PAB 6.2.1.1
 #
-# Reads LAST_BUILT_TARGET to determine the product prefix.
 # The resulting tag is e.g. pab-6.2.1.1
 
 set -e
 
-if [ $# -lt 1 ]; then
-    echo "Usage: ./publish_release.sh <version>"
-    echo "  e.g. ./publish_release.sh 6.2.1.1"
+if [ $# -lt 2 ]; then
+    echo "Usage: ./publish_release.sh <PAB | JAJ | PAB_V3> <version>"
+    echo "  e.g. ./publish_release.sh PAB 6.2.1.1"
     echo ""
-    echo "Reads LAST_BUILT_TARGET to determine the product prefix."
     echo "Creates and pushes a tag — CI handles the rest."
     exit 1
 fi
 
-VERSION="$1"
+TARGET="$1"
+VERSION="$2"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+case "$TARGET" in
+    PAB|JAJ|PAB_V3) ;;
+    *)
+        echo "ERROR: Invalid target '$TARGET'. Must be PAB, JAJ, or PAB_V3."
+        exit 1
+        ;;
+esac
 
 if ! echo "$VERSION" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then
     echo "ERROR: Version must be digits and dots (e.g. 6.2.1.1), got: $VERSION"
     exit 1
 fi
 
-LAST_TARGET_FILE="$ROOT_DIR/source_build/LAST_BUILT_TARGET"
-if [ ! -f "$LAST_TARGET_FILE" ]; then
-    echo "ERROR: No LAST_BUILT_TARGET found. Run build_kernel.sh first."
-    exit 1
-fi
-
-TARGET=$(cat "$LAST_TARGET_FILE")
 PRODUCT=$(echo "$TARGET" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
 TAG="${PRODUCT}-${VERSION}"
 
