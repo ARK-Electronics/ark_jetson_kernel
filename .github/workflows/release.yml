@@ -128,7 +128,7 @@ jobs:
           ./flash_from_package.sh ${TAG}
           \`\`\`
 
-          Put the Jetson in recovery mode before running. Requires Ubuntu 22.04 host with USB connection. Supports all Orin Nano/NX module variants.
+          Put the Jetson in recovery mode before running. Requires a Debian/Ubuntu host with USB connection. Supports all Orin Nano/NX module variants.
           EOF
 
           gh release create "$TAG" \
