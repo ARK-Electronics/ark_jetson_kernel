@@ -65,6 +65,22 @@ if [ -z "$TARGET" ]; then
     fi
 fi
 
+# ── Validate downloads (before container handoff or build) ──────────────────
+
+DOWNLOADS_DIR="$SCRIPT_DIR/downloads"
+L4T_RELEASE_PACKAGE=$(basename "$BSP_URL")
+SAMPLE_FS_PACKAGE=$(basename "$ROOT_FS_URL")
+
+if [ "$TARGET" != "all" ]; then
+    for f in "$L4T_RELEASE_PACKAGE" "public_sources.tbz2" "$SAMPLE_FS_PACKAGE"; do
+        if [ ! -f "$DOWNLOADS_DIR/$f" ]; then
+            echo "ERROR: $f not found in downloads/." >&2
+            echo "       Run ./setup.sh first to download the BSP." >&2
+            exit 1
+        fi
+    done
+fi
+
 if [ "$TARGET" = "all" ]; then
     for t in PAB JAJ PAB_V3; do
         echo ""
@@ -80,23 +96,13 @@ fi
 
 export TARGET
 
+# Re-exec inside the 22.04 build container if needed. Pass the resolved
+# TARGET (not the original $@) so the container doesn't re-prompt.
 if needs_container; then
-    run_in_container "$0" "$@"
+    CONTAINER_ARGS=("$TARGET")
+    [ "$CLEAN" -eq 1 ] && CONTAINER_ARGS+=("--clean")
+    run_in_container "$0" "${CONTAINER_ARGS[@]}"
 fi
-
-# ── Validate downloads ──────────────────────────────────────────────────────
-
-DOWNLOADS_DIR="$SCRIPT_DIR/downloads"
-L4T_RELEASE_PACKAGE=$(basename "$BSP_URL")
-SAMPLE_FS_PACKAGE=$(basename "$ROOT_FS_URL")
-
-for f in "$L4T_RELEASE_PACKAGE" "public_sources.tbz2" "$SAMPLE_FS_PACKAGE"; do
-    if [ ! -f "$DOWNLOADS_DIR/$f" ]; then
-        echo "ERROR: $f not found in downloads/." >&2
-        echo "       Run ./setup.sh first to download the BSP." >&2
-        exit 1
-    fi
-done
 
 set -e -o pipefail
 
