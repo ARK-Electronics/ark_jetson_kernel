@@ -14,7 +14,8 @@ source "$SCRIPT_DIR/scripts/check_bsp.sh"
 source "$SCRIPT_DIR/scripts/container_runner.sh"
 
 if ! needs_container; then
-    exec > >(tee "$SCRIPT_DIR/setup.log.txt") 2>&1
+    mkdir -p "$SCRIPT_DIR/staging"
+    exec > >(tee "$SCRIPT_DIR/staging/setup.log.txt") 2>&1
 fi
 
 FORCE=0

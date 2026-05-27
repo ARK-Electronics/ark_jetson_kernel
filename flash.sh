@@ -57,11 +57,12 @@ if [ -z "$TARGET" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec > >(tee "$SCRIPT_DIR/flash.log.txt") 2>&1
 
 source "$SCRIPT_DIR/scripts/check_bsp.sh"
 
 L4T_DIR="$SCRIPT_DIR/staging/$TARGET/Linux_for_Tegra"
+
+exec > >(tee "$SCRIPT_DIR/staging/$TARGET/flash.log.txt") 2>&1
 
 if [ ! -d "$L4T_DIR" ]; then
     echo "ERROR: staging/$TARGET/ not found." >&2

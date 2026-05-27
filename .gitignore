@@ -9,7 +9,7 @@ prebuilt/
 source_build/
 ark_jetson_compiled_device_tree_files/
 
-# Log files
+# Legacy log files (now written to staging/)
 setup.log.txt
 build.log.txt
 flash.log.txt

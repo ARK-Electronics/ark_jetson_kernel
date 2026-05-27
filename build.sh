@@ -20,10 +20,6 @@ export ARK_JETSON_KERNEL_DIR="$SCRIPT_DIR"
 source "$SCRIPT_DIR/scripts/container_runner.sh"
 source "$SCRIPT_DIR/scripts/check_bsp.sh"
 
-if ! needs_container; then
-    exec > >(tee "$SCRIPT_DIR/build.log.txt") 2>&1
-fi
-
 # ── Argument parsing ────────────────────────────────────────────────────────
 
 CLEAN=0
@@ -116,6 +112,12 @@ sudo -v
 START_TIME=$(date +%s)
 
 STAGING_DIR="$SCRIPT_DIR/staging/$TARGET"
+
+# Log to the target's staging directory.
+mkdir -p "$STAGING_DIR"
+if ! needs_container; then
+    exec > >(tee "$STAGING_DIR/build.log.txt") 2>&1
+fi
 L4T_DIR="$STAGING_DIR/Linux_for_Tegra"
 SOURCE_DIR="$L4T_DIR/source"
 PRODUCT_DIR="$SCRIPT_DIR/products/$TARGET"

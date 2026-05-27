@@ -41,7 +41,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-exec > >(tee "$ROOT_DIR/generate_flash_package.log.txt") 2>&1
+exec > >(tee "$ROOT_DIR/staging/$TARGET/generate_flash_package.log.txt") 2>&1
 
 GIT_COMMIT=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_DESCRIBE=$(git -C "$ROOT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
