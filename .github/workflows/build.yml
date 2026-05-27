@@ -22,10 +22,3 @@ jobs:
 
       - name: Build kernel for PAB
         run: ./build.sh PAB
-
-      - name: Upload kernel artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-PAB
-          path: staging/PAB/Linux_for_Tegra/kernel/
-          retention-days: 14

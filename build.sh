@@ -1,10 +1,12 @@
 #!/bin/bash
 
-# Usage: ./build.sh <TARGET> [--clean]
-#        ./build.sh all [--clean]
+# Usage: ./build.sh <TARGET> [--clean] [--provision]
+#        ./build.sh all [--clean] [--provision]
 #
 # TARGET: PAB | JAJ | PAB_V3 | all
-# --clean: wipe staging/{TARGET}/ and re-stage from downloads before building.
+# --clean:     wipe staging/{TARGET}/ and re-stage from downloads before building.
+# --provision: run provision.sh to install additional packages into the rootfs.
+#              Only takes effect during staging (first build or --clean).
 #
 # On first build for a target (or after --clean), this script extracts the BSP,
 # root filesystem, and kernel source from downloads/, configures the rootfs,
@@ -23,6 +25,7 @@ source "$SCRIPT_DIR/scripts/check_bsp.sh"
 # ── Argument parsing ────────────────────────────────────────────────────────
 
 CLEAN=0
+PROVISION=0
 TARGET=""
 
 for arg in "$@"; do
@@ -30,9 +33,10 @@ for arg in "$@"; do
         PAB|JAJ|PAB_V3) TARGET="$arg" ;;
         all)            TARGET="all" ;;
         --clean)        CLEAN=1 ;;
+        --provision)    PROVISION=1 ;;
         *)
             echo "Invalid argument: $arg" >&2
-            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--clean]" >&2
+            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--clean] [--provision]" >&2
             exit 1
             ;;
     esac
@@ -56,7 +60,7 @@ if [ -z "$TARGET" ]; then
         esac
     else
         echo "ERROR: target required (PAB | JAJ | PAB_V3 | all) when running non-interactively." >&2
-        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--clean]" >&2
+        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--clean] [--provision]" >&2
         exit 1
     fi
 fi
@@ -90,6 +94,7 @@ if [ "$TARGET" = "all" ]; then
         echo "========================================="
         ARGS=("$t")
         [ "$CLEAN" -eq 1 ] && ARGS+=("--clean")
+        [ "$PROVISION" -eq 1 ] && ARGS+=("--provision")
         "$0" "${ARGS[@]}" || exit $?
     done
     exit 0
@@ -102,6 +107,7 @@ export TARGET
 if needs_container; then
     CONTAINER_ARGS=("$TARGET")
     [ "$CLEAN" -eq 1 ] && CONTAINER_ARGS+=("--clean")
+    [ "$PROVISION" -eq 1 ] && CONTAINER_ARGS+=("--provision")
     run_in_container "$0" "${CONTAINER_ARGS[@]}"
 fi
 
@@ -174,6 +180,44 @@ if [ ! -d "$L4T_DIR" ]; then
     sudo "$L4T_DIR/tools/l4t_create_default_user.sh" \
         -u jetson -p jetson -n jetson -a --accept-license
 
+    # Provision rootfs (optional — install additional packages, debs, etc.)
+    if [ "$PROVISION" -eq 1 ]; then
+        PROVISION_SCRIPT="$SCRIPT_DIR/provision.sh"
+        if [ ! -f "$PROVISION_SCRIPT" ]; then
+            echo "ERROR: --provision specified but provision.sh not found." >&2
+            exit 1
+        fi
+
+        echo "========================================="
+        echo "  Provisioning rootfs for $TARGET"
+        echo "========================================="
+
+        ROOTFS_DIR="$L4T_DIR/rootfs"
+
+        cleanup_chroot() {
+            sudo umount "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
+            sudo umount "$ROOTFS_DIR/dev" 2>/dev/null || true
+            sudo umount "$ROOTFS_DIR/sys" 2>/dev/null || true
+            sudo umount "$ROOTFS_DIR/proc" 2>/dev/null || true
+        }
+        trap cleanup_chroot EXIT
+
+        sudo mount --bind /proc "$ROOTFS_DIR/proc"
+        sudo mount --bind /sys "$ROOTFS_DIR/sys"
+        sudo mount --bind /dev "$ROOTFS_DIR/dev"
+        sudo mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
+        sudo cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
+
+        export ROOTFS_DIR TARGET
+        bash "$PROVISION_SCRIPT"
+
+        cleanup_chroot
+        trap - EXIT
+
+        echo "Rootfs provisioning complete."
+        echo ""
+    fi
+
     # Extract kernel source
     echo "Extracting kernel sources..."
     tar -xjf "$DOWNLOADS_DIR/public_sources.tbz2" -C "$STAGING_DIR/"
@@ -235,6 +279,11 @@ if [ ! -d "$L4T_DIR" ]; then
 
     echo "Staging complete for $TARGET."
     echo ""
+else
+    if [ "$PROVISION" -eq 1 ]; then
+        echo "WARNING: --provision has no effect — staging/$TARGET/ already exists." >&2
+        echo "         Use --clean --provision to re-stage with provisioning." >&2
+    fi
 fi
 
 # ── BSP version check ──────────────────────────────────────────────────────
