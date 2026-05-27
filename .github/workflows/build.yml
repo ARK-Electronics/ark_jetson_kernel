@@ -1,15 +1,67 @@
-name: Build kernel
+name: Build
 
 on:
   push:
     branches: [main]
+    tags:
+      - 'pab-[0-9]*'
+      - 'jaj-[0-9]*'
+      - 'pab-v3-[0-9]*'
   pull_request:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    permissions:
+      contents: write
+
     steps:
+      - name: Parse tag
+        if: startsWith(github.ref, 'refs/tags/')
+        id: tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            pab-v3-*) PRODUCT="pab-v3"; VERSION="${TAG#pab-v3-}"; TARGET="PAB_V3" ;;
+            pab-*)    PRODUCT="pab";    VERSION="${TAG#pab-}";    TARGET="PAB" ;;
+            jaj-*)    PRODUCT="jaj";    VERSION="${TAG#jaj-}";    TARGET="JAJ" ;;
+            *) echo "::error::Unrecognized tag format: $TAG"; exit 1 ;;
+          esac
+          echo "product=$PRODUCT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET"   >> "$GITHUB_OUTPUT"
+          echo "Parsed tag: product=$PRODUCT version=$VERSION target=$TARGET"
+
       - uses: actions/checkout@v4
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Install prerequisites
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+            abootimg binfmt-support binutils cpio cpp curl \
+            device-tree-compiler dosfstools \
+            iproute2 iputils-ping lbzip2 libxml2-utils lz4 \
+            netcat-openbsd nfs-kernel-server openssl \
+            python3-yaml qemu-user-static rsync sshpass \
+            udev usbutils uuid-runtime whois xmlstarlet zstd
 
       - name: Cache bootlin toolchain
         uses: actions/cache@v4
@@ -20,5 +72,69 @@ jobs:
       - name: Download BSP
         run: ./setup.sh --force
 
-      - name: Build kernel for PAB
-        run: ./build.sh PAB
+      - name: Build kernel
+        run: ./build.sh ${{ steps.tag.outputs.target || 'PAB' }}
+
+      - name: Generate flash package
+        if: startsWith(github.ref, 'refs/tags/')
+        run: ./packaging/generate_flash_package.sh ${{ steps.tag.outputs.target }}
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PRODUCT="${{ steps.tag.outputs.product }}"
+          VERSION="${{ steps.tag.outputs.version }}"
+
+          source bsp_version.env
+          L4T_VERSION="${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}"
+
+          PRODUCT_UPPER=$(echo "$PRODUCT" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
+
+          RELEASE_FILES=()
+          for f in ark-*.tar.gz; do
+            [ -f "$f" ] && RELEASE_FILES+=("$f")
+          done
+          for d in ark-*_split; do
+            [ -d "$d" ] || continue
+            for part in "$d"/*.part.*; do
+              [ -f "$part" ] && RELEASE_FILES+=("$part")
+            done
+          done
+          if [ ${#RELEASE_FILES[@]} -eq 0 ]; then
+            echo "::error::No flash package artifacts found (ark-*.tar.gz or ark-*_split/)"
+            exit 1
+          fi
+
+          RELEASE_FILES+=("packaging/flash_from_package.sh")
+
+          echo "Release assets:"
+          for f in "${RELEASE_FILES[@]}"; do
+            echo "  $(basename "$f") ($(du -h "$f" | cut -f1))"
+          done
+
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+          REPO_URL="https://github.com/${GITHUB_REPOSITORY}"
+
+          cat > /tmp/release-notes.md <<EOF
+          ## ${PRODUCT_UPPER} v${VERSION}
+
+          L4T ${L4T_VERSION} (Jetpack ${JETPACK_VERSION}) | Built from \`${COMMIT_SHORT}\`
+
+          ### Flash
+
+          \`\`\`
+          curl -LO ${REPO_URL}/releases/download/${TAG}/flash_from_package.sh
+          chmod +x flash_from_package.sh
+          ./flash_from_package.sh ${TAG}
+          \`\`\`
+
+          Put the Jetson in recovery mode before running. Requires a Debian/Ubuntu host with USB connection. Supports all Orin Nano/NX module variants.
+          EOF
+
+          gh release create "$TAG" \
+            --title "${PRODUCT_UPPER} v${VERSION}" \
+            --notes-file /tmp/release-notes.md \
+            "${RELEASE_FILES[@]}"
