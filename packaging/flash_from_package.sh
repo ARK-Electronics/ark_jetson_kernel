@@ -51,17 +51,11 @@ if [ "$1" = "--clean" ]; then
     exit 0
 fi
 
-# --- Check Ubuntu version ---
+# --- Check prerequisites available ---
 
-if [ -f /etc/lsb-release ]; then
-    DISTRO_VER=$(grep "DISTRIB_RELEASE" /etc/lsb-release | cut -d= -f2)
-    DISTRO_VER_NUM=$(echo "$DISTRO_VER" | sed 's/\.//')
-    if [ "$DISTRO_VER_NUM" -lt 2204 ] 2>/dev/null; then
-        echo "ERROR: Ubuntu 22.04 or newer is required (found $DISTRO_VER)."
-        exit 1
-    fi
-else
-    echo "WARNING: Could not detect Ubuntu version. Ubuntu 22.04+ is required."
+if ! command -v apt-get &>/dev/null; then
+    echo "ERROR: apt-get not found. This script requires a Debian/Ubuntu host."
+    exit 1
 fi
 
 # --- Install prerequisites ---

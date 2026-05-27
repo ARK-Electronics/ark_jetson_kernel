@@ -29,7 +29,7 @@ Replace `<tag>` with a release tag for your product (e.g. `pab-6.2.1.1`, `jaj-6.
 ./flash_from_package.sh pab-v3    # latest PAB_V3 release
 ```
 
-Requires Ubuntu 22.04 host with USB connection. Put the Jetson in recovery mode before running. See [Releases](https://github.com/ARK-Electronics/ark_jetson_kernel/releases) for available versions.
+Requires a Debian/Ubuntu host with USB connection. Put the Jetson in recovery mode before running. See [Releases](https://github.com/ARK-Electronics/ark_jetson_kernel/releases) for available versions.
 
 ## Building from Source
 
