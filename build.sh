@@ -52,10 +52,10 @@ if [ -z "$TARGET" ]; then
         echo "4) all"
         read -p "Enter your choice (1-4): " choice
         case $choice in
-            1) TARGET="PAB" ;;
-            2) TARGET="JAJ" ;;
-            3) TARGET="PAB_V3" ;;
-            4) TARGET="all" ;;
+            1|PAB)    TARGET="PAB" ;;
+            2|JAJ)    TARGET="JAJ" ;;
+            3|PAB_V3) TARGET="PAB_V3" ;;
+            4|all)    TARGET="all" ;;
             *) echo "Invalid choice. Exiting."; exit 1 ;;
         esac
     else
@@ -81,7 +81,12 @@ if [ "$TARGET" != "all" ]; then
     done
 fi
 
+# Cache sudo credentials once upfront so sub-processes and docker don't
+# each prompt independently.
+sudo -v
+
 if [ "$TARGET" = "all" ]; then
+    trap 'echo ""; echo "Aborted."; exit 130' INT
     for t in PAB JAJ PAB_V3; do
         echo ""
         echo "========================================="
@@ -89,7 +94,7 @@ if [ "$TARGET" = "all" ]; then
         echo "========================================="
         ARGS=("$t")
         [ "$CLEAN" -eq 1 ] && ARGS+=("--clean")
-        "$0" "${ARGS[@]}"
+        "$0" "${ARGS[@]}" || exit $?
     done
     exit 0
 fi
