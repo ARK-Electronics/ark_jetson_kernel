@@ -1,0 +1,2 @@
+# KSZ8795 SPI ethernet switch
+CONFIG_MICREL_KS8995MA=m

@@ -66,14 +66,14 @@ jobs:
           path: ~/l4t-gcc
           key: l4t-gcc-${{ hashFiles('bsp_version.env') }}
 
-      - name: Setup BSP
+      - name: Download BSP
         run: ./setup.sh --force
 
       - name: Build kernel
-        run: ./build_kernel.sh ${{ steps.parse.outputs.target }}
+        run: ./build.sh ${{ steps.parse.outputs.target }}
 
       - name: Generate flash package
-        run: ./packaging/generate_flash_package.sh
+        run: ./packaging/generate_flash_package.sh ${{ steps.parse.outputs.target }}
 
       - name: Create release
         env:

@@ -1,18 +1,20 @@
 #!/bin/bash
-# Shared BSP version detection. Source this from setup.sh, build_kernel.sh,
-# and flash.sh — bsp_version.env is the single source of truth for both the
+# Shared BSP version detection. Source this from setup.sh, build.sh, and
+# flash.sh — bsp_version.env is the single source of truth for both the
 # expected version and the download URLs.
 
 _check_bsp_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_check_bsp_dir/../bsp_version.env"
 unset _check_bsp_dir
 
-# Reads prebuilt/Linux_for_Tegra/rootfs/etc/nv_tegra_release (NVIDIA writes it
-# during the BSP extract). Sets DETECTED_BSP_RELEASE / DETECTED_BSP_REVISION.
+# Reads rootfs/etc/nv_tegra_release from a staging directory.
+# Sets DETECTED_BSP_RELEASE / DETECTED_BSP_REVISION.
 # Returns: 0 = match, 1 = nothing to detect, 2 = present but wrong version.
+#
+# $1: staging directory (e.g. staging/PAB) — must contain Linux_for_Tegra/
 detect_bsp_version() {
-    local repo_dir="$1"
-    local release_file="$repo_dir/prebuilt/Linux_for_Tegra/rootfs/etc/nv_tegra_release"
+    local staging_dir="$1"
+    local release_file="$staging_dir/Linux_for_Tegra/rootfs/etc/nv_tegra_release"
     DETECTED_BSP_RELEASE=""
     DETECTED_BSP_REVISION=""
 
@@ -36,29 +38,28 @@ detect_bsp_version() {
     return 2
 }
 
-# Aborts the calling script with a remediation hint if the BSP isn't ready.
-# Use from build_kernel.sh and flash.sh — both require a matching prebuilt/.
-require_bsp() {
-    local repo_dir="$1"
-    detect_bsp_version "$repo_dir"
+# Aborts the calling script if the staged BSP is missing or version-mismatched.
+# $1: staging directory (e.g. staging/PAB)
+require_bsp_staging() {
+    local staging_dir="$1"
+    detect_bsp_version "$staging_dir"
     case $? in
         0)
             return 0
             ;;
         1)
-            echo "ERROR: BSP not set up — prebuilt/ is missing or incomplete."
+            echo "ERROR: BSP not staged — staging directory is missing or incomplete."
             echo "       Expected: ${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}"
             echo ""
-            echo "Run ./setup.sh to download the BSP."
+            echo "Run ./build.sh <TARGET> --clean to re-stage from downloads."
             exit 1
             ;;
         2)
-            echo "ERROR: BSP version mismatch."
+            echo "ERROR: BSP version mismatch in staging directory."
             echo "       Found:    ${DETECTED_BSP_RELEASE}.${DETECTED_BSP_REVISION}"
             echo "       Expected: ${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}"
             echo ""
-            echo "Re-run ./setup.sh to upgrade the BSP."
-            echo "(setup.sh will prompt before deleting your existing prebuilt/ and source_build/)"
+            echo "Run ./setup.sh then ./build.sh <TARGET> --clean to upgrade."
             exit 1
             ;;
     esac

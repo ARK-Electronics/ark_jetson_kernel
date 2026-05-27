@@ -118,8 +118,8 @@ Pins retain their last-written value on release (until reboot, when MB1 BCT re-a
 
 If your actuator is active-low, or you need a pin to come up high to release a peripheral's reset, edit two BCT DTSIs in the carrier directory and reflash:
 
-- `device_tree/<carrier>/Linux_for_Tegra/bootloader/generic/BCT/tegra234-mb1-bct-pinmux-p3767-dp-a03.dtsi` — pinmux (function, pull, tristate, input-enable).
-- `device_tree/<carrier>/Linux_for_Tegra/bootloader/tegra234-mb1-bct-gpio-p3767-dp-a03.dtsi` — direction + initial value.
+- `products/<TARGET>/device_tree/Linux_for_Tegra/bootloader/generic/BCT/tegra234-mb1-bct-pinmux-p3767-dp-a03.dtsi` — pinmux (function, pull, tristate, input-enable).
+- `products/<TARGET>/device_tree/Linux_for_Tegra/bootloader/tegra234-mb1-bct-gpio-p3767-dp-a03.dtsi` — direction + initial value.
 
 For a generic output GPIO, the pinmux entry should be:
 
@@ -130,18 +130,18 @@ nvidia,tristate = <TEGRA_PIN_DISABLE>;
 nvidia,enable-input = <TEGRA_PIN_DISABLE>;
 ```
 
-…and place the `TEGRA234_MAIN_GPIO(...)` token under `gpio-output-low` or `gpio-output-high` (or `gpio-input` for inputs). Look up the right token in the Pinmux Spreadsheet (repo root) or in `device_tree/ark_jaj/.../overlay/ark_i2s_gpio.dts`.
+…and place the `TEGRA234_MAIN_GPIO(...)` token under `gpio-output-low` or `gpio-output-high` (or `gpio-input` for inputs). Look up the right token in the Pinmux Spreadsheet (in the product directory).
 
 Build and flash:
 
 ```bash
-./build_kernel.sh && ./flash.sh
+./build.sh PAB && ./flash.sh PAB
 ```
 
 For iterative BCT-only work (much faster than a full flash):
 
 ```bash
-cd prebuilt/Linux_for_Tegra/
+cd staging/PAB/Linux_for_Tegra/
 sudo ./flash.sh -k A_MB1_BCT -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit-super internal
 sudo ./flash.sh -k B_MB1_BCT -c bootloader/generic/cfg/flash_t234_qspi.xml jetson-orin-nano-devkit-super internal
 ```

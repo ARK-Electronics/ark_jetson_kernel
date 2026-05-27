@@ -45,12 +45,12 @@ IMX477 4-lane overlays have been removed. While the Sony IMX477 sensor silicon s
 
 Build the overlay DTBs (from host):
 ```
-./build_kernel.sh
+./build.sh PAB   # or JAJ, PAB_V3
 ```
 
 Copy the overlay to the Jetson:
 ```
-DTB_PATH="source_build/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs"
+DTB_PATH="staging/PAB/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs"
 scp $DTB_PATH/<overlay>.dtbo jetson@192.168.55.1:~
 ```
 

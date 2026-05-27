@@ -1,12 +1,24 @@
 #!/bin/bash
 
-# Defaults: NVMe + super (ARK PAB carrier)
+# Usage: ./flash.sh <TARGET> [--sdcard] [--usb] [--no-super]
+#
+# TARGET: PAB | JAJ | PAB_V3
+#
+# Flashes a previously-built target directly from its staging directory.
+# The device must be in USB recovery mode before running this script.
+
+# ── Argument parsing ────────────────────────────────────────────────────────
+
 STORAGE_DEV="nvme0n1p1"
 USE_INITRD=true
 FLASH_TARGET="jetson-orin-nano-devkit-super"
+TARGET=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        PAB|JAJ|PAB_V3)
+            TARGET="$1"
+            shift ;;
         --sdcard)
             STORAGE_DEV="mmcblk0p1"
             USE_INITRD=false
@@ -18,22 +30,53 @@ while [[ $# -gt 0 ]]; do
             FLASH_TARGET="jetson-orin-nano-devkit"
             shift ;;
         *)
-            echo "Unknown option: $1"
-            echo "Usage: ./flash.sh [--sdcard] [--usb] [--no-super]"
+            echo "Unknown option: $1" >&2
+            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--no-super]" >&2
             exit 1 ;;
     esac
 done
 
-# Log output to file while keeping terminal output
+if [ -z "$TARGET" ]; then
+    if [ -t 0 ]; then
+        echo "Please select the target to flash:"
+        echo "1) PAB"
+        echo "2) JAJ"
+        echo "3) PAB_V3"
+        read -p "Enter your choice (1-3): " choice
+        case $choice in
+            1) TARGET="PAB" ;;
+            2) TARGET="JAJ" ;;
+            3) TARGET="PAB_V3" ;;
+            *) echo "Invalid choice. Exiting."; exit 1 ;;
+        esac
+    else
+        echo "ERROR: target required (PAB | JAJ | PAB_V3) when running non-interactively." >&2
+        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--no-super]" >&2
+        exit 1
+    fi
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 exec > >(tee "$SCRIPT_DIR/flash.log.txt") 2>&1
 
-# Refuse to flash a missing or stale BSP (points user at ./setup.sh).
 source "$SCRIPT_DIR/scripts/check_bsp.sh"
-require_bsp "$SCRIPT_DIR"
 
-# Log ark_jetson_kernel source version so flash.log.txt records exactly
-# which commit built the image being flashed.
+L4T_DIR="$SCRIPT_DIR/staging/$TARGET/Linux_for_Tegra"
+
+if [ ! -d "$L4T_DIR" ]; then
+    echo "ERROR: staging/$TARGET/ not found." >&2
+    echo "       Run ./build.sh $TARGET first." >&2
+    exit 1
+fi
+
+require_bsp_staging "$SCRIPT_DIR/staging/$TARGET"
+
+if [ ! -f "$L4T_DIR/kernel/Image" ]; then
+    echo "ERROR: Kernel Image not found in staging/$TARGET/." >&2
+    echo "       Run ./build.sh $TARGET first." >&2
+    exit 1
+fi
+
 GIT_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_DESCRIBE=$(git -C "$SCRIPT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -44,31 +87,20 @@ echo "  Branch:   $GIT_BRANCH"
 echo "  Commit:   $GIT_COMMIT"
 echo "  Describe: $GIT_DESCRIBE"
 echo "========================================="
+echo "  Target:   $TARGET"
+echo "  Storage:  $STORAGE_DEV"
+echo "  Board:    $FLASH_TARGET"
+echo "========================================="
 
-# Pre-flash target confirmation
-LAST_TARGET_FILE="$SCRIPT_DIR/source_build/LAST_BUILT_TARGET"
-if [ -f "$LAST_TARGET_FILE" ]; then
-    LAST_TARGET=$(cat "$LAST_TARGET_FILE")
-    echo "========================================="
-    echo "  Built target: $LAST_TARGET"
-    echo "========================================="
-    read -p "Flash this target? (y/N): " confirm
-    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-        echo "Flash aborted."
-        exit 0
-    fi
-else
-    echo "WARNING: No LAST_BUILT_TARGET file found — cannot confirm which target was built."
-    read -p "Continue anyway? (y/N): " confirm
-    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
-        echo "Flash aborted."
-        exit 0
-    fi
+read -p "Flash $TARGET? (y/N): " confirm
+if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+    echo "Flash aborted."
+    exit 0
 fi
 
 sudo -v
 
-echo "Waiting for device..."
+echo "Waiting for device in recovery mode..."
 
 while true; do
     for pid in 7323 7423 7523 7623; do
@@ -79,17 +111,14 @@ while true; do
     sleep 1
 done
 
-pushd .
-cd prebuilt/Linux_for_Tegra/
+cd "$L4T_DIR"
+
 if [ "$USE_INITRD" = true ]; then
-    # NVMe flash
     sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device "$STORAGE_DEV" \
         -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" \
         -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml \
         --erase-all --showlogs --network usb0 \
         "$FLASH_TARGET" "$STORAGE_DEV"
 else
-    # SD card flash
     sudo ./flash.sh "$FLASH_TARGET" "$STORAGE_DEV"
 fi
-popd
