@@ -93,6 +93,13 @@ sudo -v
 
 cd "$L4T_DIR"
 
+# NVIDIA's l4t_initrd_flash.sh calls fill_devpaths (USB device scan) unconditionally,
+# even with --no-flash. On headless CI runners there are no USB host controllers, so
+# the find on /sys/bus/usb/devices/usb*/ fails and aborts the script. The devpaths
+# result is never used when --no-flash is set, so skip the scan entirely.
+sed -i 's/^fill_devpaths$/if [ "${no_flash}" = "0" ]; then fill_devpaths; fi/' \
+    ./tools/kernel_flash/l4t_initrd_flash.sh
+
 # Generate the massflash package
 if [ "$STORAGE" = "nvme" ]; then
     sudo -E ./tools/kernel_flash/l4t_initrd_flash.sh \
