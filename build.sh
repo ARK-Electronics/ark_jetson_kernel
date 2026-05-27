@@ -265,24 +265,12 @@ echo "========================================="
 cd "$SOURCE_DIR"
 
 make -C kernel && make modules && make dtbs
-if [ $? -ne 0 ]; then
-    echo "Kernel build failed."
-    exit 1
-fi
 
 echo "Installing in-tree modules and dtbs..."
 sudo -E make install -C kernel
-if [ $? -ne 0 ]; then
-    echo "Failed to install in-tree modules and dtbs."
-    exit 1
-fi
 
 echo "Installing out-of-tree modules..."
 sudo -E make modules_install
-if [ $? -ne 0 ]; then
-    echo "Failed to install out-of-tree modules."
-    exit 1
-fi
 
 # ── Fix module symlinks ─────────────────────────────────────────────────────
 
