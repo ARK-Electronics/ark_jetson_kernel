@@ -85,6 +85,11 @@ fi
 # /etc/os-release describes the container (always 22.04), not the actual host.
 [ -z "$ARK_BUILD_OS" ] && export ARK_BUILD_OS=$(. /etc/os-release && echo "$PRETTY_NAME")
 
+# Capture the build commit on the host. Inside the container the repo is
+# bind-mounted but owned by the host UID, so git refuses with "dubious
+# ownership" — resolve the hash here where git has the right ownership view.
+[ -z "$ARK_BUILD_COMMIT" ] && export ARK_BUILD_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
+
 # Cache sudo credentials once upfront so sub-processes and docker don't
 # each prompt independently.
 sudo -v
@@ -393,7 +398,7 @@ sudo cp "$SOURCE_DIR/nvidia-oot/drivers/media/i2c/arducam_csi2.ko" \
 
 # ── Record build metadata ───────────────────────────────────────────────────
 
-BUILD_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
+BUILD_COMMIT=$ARK_BUILD_COMMIT
 BUILD_DATE=$(date -Iseconds)
 
 echo "Recording build metadata to rootfs/etc/ark_jetson_kernel..."

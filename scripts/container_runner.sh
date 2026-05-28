@@ -105,6 +105,7 @@ run_in_container() {
         -w /workspace \
         -e IN_BUILD_CONTAINER=1 \
         -e ARK_BUILD_OS="$ARK_BUILD_OS" \
+        -e ARK_BUILD_COMMIT="$ARK_BUILD_COMMIT" \
         "$ARK_BUILDER_IMAGE" \
         bash "/workspace/$(basename "$script_path")" "$@"
 }
