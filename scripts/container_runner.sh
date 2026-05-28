@@ -104,6 +104,7 @@ run_in_container() {
         -v "$HOME/l4t-gcc:/root/l4t-gcc" \
         -w /workspace \
         -e IN_BUILD_CONTAINER=1 \
+        -e ARK_BUILD_OS="$ARK_BUILD_OS" \
         "$ARK_BUILDER_IMAGE" \
         bash "/workspace/$(basename "$script_path")" "$@"
 }

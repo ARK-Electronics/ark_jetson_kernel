@@ -81,6 +81,10 @@ if [ "$TARGET" != "all" ]; then
     done
 fi
 
+# Capture host OS before any container handoff — inside the build container,
+# /etc/os-release describes the container (always 22.04), not the actual host.
+[ -z "$ARK_BUILD_OS" ] && export ARK_BUILD_OS=$(. /etc/os-release && echo "$PRETTY_NAME")
+
 # Cache sudo credentials once upfront so sub-processes and docker don't
 # each prompt independently.
 sudo -v
@@ -386,6 +390,19 @@ done
 echo "Installing arducam_csi2.ko..."
 sudo cp "$SOURCE_DIR/nvidia-oot/drivers/media/i2c/arducam_csi2.ko" \
     "$L4T_DIR/rootfs/usr/lib/modules/$JETSON_KERNEL_VERSION/updates/drivers/media/i2c/"
+
+# ── Record build metadata ───────────────────────────────────────────────────
+
+BUILD_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
+BUILD_DATE=$(date -Iseconds)
+
+echo "Recording build metadata to rootfs/etc/ark_jetson_kernel..."
+sudo tee "$L4T_DIR/rootfs/etc/ark_jetson_kernel" >/dev/null <<EOF
+commit=$BUILD_COMMIT
+date=$BUILD_DATE
+build_os=$ARK_BUILD_OS
+target=$TARGET
+EOF
 
 # ── Done ────────────────────────────────────────────────────────────────────
 
