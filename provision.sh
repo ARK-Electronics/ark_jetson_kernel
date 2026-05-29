@@ -20,6 +20,7 @@ set -e
 # pin in ARK-OS packaging/build.sh.
 ARK_OS_VERSION="1.0.0"
 MAVSDK_VERSION="3.17.1"
+JETSON_STATS_VERSION="4.3.2"   # jtop daemon + client, installed system-wide via pip
 
 ARK_OS_DEB="ark-os-jetson_${ARK_OS_VERSION}_arm64.deb"
 # Upstream publishes no ubuntu22.04_arm64 build; debian12_arm64 is what ARK-OS has
@@ -44,6 +45,24 @@ sudo chroot "$ROOTFS_DIR" apt-get install -f -y
 echo "Installing ark-os-jetson..."
 sudo chroot "$ROOTFS_DIR" dpkg -i "/tmp/$ARK_OS_DEB" || true
 sudo chroot "$ROOTFS_DIR" apt-get install -f -y
+
+# jetson-stats provides the jtop daemon (jtop.service) and its Python client,
+# installed system-wide via pip. ARK-OS system-manager imports this same install
+# through the bundled venv's system-site-packages, so the client and daemon are
+# always the same version. Run as root, setup.py installs the unit to
+# /etc/systemd/system/jtop.service; its own systemctl enable/start are no-ops
+# while systemd isn't running in the chroot, so we enable it for first boot below.
+echo "Installing jetson-stats (jtop) system-wide..."
+sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
+sudo chroot "$ROOTFS_DIR" pip3 install "jetson-stats==${JETSON_STATS_VERSION}"
+sudo chroot "$ROOTFS_DIR" python3 -c "import jtop"                  # sanity: client installed
+sudo chroot "$ROOTFS_DIR" test -f /etc/systemd/system/jtop.service  # sanity: setup.py placed the unit
+# Enable jtop.service for first boot — offline equivalent of `systemctl enable`
+# (unit is WantedBy=multi-user.target), reliable in the chroot where systemctl
+# cannot reach a running manager.
+sudo chroot "$ROOTFS_DIR" mkdir -p /etc/systemd/system/multi-user.target.wants
+sudo chroot "$ROOTFS_DIR" ln -sf /etc/systemd/system/jtop.service \
+    /etc/systemd/system/multi-user.target.wants/jtop.service
 
 sudo rm "$ROOTFS_DIR/tmp/$MAVSDK_DEB" "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
 
