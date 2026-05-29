@@ -128,6 +128,25 @@ START_TIME=$(date +%s)
 
 STAGING_DIR="$SCRIPT_DIR/staging/$TARGET"
 
+# Clean BEFORE opening the log below: otherwise the `sudo rm -rf "$STAGING_DIR"`
+# in the clean step deletes the just-created build.log.txt, leaving tee writing to
+# an unlinked inode — so --clean builds would produce no log at all.
+if [ "$CLEAN" -eq 1 ] && [ -d "$STAGING_DIR" ]; then
+    # Safety net: a leaked bind mount under $STAGING_DIR (a /proc, /sys or /dev
+    # bound in by an interrupted provisioning run) would make the rm -rf below
+    # recurse into it and delete *host* device nodes. Refuse to clean while any
+    # mount is active under the tree — fail loud and let the operator unmount.
+    mounts_under=$(mount | awk -v d="$STAGING_DIR/" 'index($3, d)==1 {print $3}')
+    if [ -n "$mounts_under" ]; then
+        echo "ERROR: active mount(s) under $STAGING_DIR — refusing to 'rm -rf' it" >&2
+        echo "       (recursing into them could destroy host /dev). Unmount first:" >&2
+        echo "$mounts_under" | sed 's/^/         sudo umount /' >&2
+        exit 1
+    fi
+    echo "Cleaning staging/$TARGET/..."
+    sudo rm -rf "$STAGING_DIR"
+fi
+
 # Log to the target's staging directory.
 mkdir -p "$STAGING_DIR"
 if ! needs_container; then
@@ -145,13 +164,6 @@ fi
 export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
 export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
-
-# ── Clean if requested ──────────────────────────────────────────────────────
-
-if [ "$CLEAN" -eq 1 ] && [ -d "$STAGING_DIR" ]; then
-    echo "Cleaning staging/$TARGET/..."
-    sudo rm -rf "$STAGING_DIR"
-fi
 
 # ── Stage target (first build only) ────────────────────────────────────────
 
