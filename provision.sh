@@ -16,6 +16,9 @@
 
 set -e
 
+# Wall-clock start; reported at the end as "provisioning complete after Xm Ys".
+PROVISION_START=$(date +%s)
+
 # Pinned versions — bump manually when releasing. MAVSDK_VERSION must match the
 # pin in ARK-OS packaging/build.sh.
 ARK_OS_VERSION="1.0.0"
@@ -30,9 +33,35 @@ MAVSDK_DEB="libmavsdk-dev_${MAVSDK_VERSION}_debian12_arm64.deb"
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 MAVSDK_URL="https://github.com/mavlink/MAVSDK/releases/download/v${MAVSDK_VERSION}/${MAVSDK_DEB}"
 
-echo "Downloading MAVSDK and ARK-OS debs..."
-sudo wget -q -O "$ROOTFS_DIR/tmp/$MAVSDK_DEB" "$MAVSDK_URL"
-sudo wget -q -O "$ROOTFS_DIR/tmp/$ARK_OS_DEB" "$ARK_OS_URL"
+# Prefer a deb already sitting in the repo's downloads/ cache, falling back to the
+# release download. This lets a locally-supplied deb — a CI artifact or a
+# pre-release build with no published GitHub release yet — be exercised through the
+# full chroot install: drop the file in downloads/ and set the matching *_VERSION
+# above so the filename lines up. The match is by exact filename (which embeds the
+# version), so a version bump with nothing cached falls through to the release URL.
+# provision.sh lives at the repo root, so derive downloads/ from this script's
+# location (works under build.sh and when run standalone); DOWNLOADS_DIR may be set
+# in the environment to override.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
+
+# Place a deb into the rootfs's /tmp from the cache if present, else download it.
+# Under set -e a failed download (e.g. a release that doesn't exist yet and no
+# cached file) aborts provisioning loudly rather than silently shipping no ARK-OS.
+fetch_deb() {
+    local deb="$1" url="$2"
+    if [ -f "$DOWNLOADS_DIR/$deb" ]; then
+        echo "Using cached $deb from $DOWNLOADS_DIR"
+        sudo cp "$DOWNLOADS_DIR/$deb" "$ROOTFS_DIR/tmp/$deb"
+    else
+        echo "Downloading $deb from $url"
+        sudo wget -q -O "$ROOTFS_DIR/tmp/$deb" "$url"
+    fi
+}
+
+echo "Fetching MAVSDK and ARK-OS debs..."
+fetch_deb "$MAVSDK_DEB" "$MAVSDK_URL"
+fetch_deb "$ARK_OS_DEB" "$ARK_OS_URL"
 
 # Block all service (re)starts inside the chroot. There is no running init here,
 # so a daemon start attempted by a dependency's maintainer script would fail or
@@ -43,25 +72,42 @@ sudo wget -q -O "$ROOTFS_DIR/tmp/$ARK_OS_DEB" "$ARK_OS_URL"
 # flashed image boots normally.
 printf '#!/bin/sh\nexit 101\n' | sudo tee "$ROOTFS_DIR/usr/sbin/policy-rc.d" >/dev/null
 sudo chmod 0755 "$ROOTFS_DIR/usr/sbin/policy-rc.d"
-trap 'sudo rm -f "$ROOTFS_DIR/usr/sbin/policy-rc.d"' EXIT
+
+# NVIDIA's apt source ships a templated `<SOC>` repo entry that is resolved only
+# on-device at first boot; in the chroot it stays literal and makes `apt-get
+# update` exit non-zero ("does not have a Release file"), which under set -e would
+# abort provisioning. ARK-OS needs none of the NVIDIA repos — its dependencies
+# come from the Ubuntu ports archive plus the MAVSDK deb — so move the source
+# aside while provisioning and restore it on exit, leaving the shipped image's
+# apt config untouched so first boot resolves `<SOC>` as usual.
+NV_APT_SRC="$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list"
+[ -f "$NV_APT_SRC" ] && sudo mv "$NV_APT_SRC" "$NV_APT_SRC.provision-disabled"
+
+# Remove the policy-rc.d shim and restore the NVIDIA apt source on any exit
+# (success or failure) so the flashed image boots and updates normally.
+cleanup_provision() {
+    sudo rm -f "$ROOTFS_DIR/usr/sbin/policy-rc.d"
+    [ -f "$NV_APT_SRC.provision-disabled" ] && \
+        sudo mv "$NV_APT_SRC.provision-disabled" "$NV_APT_SRC"
+}
+trap cleanup_provision EXIT
 
 # ARK-OS ships no conffiles, so chroot/non-interactive installs never stall on
-# conffile prompts. MAVSDK installs first because ark-os Depends: libmavsdk-dev,
-# and apt-get install -f can't resolve it from any repo (it's not in one).
+# conffile prompts. `apt-get install ./file.deb` installs the local deb and pulls
+# its dependencies from the repos in one step — and, unlike `dpkg -i`, exits
+# non-zero on a real failure instead of leaving the package unconfigured. MAVSDK
+# installs first because ark-os Depends: libmavsdk-dev, which is in no repo, so it
+# must already be installed before ark-os's dependencies can resolve.
 echo "Installing MAVSDK (ark-os depends on libmavsdk-dev)..."
 sudo chroot "$ROOTFS_DIR" apt-get update
-sudo chroot "$ROOTFS_DIR" dpkg -i "/tmp/$MAVSDK_DEB" || true
-sudo chroot "$ROOTFS_DIR" apt-get install -f -y
+sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$MAVSDK_DEB"
 
 echo "Installing ark-os-jetson..."
-sudo chroot "$ROOTFS_DIR" dpkg -i "/tmp/$ARK_OS_DEB" || true
-sudo chroot "$ROOTFS_DIR" apt-get install -f -y
+sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$ARK_OS_DEB"
 
-# Fail loudly if either package is not fully configured. The `dpkg -i ... || true`
-# above swallows dpkg's exit code (intended path: unmet deps, then resolved by
-# `apt-get install -f`), so without this check a genuinely failed install — or an
-# `apt-get -f` that "fixed" breakage by *removing* ark-os — would let the image
-# build report success and ship with no ARK-OS.
+# Belt-and-suspenders: confirm both packages ended up fully configured. apt-get
+# already aborts under set -e on a real failure, but this also catches a package
+# left half-configured and documents the post-condition the image relies on.
 echo "Verifying packages are installed..."
 for pkg in libmavsdk-dev ark-os-jetson; do
     status=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || true)
@@ -92,4 +138,6 @@ sudo chroot "$ROOTFS_DIR" ln -sf /etc/systemd/system/jtop.service \
 
 sudo rm "$ROOTFS_DIR/tmp/$MAVSDK_DEB" "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
 
-echo "ARK-OS provisioning complete."
+PROVISION_ELAPSED=$(( $(date +%s) - PROVISION_START ))
+printf 'ARK-OS provisioning complete after %dm %02ds.\n' \
+    $((PROVISION_ELAPSED / 60)) $((PROVISION_ELAPSED % 60))
