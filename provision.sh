@@ -34,6 +34,17 @@ echo "Downloading MAVSDK and ARK-OS debs..."
 sudo wget -q -O "$ROOTFS_DIR/tmp/$MAVSDK_DEB" "$MAVSDK_URL"
 sudo wget -q -O "$ROOTFS_DIR/tmp/$ARK_OS_DEB" "$ARK_OS_URL"
 
+# Block all service (re)starts inside the chroot. There is no running init here,
+# so a daemon start attempted by a dependency's maintainer script would fail or
+# hang. policy-rc.d returning 101 makes "no service actions in the chroot" a hard
+# guarantee, independent of each package's script hygiene (ARK-OS's own postinst
+# self-gates on /run/systemd/system, but its dependencies — nginx, avahi, bluez,
+# network-manager … — do not). The trap removes the shim on any exit so the
+# flashed image boots normally.
+printf '#!/bin/sh\nexit 101\n' | sudo tee "$ROOTFS_DIR/usr/sbin/policy-rc.d" >/dev/null
+sudo chmod 0755 "$ROOTFS_DIR/usr/sbin/policy-rc.d"
+trap 'sudo rm -f "$ROOTFS_DIR/usr/sbin/policy-rc.d"' EXIT
+
 # ARK-OS ships no conffiles, so chroot/non-interactive installs never stall on
 # conffile prompts. MAVSDK installs first because ark-os Depends: libmavsdk-dev,
 # and apt-get install -f can't resolve it from any repo (it's not in one).
@@ -45,6 +56,21 @@ sudo chroot "$ROOTFS_DIR" apt-get install -f -y
 echo "Installing ark-os-jetson..."
 sudo chroot "$ROOTFS_DIR" dpkg -i "/tmp/$ARK_OS_DEB" || true
 sudo chroot "$ROOTFS_DIR" apt-get install -f -y
+
+# Fail loudly if either package is not fully configured. The `dpkg -i ... || true`
+# above swallows dpkg's exit code (intended path: unmet deps, then resolved by
+# `apt-get install -f`), so without this check a genuinely failed install — or an
+# `apt-get -f` that "fixed" breakage by *removing* ark-os — would let the image
+# build report success and ship with no ARK-OS.
+echo "Verifying packages are installed..."
+for pkg in libmavsdk-dev ark-os-jetson; do
+    status=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || true)
+    if [ "$status" != "install ok installed" ]; then
+        echo "ERROR: $pkg is not installed (dpkg status: '${status:-not present}')." >&2
+        echo "       Aborting provisioning to avoid shipping an image without ARK-OS." >&2
+        exit 1
+    fi
+done
 
 # jetson-stats provides the jtop daemon (jtop.service) and its Python client,
 # installed system-wide via pip. ARK-OS system-manager imports this same install
