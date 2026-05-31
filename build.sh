@@ -230,7 +230,10 @@ if [ ! -d "$L4T_DIR" ]; then
         sudo cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
         export ROOTFS_DIR TARGET
-        bash "$PROVISION_SCRIPT"
+        if ! bash "$PROVISION_SCRIPT"; then
+            echo "ERROR: rootfs provisioning failed (see output above); aborting build." >&2
+            exit 1
+        fi
 
         cleanup_chroot
         trap - EXIT

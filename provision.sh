@@ -46,8 +46,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
 # Place a deb into the rootfs's /tmp from the cache if present, else download it.
-# Under set -e a failed download (e.g. a release that doesn't exist yet and no
-# cached file) aborts provisioning loudly rather than silently shipping no ARK-OS.
+# A failed download (e.g. a release that doesn't exist yet and no cached file)
+# aborts provisioning with an explicit error rather than silently shipping no
+# ARK-OS. wget -nv keeps the log quiet but still surfaces HTTP errors (-q hid the
+# 404 that previously made this fail silently).
 fetch_deb() {
     local deb="$1" url="$2"
     if [ -f "$DOWNLOADS_DIR/$deb" ]; then
@@ -55,7 +57,14 @@ fetch_deb() {
         sudo cp "$DOWNLOADS_DIR/$deb" "$ROOTFS_DIR/tmp/$deb"
     else
         echo "Downloading $deb from $url"
-        sudo wget -q -O "$ROOTFS_DIR/tmp/$deb" "$url"
+        if ! sudo wget -nv -O "$ROOTFS_DIR/tmp/$deb" "$url"; then
+            sudo rm -f "$ROOTFS_DIR/tmp/$deb"
+            echo "ERROR: could not fetch $deb (not cached in $DOWNLOADS_DIR, and the" >&2
+            echo "       download from $url failed — the release may not exist yet)." >&2
+            echo "       Fix: drop the deb into $DOWNLOADS_DIR and set the matching" >&2
+            echo "       *_VERSION at the top of provision.sh so the filename lines up." >&2
+            exit 1
+        fi
     fi
 }
 
