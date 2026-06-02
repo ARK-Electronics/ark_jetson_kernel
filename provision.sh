@@ -49,27 +49,29 @@ MAVSDK_URL="https://github.com/mavlink/MAVSDK/releases/download/v${MAVSDK_VERSIO
 # DOWNLOADS_DIR may be set in the environment to override the default below.
 DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
-# Place a deb into the rootfs's /tmp from the cache if present, else download it.
-# A failed download (e.g. a release that doesn't exist yet and no cached file)
-# aborts provisioning with an explicit error rather than silently shipping no
-# ARK-OS. wget -nv keeps the log quiet but still surfaces HTTP errors (-q hid the
-# 404 that previously made this fail silently).
+# Stage a deb into the rootfs's /tmp, caching it under downloads/ first so a rebuild
+# (or --clean) reuses it instead of re-downloading. A cache miss fetches into
+# downloads/ atomically (.partial → final); every path then copies from the cache
+# into the rootfs /tmp. A failed download aborts provisioning with an explicit error
+# rather than silently shipping no ARK-OS. wget -nv keeps the log quiet but still
+# surfaces HTTP errors (-q hid the 404 that previously made this fail silently).
 fetch_deb() {
     local deb="$1" url="$2"
-    if [ -f "$DOWNLOADS_DIR/$deb" ]; then
-        echo "Using cached $deb from $DOWNLOADS_DIR"
-        sudo cp "$DOWNLOADS_DIR/$deb" "$ROOTFS_DIR/tmp/$deb"
-    else
+    if [ ! -f "$DOWNLOADS_DIR/$deb" ]; then
         echo "Downloading $deb from $url"
-        if ! sudo wget -nv -O "$ROOTFS_DIR/tmp/$deb" "$url"; then
-            sudo rm -f "$ROOTFS_DIR/tmp/$deb"
+        if ! sudo wget -nv -O "$DOWNLOADS_DIR/$deb.partial" "$url"; then
+            sudo rm -f "$DOWNLOADS_DIR/$deb.partial"
             echo "ERROR: could not fetch $deb (not cached in $DOWNLOADS_DIR, and the" >&2
             echo "       download from $url failed — the release may not exist yet)." >&2
             echo "       Fix: drop the deb into $DOWNLOADS_DIR and set the matching" >&2
-            echo "       *_VERSION at the top of provision.sh so the filename lines up." >&2
+            echo "       *_VERSION in versions.env so the filename lines up." >&2
             exit 1
         fi
+        sudo mv "$DOWNLOADS_DIR/$deb.partial" "$DOWNLOADS_DIR/$deb"
+    else
+        echo "Using cached $deb from $DOWNLOADS_DIR"
     fi
+    sudo cp "$DOWNLOADS_DIR/$deb" "$ROOTFS_DIR/tmp/$deb"
 }
 
 echo "Fetching MAVSDK and ARK-OS debs..."
