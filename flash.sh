@@ -118,7 +118,7 @@ if [ "$USE_INITRD" = true ]; then
     sudo ./tools/kernel_flash/l4t_initrd_flash.sh --external-device "$STORAGE_DEV" \
         -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" \
         -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml \
-        --erase-all --showlogs --network usb0 \
+        --showlogs --network usb0 \
         "$FLASH_TARGET" "$STORAGE_DEV"
 else
     sudo ./flash.sh "$FLASH_TARGET" "$STORAGE_DEV"
