@@ -19,14 +19,16 @@ set -e
 # Wall-clock start; reported at the end as "provisioning complete after Xm Ys".
 PROVISION_START=$(date +%s)
 
-# Pinned versions — bump manually when releasing. MAVSDK_VERSION must match the
-# pin in ARK-OS packaging/build.sh.
+# Pinned versions — bump manually when releasing. MAVSDK_VERSION and
+# JETSON_STATS_VERSION must match the canonical pins in ARK-OS
+# packaging/versions.env. This repo has no ARK-OS checkout at build time, so the
+# values are duplicated here rather than sourced — keep them in sync.
 #
 # ARK_OS_VERSION currently points at a CI-artifact build — untagged ARK-OS CI
 # builds are versioned 0.0.0-<sha8> and the matching deb is cached in downloads/.
 # Bump to the released version (e.g. 1.0.0) once ARK-OS PR #68 merges and a
 # GitHub release exists.
-ARK_OS_VERSION="0.0.0-b461de4e"
+ARK_OS_VERSION="0.0.0-4e1fc680"
 MAVSDK_VERSION="3.17.1"
 JETSON_STATS_VERSION="4.3.2"   # jtop daemon + client, installed system-wide via pip
 
