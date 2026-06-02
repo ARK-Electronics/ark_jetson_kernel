@@ -61,7 +61,7 @@ Containerization addresses the root cause and matches NVIDIA's documented suppor
 
 ## CI
 
-GitHub Actions has a native `ubuntu-22.04` runner, so CI runs the build natively without involving the container at all. See `.github/workflows/build.yml`. The bootlin toolchain is cached across runs keyed on `bsp_version.env`'s hash; the BSP/rootfs/sources tarballs are re-downloaded each run (caching ~5GB across runs is not worth the Actions cache churn).
+GitHub Actions has a native `ubuntu-22.04` runner, so CI runs the build natively without involving the container at all. See `.github/workflows/build.yml`. The bootlin toolchain is cached across runs keyed on `versions.env`'s hash; the BSP/rootfs/sources tarballs are re-downloaded each run (caching ~5GB across runs is not worth the Actions cache churn).
 
 ## Verifying a healthy build
 

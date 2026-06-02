@@ -10,7 +10,7 @@
 # /run is NOT bind-mounted, so [ -d /run/systemd/system ] is false inside the
 # chroot — the ARK-OS postinst's runtime-only operations are skipped here and the
 # device finishes provisioning on first boot. The default user (jetson) is created
-# before this runs, which the ark-os-jetson package's postinst relies on.
+# before this runs, which the ark-os-jetson-jammy package's postinst relies on.
 #
 # Use `sudo chroot "$ROOTFS_DIR" <command>` to run commands inside the rootfs.
 
@@ -19,20 +19,20 @@ set -e
 # Wall-clock start; reported at the end as "provisioning complete after Xm Ys".
 PROVISION_START=$(date +%s)
 
-# Pinned versions — bump manually when releasing. MAVSDK_VERSION and
-# JETSON_STATS_VERSION must match the canonical pins in ARK-OS
-# packaging/versions.env. This repo has no ARK-OS checkout at build time, so the
-# values are duplicated here rather than sourced — keep them in sync.
-#
-# ARK_OS_VERSION currently points at a CI-artifact build — untagged ARK-OS CI
-# builds are versioned 0.0.0-<sha8> and the matching deb is cached in downloads/.
-# Bump to the released version (e.g. 1.0.0) once ARK-OS PR #68 merges and a
-# GitHub release exists.
-ARK_OS_VERSION="0.0.0-4e1fc680"
-MAVSDK_VERSION="3.17.1"
-JETSON_STATS_VERSION="4.3.2"   # jtop daemon + client, installed system-wide via pip
+# Pinned versions live in versions.env — the single source of truth, also sourced by
+# setup.sh and scripts/check_bsp.sh: ARK_OS_VERSION, MAVSDK_VERSION, and
+# JETSON_STATS_VERSION (alongside the BSP/toolchain pins). MAVSDK_VERSION and
+# JETSON_STATS_VERSION must match the canonical pins in ARK-OS packaging/versions.env
+# — this repo has no ARK-OS checkout at build time, so they're duplicated there; keep
+# them in sync.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=versions.env
+source "$SCRIPT_DIR/versions.env"
 
-ARK_OS_DEB="ark-os-jetson_${ARK_OS_VERSION}_arm64.deb"
+# ARK-OS now bakes the build host's OS codename into the package name
+# (ark-os-<platform>-<codename>); the Jetson rootfs is Ubuntu 22.04 = jammy.
+ARK_OS_PKG="ark-os-jetson-jammy"
+ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
 # Upstream publishes no ubuntu22.04_arm64 build; debian12_arm64 is what ARK-OS has
 # historically used on the Jammy rootfs (glibc-compatible in practice).
 MAVSDK_DEB="libmavsdk-dev_${MAVSDK_VERSION}_debian12_arm64.deb"
@@ -43,13 +43,10 @@ MAVSDK_URL="https://github.com/mavlink/MAVSDK/releases/download/v${MAVSDK_VERSIO
 # Prefer a deb already sitting in the repo's downloads/ cache, falling back to the
 # release download. This lets a locally-supplied deb — a CI artifact or a
 # pre-release build with no published GitHub release yet — be exercised through the
-# full chroot install: drop the file in downloads/ and set the matching *_VERSION
-# above so the filename lines up. The match is by exact filename (which embeds the
-# version), so a version bump with nothing cached falls through to the release URL.
-# provision.sh lives at the repo root, so derive downloads/ from this script's
-# location (works under build.sh and when run standalone); DOWNLOADS_DIR may be set
-# in the environment to override.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# full chroot install: drop the file in downloads/ and set the matching *_VERSION in
+# versions.env so the filename lines up. The match is by exact filename (which embeds
+# the version), so a version bump with nothing cached falls through to the release URL.
+# DOWNLOADS_DIR may be set in the environment to override the default below.
 DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
 # Place a deb into the rootfs's /tmp from the cache if present, else download it.
@@ -118,14 +115,14 @@ echo "Installing MAVSDK (ark-os depends on libmavsdk-dev)..."
 sudo chroot "$ROOTFS_DIR" apt-get update
 sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$MAVSDK_DEB"
 
-echo "Installing ark-os-jetson..."
+echo "Installing ${ARK_OS_PKG}..."
 sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$ARK_OS_DEB"
 
 # Belt-and-suspenders: confirm both packages ended up fully configured. apt-get
 # already aborts under set -e on a real failure, but this also catches a package
 # left half-configured and documents the post-condition the image relies on.
 echo "Verifying packages are installed..."
-for pkg in libmavsdk-dev ark-os-jetson; do
+for pkg in libmavsdk-dev "$ARK_OS_PKG"; do
     status=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || true)
     if [ "$status" != "install ok installed" ]; then
         echo "ERROR: $pkg is not installed (dpkg status: '${status:-not present}')." >&2

@@ -1,10 +1,10 @@
 #!/bin/bash
 # Shared BSP version detection. Source this from setup.sh, build.sh, and
-# flash.sh — bsp_version.env is the single source of truth for both the
+# flash.sh — versions.env is the single source of truth for both the
 # expected version and the download URLs.
 
 _check_bsp_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$_check_bsp_dir/../bsp_version.env"
+source "$_check_bsp_dir/../versions.env"
 unset _check_bsp_dir
 
 # Reads rootfs/etc/nv_tegra_release from a staging directory.
