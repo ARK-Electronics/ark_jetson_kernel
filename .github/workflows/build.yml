@@ -63,11 +63,26 @@ jobs:
             python3-yaml qemu-user-static rsync sshpass \
             udev usbutils uuid-runtime whois xmlstarlet zstd
 
+      - name: Resolve cache keys from versions.env
+        id: cachekeys
+        run: |
+          source versions.env
+          echo "bsp=${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}" >> "$GITHUB_OUTPUT"
+          echo "toolchain=$(basename "$TOOLCHAIN_URL")" >> "$GITHUB_OUTPUT"
+
       - name: Cache bootlin toolchain
         uses: actions/cache@v4
         with:
           path: ~/l4t-gcc
-          key: l4t-gcc-${{ hashFiles('versions.env') }}
+          key: l4t-gcc-${{ steps.cachekeys.outputs.toolchain }}
+
+      # The L4T BSP/rootfs/sources tarballs (~2.7 GB) are pinned by BSP version, so
+      # cache them on it — setup.sh skips any tarball already present in downloads/.
+      - name: Cache L4T BSP tarballs
+        uses: actions/cache@v4
+        with:
+          path: downloads/*.tbz2
+          key: l4t-bsp-${{ steps.cachekeys.outputs.bsp }}
 
       - name: Download BSP
         run: ./setup.sh --force
