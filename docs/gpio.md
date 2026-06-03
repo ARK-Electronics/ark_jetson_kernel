@@ -8,7 +8,7 @@ Using GPIO pins on ARK JAJ / PAB / PAB_V3 carriers running JetPack 6 (L4T r36.x)
 - The carrier has 604Ω pullups to 3.3V on **MCLK / SCLK / LRCLK / DOUT**. The GPIO pads sink ~5.5 mA each while held low — ~22 mA / 73 mW total, which is the cost of the active-low default. **DIN** has no external pullup.
 - Drive the lines from userspace with `libgpiod` (`gpioset` / `gpioget`) or `Jetson.GPIO`.
 - While your app holds the line, the kernel guarantees its value.
-- **On release (clean exit, crash, kill), the pin retains its last-written value** until the next reboot, when MB1 BCT re-asserts output-low. This BSP applies NVIDIA's pinctrl-tegra SFSEL fix; without it (stock JP6.0–6.2.1) the pad would be flipped to SFIO mode on release, effectively floating the pin. The fix is upstream in JP6.2.2.
+- **On release (clean exit, crash, kill), the pin retains its last-written value** until the next reboot, when MB1 BCT re-asserts output-low. JP6.2.2 (L4T r36.5) ships NVIDIA's pinctrl-tegra SFSEL fix upstream, so the pad keeps its last-written value on release; on stock JP6.0–6.2.1 the pad was flipped to SFIO mode on release, effectively floating the pin.
 - For active-low actuators, edit MB1 BCT to drive output-high at boot — see ["Customizing boot defaults"](#customizing-boot-defaults).
 
 ## Pin map
@@ -55,7 +55,7 @@ gpioset --mode=signal $(gpiofind PI.00)=1
 gpioget $(gpiofind PI.01)
 ```
 
-Without `--mode=signal`, `gpioset` exits immediately after writing. The value still persists in the OUTPUT_VAL register thanks to the SFSEL patch, but the line is no longer "owned" — the next consumer to request it wins.
+Without `--mode=signal`, `gpioset` exits immediately after writing. The value still persists in the OUTPUT_VAL register thanks to the upstream SFSEL fix, but the line is no longer "owned" — the next consumer to request it wins.
 
 Python — install `Jetson.GPIO` 2.1.12 or newer first; the apt-shipped version doesn't recognize the Orin Nano Super (`p3768-0000+p3767-0005-super`) and fails with `Could not determine Jetson model`:
 
@@ -167,11 +167,10 @@ Note: BCT is the only layer that controls pad state from the moment of power-on.
 
 - **Suspend/resume (SC7)**: main GPIO loses state through suspend. Only AON pins (`PAA`–`PEE`) retain. Route through-suspend signals to AON pins.
 - **NVIDIA Pinmux Spreadsheet** "Int PD" / "Int PU" only applies to **inputs**. For outputs use `Drive 0` / `Drive 1`. (Trips up many customers — see NVIDIA forum [280082](https://forums.developer.nvidia.com/t/how-do-i-set-the-default-gpio-level-status-for-jetson-agx-orin/280082).)
-- Don't remove `patches/pinctrl-tegra-sfsel.patch` until rebasing onto JP6.2.2 (r36.5), where NVIDIA's fix is already upstream.
 
 ## References
 
-- [NVIDIA Jetson Linux — Pinmux and GPIO Configuration](https://docs.nvidia.com/jetson/archives/r36.4.3/DeveloperGuide/SD/Bootloader/PinmuxGpioConfig.html)
+- [NVIDIA Jetson Linux — Pinmux and GPIO Configuration](https://docs.nvidia.com/jetson/archives/r36.5/DeveloperGuide/SD/Bootloader/PinmuxGpioConfig.html)
 - [Linux kernel GPIO chardev API (v2)](https://docs.kernel.org/userspace-api/gpio/chardev.html)
 - [libgpiod docs](https://libgpiod.readthedocs.io/en/stable/)
 - NVIDIA forum thread on the SFSEL/PADCTL regression: <https://forums.developer.nvidia.com/t/40hdr-spi1-gpio-padctl-register-bit-10-effect-by-gpiod-tools-in-jp6/301171>

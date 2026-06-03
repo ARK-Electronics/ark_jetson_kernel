@@ -1,6 +1,6 @@
 #!/bin/bash
 # Shared host-detection + container-handoff helpers. Sourced by setup.sh and
-# build.sh. NVIDIA's documented build host for L4T R36.4.4 / JP 6.2.1
+# build.sh. NVIDIA's documented build host for L4T R36.5.0 / JP 6.2.2
 # is Ubuntu 22.04; on anything else we re-exec the calling script inside a
 # 22.04 docker container so that host-tooling differences (notably kmod 31
 # vs kmod 29 in the on-device sample rootfs) cannot silently corrupt the

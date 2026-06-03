@@ -127,8 +127,10 @@ function sudo_refresh_loop() {
 function download_with_retry() {
     local url=$1
     local dest_dir=$2
-    local filename
-    filename=$(basename "$url")
+    # Optional explicit output filename ($3). NVIDIA serves public_sources.tbz2 with a
+    # constant name across releases, so its caller passes a version-stamped name to
+    # keep the local cache keyed on the BSP version like the BSP/rootfs tarballs.
+    local filename=${3:-$(basename "$url")}
     local retries=3
     local count=0
 
@@ -138,9 +140,12 @@ function download_with_retry() {
     fi
 
     while [ $count -lt $retries ]; do
-        if wget -P "$dest_dir" "$url"; then
+        if wget -O "$dest_dir/$filename" "$url"; then
             return 0
         fi
+        # Drop the partial file so the skip-on-exists check above can't mistake it
+        # for a complete download on a later run.
+        rm -f "$dest_dir/$filename"
         echo "Download failed. Retrying... ($((count+1))/$retries)"
         count=$((count+1))
         sleep 5
@@ -163,7 +168,7 @@ mkdir -p "$DOWNLOADS_DIR"
 echo "Downloading BSP, root filesystem, and kernel sources to downloads/"
 download_with_retry "$BSP_URL" "$DOWNLOADS_DIR"
 download_with_retry "$ROOT_FS_URL" "$DOWNLOADS_DIR"
-download_with_retry "$PUBLIC_SOURCES_URL" "$DOWNLOADS_DIR"
+download_with_retry "$PUBLIC_SOURCES_URL" "$DOWNLOADS_DIR" "$PUBLIC_SOURCES_FILE"
 
 echo "Installing build prerequisites"
 sudo apt-get install -y -qq make build-essential bc flex bison libssl-dev

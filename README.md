@@ -4,8 +4,8 @@ This repository contains instructions and scripts for flashing your Jetson **Ori
 
 | Component | Version |
 | --- | --- |
-| JetPack | 6.2.1 |
-| L4T (BSP) | R36.4.4 |
+| JetPack | 6.2.2 |
+| L4T (BSP) | R36.5.0 |
 | Kernel | Linux 5.15 |
 | Host OS | Ubuntu 22.04 |
 

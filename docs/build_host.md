@@ -2,7 +2,7 @@
 
 ## Required host
 
-NVIDIA's documented build host for L4T R36.4.4 / JetPack 6.2.1 is **Ubuntu 22.04** (or 20.04). This repo's `setup.sh` and `build.sh` enforce that:
+NVIDIA's documented build host for L4T R36.5.0 / JetPack 6.2.2 is **Ubuntu 22.04** (or 20.04). This repo's `setup.sh` and `build.sh` enforce that:
 
 - On Ubuntu 22.04 they run natively.
 - On any other host they re-exec themselves inside a 22.04 docker container (`ark-jetson-builder:22.04`, built from `docker/Dockerfile` on first use).
@@ -23,7 +23,7 @@ The proximate reason is a binary-format incompatibility between `kmod` versions 
 | --- | --- | --- |
 | Build host (NVIDIA's documented config) | Ubuntu 22.04 | 29 |
 | Build host (current Ubuntu LTS) | Ubuntu 24.04 | 31 |
-| Jetson device (L4T R36.4.4 sample rootfs) | Ubuntu 22.04 | 29 |
+| Jetson device (L4T R36.5.0 sample rootfs) | Ubuntu 22.04 | 29 |
 
 `make modules_install` (and NVIDIA's `apply_binaries.sh`) runs the **host's** `depmod` to populate `/lib/modules/$(uname -r)/` in the staged rootfs. `depmod` writes both a text `modules.builtin` file and a set of binary index files (`modules.builtin.bin`, `modules.builtin.alias.bin`, `modules.builtin.modinfo`) that `modprobe` consults at runtime.
 
@@ -61,7 +61,7 @@ Containerization addresses the root cause and matches NVIDIA's documented suppor
 
 ## CI
 
-GitHub Actions has a native `ubuntu-22.04` runner, so CI runs the build natively without involving the container at all. See `.github/workflows/build.yml`. The bootlin toolchain and the ~2.7 GB of L4T BSP/rootfs/sources tarballs are both cached across runs — the toolchain keyed on its pinned filename, the tarballs on the BSP version (e.g. `R36.4.4`) — so each is re-downloaded from NVIDIA only when its pin in `versions.env` changes.
+GitHub Actions has a native `ubuntu-22.04` runner, so CI runs the build natively without involving the container at all. See `.github/workflows/build.yml`. The bootlin toolchain and the ~2.7 GB of L4T BSP/rootfs/sources tarballs are both cached across runs — the toolchain keyed on its pinned filename, the tarballs on the BSP version (e.g. `R36.5.0`) — so each is re-downloaded from NVIDIA only when its pin in `versions.env` changes.
 
 ## Verifying a healthy build
 

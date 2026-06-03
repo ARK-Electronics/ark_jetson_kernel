@@ -72,7 +72,7 @@ L4T_RELEASE_PACKAGE=$(basename "$BSP_URL")
 SAMPLE_FS_PACKAGE=$(basename "$ROOT_FS_URL")
 
 if [ "$TARGET" != "all" ]; then
-    for f in "$L4T_RELEASE_PACKAGE" "public_sources.tbz2" "$SAMPLE_FS_PACKAGE"; do
+    for f in "$L4T_RELEASE_PACKAGE" "$PUBLIC_SOURCES_FILE" "$SAMPLE_FS_PACKAGE"; do
         if [ ! -f "$DOWNLOADS_DIR/$f" ]; then
             echo "ERROR: $f not found in downloads/." >&2
             echo "       Run ./setup.sh first to download the BSP." >&2
@@ -244,7 +244,7 @@ if [ ! -d "$L4T_DIR" ]; then
 
     # Extract kernel source
     echo "Extracting kernel sources..."
-    tar -xjf "$DOWNLOADS_DIR/public_sources.tbz2" -C "$STAGING_DIR/"
+    tar -xjf "$DOWNLOADS_DIR/$PUBLIC_SOURCES_FILE" -C "$STAGING_DIR/"
     pushd "$SOURCE_DIR" > /dev/null
     tar xf kernel_src.tbz2
     tar xf kernel_oot_modules_src.tbz2
@@ -293,11 +293,6 @@ if [ ! -d "$L4T_DIR" ]; then
         "$SCRIPT_DIR/patches/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch" \
         "Jetvariety" \
         "."
-
-    apply_patch \
-        "$SCRIPT_DIR/patches/pinctrl-tegra-sfsel.patch" \
-        "pinctrl-tegra-sfsel" \
-        "kernel/kernel-jammy-src"
 
     popd > /dev/null
 
