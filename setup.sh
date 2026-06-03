@@ -140,7 +140,9 @@ function download_with_retry() {
     fi
 
     while [ $count -lt $retries ]; do
-        if wget -O "$dest_dir/$filename" "$url"; then
+        # bar:force keeps progress on a single \r-updated line even though output
+        # is piped to tee — dot mode (the non-TTY default) spams a line per chunk.
+        if wget --progress=bar:force -O "$dest_dir/$filename" "$url"; then
             return 0
         fi
         # Drop the partial file so the skip-on-exists check above can't mistake it
