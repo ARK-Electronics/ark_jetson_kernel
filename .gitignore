@@ -21,7 +21,3 @@ ark-*.tar.gz
 
 # Misc
 output.txt
-
-# wget's fallback log — dropped in the cwd when wget has no controlling terminal.
-# provision.sh pins wget's log to stderr to avoid creating it; this is a backstop.
-wget-log
