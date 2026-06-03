@@ -47,8 +47,8 @@ You should see the lines marked `unused`. If they're missing, the overlay didn't
 The libgpiod 1.x tools that ship with JP6 don't accept line names directly when the chip is specified — pass `$(gpiofind <name>)` to expand to `<chip> <offset>`:
 
 ```bash
-# Drive HDR40 pin 40 (DOUT) high; hold the line until SIGINT/SIGTERM.
-gpioset --mode=signal $(gpiofind PI.00)=1
+# Drive HDR40 pin 40 (DOUT) high
+gpioset $(gpiofind PI.00)=1
 
 # In another terminal, read HDR40 pin 38 (DIN). With a jumper from
 # pin 40 to pin 38, this is a loopback test.
