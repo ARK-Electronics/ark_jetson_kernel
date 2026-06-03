@@ -65,20 +65,33 @@ if [ -z "$TARGET" ]; then
     fi
 fi
 
-# ── Validate downloads (before container handoff or build) ──────────────────
+# ── Ensure BSP downloads are present (before container handoff or build) ─────
+# build.sh doesn't download — setup.sh does. If any tarball is missing (fresh
+# checkout, or a BSP bump that renamed them), run setup automatically instead of
+# dead-ending. setup runs under its own `set -e` and we re-verify afterward, so a
+# real download failure still aborts the build loudly.
 
 DOWNLOADS_DIR="$SCRIPT_DIR/downloads"
 L4T_RELEASE_PACKAGE=$(basename "$BSP_URL")
 SAMPLE_FS_PACKAGE=$(basename "$ROOT_FS_URL")
+REQUIRED_TARBALLS=("$L4T_RELEASE_PACKAGE" "$PUBLIC_SOURCES_FILE" "$SAMPLE_FS_PACKAGE")
 
-if [ "$TARGET" != "all" ]; then
-    for f in "$L4T_RELEASE_PACKAGE" "$PUBLIC_SOURCES_FILE" "$SAMPLE_FS_PACKAGE"; do
-        if [ ! -f "$DOWNLOADS_DIR/$f" ]; then
-            echo "ERROR: $f not found in downloads/." >&2
-            echo "       Run ./setup.sh first to download the BSP." >&2
-            exit 1
-        fi
+downloads_present() {
+    for f in "${REQUIRED_TARBALLS[@]}"; do
+        [ -f "$DOWNLOADS_DIR/$f" ] || return 1
     done
+}
+
+if ! downloads_present; then
+    echo "BSP tarballs for ${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION} are missing from downloads/ — running ./setup.sh first..."
+    if ! "$SCRIPT_DIR/setup.sh"; then
+        echo "ERROR: ./setup.sh failed — aborting build." >&2
+        exit 1
+    fi
+    if ! downloads_present; then
+        echo "ERROR: BSP tarballs still missing after ./setup.sh — aborting build." >&2
+        exit 1
+    fi
 fi
 
 # Capture host OS before any container handoff — inside the build container,
