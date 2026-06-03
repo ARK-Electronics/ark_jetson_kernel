@@ -54,12 +54,14 @@ DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 # downloads/ atomically (.partial → final); every path then copies from the cache
 # into the rootfs /tmp. A failed download aborts provisioning with an explicit error
 # rather than silently shipping no ARK-OS. wget -nv keeps the log quiet but still
-# surfaces HTTP errors (-q hid the 404 that previously made this fail silently).
+# surfaces HTTP errors (-q hid the 404 that previously made this fail silently);
+# -o /dev/stderr pins that log to stderr so wget doesn't drop a wget-log file in the
+# cwd, which it does when it has no controlling terminal (as in the build container).
 fetch_deb() {
     local deb="$1" url="$2"
     if [ ! -f "$DOWNLOADS_DIR/$deb" ]; then
         echo "Downloading $deb from $url"
-        if ! sudo wget -nv -O "$DOWNLOADS_DIR/$deb.partial" "$url"; then
+        if ! sudo wget -nv -o /dev/stderr -O "$DOWNLOADS_DIR/$deb.partial" "$url"; then
             sudo rm -f "$DOWNLOADS_DIR/$deb.partial"
             echo "ERROR: could not fetch $deb (not cached in $DOWNLOADS_DIR, and the" >&2
             echo "       download from $url failed — the release may not exist yet)." >&2
