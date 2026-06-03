@@ -261,41 +261,6 @@ if [ ! -d "$L4T_DIR" ]; then
         cat "$PRODUCT_DIR/defconfig.fragment" >> "$DEFCONFIG"
     fi
 
-    # Apply patches
-    pushd "$SOURCE_DIR" > /dev/null
-
-    apply_patch() {
-        local patch_file="$1"
-        local label="$2"
-        local apply_dir="$3"
-
-        pushd "$apply_dir" > /dev/null
-        echo "Checking if $label patch has already been applied..."
-        if patch -p1 -R --dry-run --force < "$patch_file" &>/dev/null; then
-            echo "  $label patch is already applied."
-        elif patch -p1 --dry-run --force < "$patch_file" &>/dev/null; then
-            echo "  Applying $label patch..."
-            if ! patch -p1 --force < "$patch_file"; then
-                echo "  Error: Failed to apply $label patch."
-                popd > /dev/null
-                exit 1
-            fi
-            echo "  $label patch applied successfully."
-        else
-            echo "  Error: $label patch cannot be applied cleanly to $apply_dir."
-            popd > /dev/null
-            exit 1
-        fi
-        popd > /dev/null
-    }
-
-    apply_patch \
-        "$SCRIPT_DIR/patches/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch" \
-        "Jetvariety" \
-        "."
-
-    popd > /dev/null
-
     echo "Staging complete for $TARGET."
     echo ""
 else
@@ -401,10 +366,6 @@ for dir in "$L4T_DIR/rootfs/boot" "$L4T_DIR/kernel/dtb"; do
         fi
     done
 done
-
-echo "Installing arducam_csi2.ko..."
-sudo cp "$SOURCE_DIR/nvidia-oot/drivers/media/i2c/arducam_csi2.ko" \
-    "$L4T_DIR/rootfs/usr/lib/modules/$JETSON_KERNEL_VERSION/updates/drivers/media/i2c/"
 
 # ── Record build metadata ───────────────────────────────────────────────────
 

@@ -52,7 +52,7 @@ Download the BSP, root filesystem, and kernel source tarballs:
 ```
 
 ### 2. Build
-Build a target. The first build stages the full L4T tree (extract, configure rootfs, apply patches) which takes several minutes. Subsequent builds skip staging and just recompile.
+Build a target. The first build stages the full L4T tree (extract, configure rootfs) which takes several minutes. Subsequent builds skip staging and just recompile.
 ```
 ./build.sh PAB        # build one target
 ./build.sh all        # build all three
