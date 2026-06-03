@@ -307,18 +307,31 @@ sudo -E make modules_install
 
 # ── Fix module symlinks ─────────────────────────────────────────────────────
 
-JETSON_KERNEL_VERSION="5.15.148-tegra"
-MODULES_PATH="$INSTALL_MOD_PATH/lib/modules/$JETSON_KERNEL_VERSION"
-HEADERS_TARGET="/usr/src/linux-headers-5.15.148-tegra-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
-
-if [ -d "$MODULES_PATH" ]; then
-    echo "Fixing kernel module symlinks in rootfs..."
-    sudo rm -f "$MODULES_PATH/build" "$MODULES_PATH/source"
-    sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
-    sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
-else
-    echo "WARNING: Module path $MODULES_PATH not found!"
+# Derive the kernel release (e.g. 5.15.148-tegra) from the build's own
+# include/config/kernel.release instead of hardcoding it, so a BSP kernel bump
+# can't silently leave these symlinks unfixed. (`make kernelrelease` drops the
+# -tegra LOCALVERSION in this tree; this file is what the build actually wrote and
+# matches the installed lib/modules/<release> and linux-headers-<release> dirs.)
+JETSON_KERNEL_VERSION=$(cat "$KERNEL_HEADERS/include/config/kernel.release" 2>/dev/null || true)
+if [ -z "$JETSON_KERNEL_VERSION" ]; then
+    echo "ERROR: could not read kernel release from" >&2
+    echo "       $KERNEL_HEADERS/include/config/kernel.release — did the kernel build complete?" >&2
+    exit 1
 fi
+echo "Built kernel release: $JETSON_KERNEL_VERSION"
+
+MODULES_PATH="$INSTALL_MOD_PATH/lib/modules/$JETSON_KERNEL_VERSION"
+HEADERS_TARGET="/usr/src/linux-headers-${JETSON_KERNEL_VERSION}-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
+
+if [ ! -d "$MODULES_PATH" ]; then
+    echo "ERROR: module path $MODULES_PATH not found after modules_install" >&2
+    echo "       (kernel release '$JETSON_KERNEL_VERSION' does not match the installed modules)." >&2
+    exit 1
+fi
+echo "Fixing kernel module symlinks in rootfs..."
+sudo rm -f "$MODULES_PATH/build" "$MODULES_PATH/source"
+sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
+sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
 
 # ── Install build outputs ───────────────────────────────────────────────────
 
