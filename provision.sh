@@ -135,6 +135,14 @@ for pkg in libmavsdk-dev "$ARK_OS_PKG"; do
     fi
 done
 
+# The MAVSDK deb is upstream's debian12 (Bookworm) build running on a Jammy rootfs;
+# dpkg confirms it installed, but not that its versioned glibc/libstdc++ symbols are
+# satisfied here (apt declares no such dep, and ldd can't see symbol versions). This
+# static check on the host catches a "GLIBC_2.xx/GLIBCXX_3.4.xx not found" load
+# failure before we ship — the failure mode a MAVSDK_VERSION bump could introduce.
+echo "Checking MAVSDK ABI compatibility with the rootfs..."
+"$SCRIPT_DIR/scripts/check_mavsdk_abi.sh" "$ROOTFS_DIR"
+
 # jetson-stats provides the jtop daemon (jtop.service) and its Python client,
 # installed system-wide via pip. ARK-OS system-manager imports this same install
 # through the bundled venv's system-site-packages, so the client and daemon are
