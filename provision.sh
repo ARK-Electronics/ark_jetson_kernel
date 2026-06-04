@@ -40,6 +40,29 @@ MAVSDK_DEB="libmavsdk-dev_${MAVSDK_VERSION}_debian12_arm64.deb"
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 MAVSDK_URL="https://github.com/mavlink/MAVSDK/releases/download/v${MAVSDK_VERSION}/${MAVSDK_DEB}"
 
+# ARK_OS_CHANNEL=latest ignores the pinned ARK_OS_VERSION above and bakes in the
+# most-recently-created ARK-OS release deb (prerelease or official). Used by the
+# draft image build so a draft kernel release always ships the newest ark-os deb
+# without hand-syncing versions.env. ARK-OS is public and these are (pre)release
+# assets, so the fetch needs no auth (drafts, which would, are intentionally not
+# matched). MAVSDK stays pinned.
+if [ "${ARK_OS_CHANNEL:-}" = "latest" ]; then
+    echo "ARK_OS_CHANNEL=latest: resolving most-recent ARK-OS release deb..."
+    ARK_OS_URL=$(curl -sfL "https://api.github.com/repos/ARK-Electronics/ARK-OS/releases?per_page=100" \
+        | python3 -c '
+import sys, json
+rels = json.load(sys.stdin)
+for r in sorted(rels, key=lambda r: r.get("created_at", ""), reverse=True):
+    for a in r.get("assets", []):
+        n = a.get("name", "")
+        if n.startswith("ark-os-jetson-jammy_") and n.endswith("_arm64.deb"):
+            print(a["browser_download_url"]); sys.exit(0)
+sys.exit(1)
+') || { echo "ERROR: could not resolve a latest ARK-OS jetson deb." >&2; exit 1; }
+    ARK_OS_DEB="$(basename "$ARK_OS_URL")"
+    echo "Latest ARK-OS deb: $ARK_OS_DEB"
+fi
+
 # Prefer a deb already sitting in the repo's downloads/ cache, falling back to the
 # release download. This lets a locally-supplied deb — a CI artifact or a
 # pre-release build with no published GitHub release yet — be exercised through the
