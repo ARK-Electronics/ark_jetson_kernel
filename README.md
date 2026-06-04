@@ -104,6 +104,10 @@ Once complete, SSH in via Micro USB or WiFi.
 ssh jetson@jetson.local
 ```
 
+> **Tip:** To avoid typing the password on every connection, copy your SSH key to the Jetson once with `ssh-copy-id jetson@jetson.local`.
+
+> **Tip:** Run `./scripts/add_ssh_config.sh` once to add a `jetson` entry to your `~/.ssh/config`. Then you can connect with just `ssh jetson`, and reflashing the Jetson won't trip the "REMOTE HOST IDENTIFICATION HAS CHANGED" warning.
+
 ### 5. Generate & Publish Flash Package (optional)
 
 See [packaging/](packaging/) for how to generate distributable flash packages and publish them to GitHub Releases.
