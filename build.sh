@@ -310,7 +310,20 @@ echo "========================================="
 
 cd "$SOURCE_DIR"
 
-make -C kernel && make modules && make dtbs
+# Wrap the cross-compiler with ccache when it's installed. The kernel C sources
+# rarely change (most edits here are device tree / scripts), so on a warm cache
+# the compile is almost entirely hits. Passing CC on the make command line
+# overrides kbuild's `CC = $(CROSS_COMPILE)gcc` and propagates to the NVIDIA
+# wrapper's sub-makes. No-op when ccache isn't present, so local builds are
+# unaffected. dtbs uses dtc (not gcc), so the wrapper is harmless there.
+KERNEL_MAKE_ARGS=()
+if command -v ccache >/dev/null 2>&1; then
+    KERNEL_MAKE_ARGS+=("CC=ccache ${CROSS_COMPILE}gcc")
+fi
+
+make -C kernel "${KERNEL_MAKE_ARGS[@]}" \
+    && make modules "${KERNEL_MAKE_ARGS[@]}" \
+    && make dtbs "${KERNEL_MAKE_ARGS[@]}"
 
 echo "Installing in-tree modules and dtbs..."
 sudo -E make install -C kernel
