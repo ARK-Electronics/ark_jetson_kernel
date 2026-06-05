@@ -79,7 +79,13 @@ run_in_container() {
         "${DOCKER_CMD[@]}" build -t "$ARK_BUILDER_IMAGE" "$repo_dir/docker/"
     fi
 
-    mkdir -p "$HOME/l4t-gcc"
+    # Persistent ccache for containerized builds. The container is --rm, so
+    # without a host mount the cache would vanish each run and never warm up.
+    # Dedicated dir on purpose: the aarch64 kernel objects share nothing with
+    # other toolchains' caches (e.g. a host PX4 ccache), so keeping it separate
+    # avoids cross-project budget churn. Overridable via ARK_CCACHE_DIR.
+    local ccache_dir="${ARK_CCACHE_DIR:-$HOME/.cache/ark_jetson_ccache}"
+    mkdir -p "$HOME/l4t-gcc" "$ccache_dir"
     echo "Re-executing $(basename "$script_path") in 22.04 build container..."
 
     # Only request a TTY when our own stdin and stdout are terminals — `docker
@@ -102,8 +108,12 @@ run_in_container() {
         --security-opt apparmor=unconfined \
         -v "$repo_dir:/workspace" \
         -v "$HOME/l4t-gcc:/root/l4t-gcc" \
+        -v "$ccache_dir:/root/.ccache" \
         -w /workspace \
         -e IN_BUILD_CONTAINER=1 \
+        -e CCACHE_DIR=/root/.ccache \
+        -e CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-20G}" \
+        -e CCACHE_SLOPPINESS=time_macros,include_file_ctime,include_file_mtime \
         -e ARK_BUILD_OS="$ARK_BUILD_OS" \
         -e ARK_BUILD_COMMIT="$ARK_BUILD_COMMIT" \
         "$ARK_BUILDER_IMAGE" \
