@@ -169,12 +169,26 @@ echo "Checking MAVSDK ABI compatibility with the rootfs..."
 # jetson-stats provides the jtop daemon (jtop.service) and its Python client,
 # installed system-wide via pip. ARK-OS system-manager imports this same install
 # through the bundled venv's system-site-packages, so the client and daemon are
-# always the same version. Run as root, setup.py installs the unit to
-# /etc/systemd/system/jtop.service; its own systemctl enable/start are no-ops
-# while systemd isn't running in the chroot, so we enable it for first boot below.
+# always the same version. jtop stays a *system* install (not a venv, unlike
+# ARK-OS's own app code) on purpose: a venv would hide jtop from the
+# system-site-packages client and detach the service from its install path, and
+# bundling a second copy in ARK-OS's venv would reintroduce client/daemon version
+# skew. Run as root, setup.py installs the unit to /etc/systemd/system/jtop.service;
+# its own systemctl enable/start are no-ops while systemd isn't running in the
+# chroot, so we enable it for first boot below.
 echo "Installing jetson-stats (jtop) system-wide..."
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
-sudo chroot "$ROOTFS_DIR" pip3 install "jetson-stats==${JETSON_STATS_VERSION}"
+# Ubuntu >= 24.04 (JetPack 7) marks the system Python externally-managed (PEP 668),
+# so a system-wide pip install is refused without --break-system-packages. Gate on
+# the marker the rootfs actually ships rather than the codename: present (noble+) →
+# pass the flag (that rootfs's pip is new enough to accept it); absent (jammy/22.04,
+# whose pip 22.0 doesn't know the flag) → plain install. Makes the JetPack 7 bump a
+# no-op here.
+PIP_FLAGS=()
+if sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/python3*/EXTERNALLY-MANAGED >/dev/null 2>&1'; then
+    PIP_FLAGS=(--break-system-packages)
+fi
+sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" "jetson-stats==${JETSON_STATS_VERSION}"
 sudo chroot "$ROOTFS_DIR" python3 -c "import jtop"                  # sanity: client installed
 sudo chroot "$ROOTFS_DIR" test -f /etc/systemd/system/jtop.service  # sanity: setup.py placed the unit
 # Enable jtop.service for first boot — offline equivalent of `systemctl enable`
