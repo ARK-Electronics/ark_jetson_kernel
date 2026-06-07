@@ -127,9 +127,8 @@ function sudo_refresh_loop() {
 function download_with_retry() {
     local url=$1
     local dest_dir=$2
-    # Optional explicit output filename ($3). NVIDIA serves public_sources.tbz2 with a
-    # constant name across releases, so its caller passes a version-stamped name to
-    # keep the local cache keyed on the BSP version like the BSP/rootfs tarballs.
+    # Optional output filename ($3): public_sources.tbz2 has a constant name across
+    # releases, so its caller passes a version-stamped name to key the cache on the BSP.
     local filename=${3:-$(basename "$url")}
     local retries=3
     local count=0
@@ -140,13 +139,11 @@ function download_with_retry() {
     fi
 
     while [ $count -lt $retries ]; do
-        # bar:force keeps progress on a single \r-updated line even though output
-        # is piped to tee — dot mode (the non-TTY default) spams a line per chunk.
+        # bar:force keeps progress to one line under tee (dot mode spams a line per chunk).
         if wget --progress=bar:force -O "$dest_dir/$filename" "$url"; then
             return 0
         fi
-        # Drop the partial file so the skip-on-exists check above can't mistake it
-        # for a complete download on a later run.
+        # Drop the partial so the skip-on-exists check above can't mistake it for complete.
         rm -f "$dest_dir/$filename"
         echo "Download failed. Retrying... ($((count+1))/$retries)"
         count=$((count+1))

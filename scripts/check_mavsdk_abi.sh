@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 #
 # Fail the build if the prebuilt MAVSDK .so needs newer glibc/libstdc++ symbols than
-# the target rootfs provides. We ship upstream's debian12 (Bookworm) arm64 build on
-# rootfilesystems it wasn't built against (no matching asset exists), which only works
-# while the rootfs's symbol versions are >= what the .so references. Static check, run
-# on the build host; the likely trigger is a MAVSDK_VERSION bump raising that floor.
+# the rootfs provides. We ship upstream's debian12 build on a rootfs it wasn't built
+# against, which only holds while the rootfs's symbol versions are >= what the .so
+# needs. Likely trigger: a MAVSDK_VERSION bump.
 #
-# Usage: check_mavsdk_abi.sh <rootfs_dir> [arch_tuple]   (arch defaults to arm64)
+# Usage: check_mavsdk_abi.sh <rootfs_dir> [arch_tuple]   (default aarch64-linux-gnu)
 
 set -euo pipefail
 
@@ -18,7 +17,7 @@ command -v readelf >/dev/null 2>&1 || {
     exit 1
 }
 
-# The versioned real file, not the .so symlink; the deb installs it under /usr/lib.
+# The versioned real file, not the .so dev symlink.
 mavsdk_so=$(find "$ROOTFS/usr/lib" "$ROOTFS/usr/lib/$ARCH" -maxdepth 1 \
                 -name 'libmavsdk.so.*' -type f 2>/dev/null | sort | head -1 || true)
 [ -n "$mavsdk_so" ] || {
@@ -53,8 +52,7 @@ echo "  rootfs:  $ROOTFS ($ARCH)"
 printf '  %-9s %-15s %-15s %s\n' family required provided result
 
 fail=0
-# Compatible iff required <= provided; these namespaces are backward-compatible, so
-# comparing the max of each is enough.
+# Compatible iff required <= provided (these symbol namespaces are backward-compatible).
 check_family() {
     local family="$1" provider="$2" req prov
     req=$(max_ver "$mavsdk_so" "$family")

@@ -1,51 +1,36 @@
 #!/bin/bash
 #
-# Rootfs provisioning script — runs during staging when --provision is passed.
+# Rootfs provisioning — runs during staging when build.sh is given --provision.
+# Env: ROOTFS_DIR (the staged rootfs), TARGET (PAB|JAJ|PAB_V3).
 #
-# Available environment:
-#   ROOTFS_DIR  — absolute path to the rootfs (staging/{TARGET}/Linux_for_Tegra/rootfs)
-#   TARGET      — product name (PAB, JAJ, PAB_V3)
-#
-# /proc, /sys, /dev are bind-mounted into the rootfs and DNS is configured.
-# /run is NOT bind-mounted, so [ -d /run/systemd/system ] is false inside the
-# chroot — the ARK-OS postinst's runtime-only operations are skipped here and the
-# device finishes provisioning on first boot. The default user (jetson) is created
-# before this runs, which the ark-os-jetson-jammy package's postinst relies on.
-#
-# Use `sudo chroot "$ROOTFS_DIR" <command>` to run commands inside the rootfs.
+# /proc, /sys, /dev are bind-mounted and DNS is set up; /run is not, so ARK-OS's
+# postinst sees no running systemd and defers its runtime steps to first boot. The
+# default 'jetson' user already exists, which ark-os's postinst relies on.
 
 set -e
 
-# Wall-clock start; reported at the end as "provisioning complete after Xm Ys".
+# Wall-clock start, reported at the end.
 PROVISION_START=$(date +%s)
 
-# Pinned versions live in versions.env — the single source of truth, also sourced by
-# setup.sh and scripts/check_bsp.sh: ARK_OS_VERSION, MAVSDK_VERSION, and
-# JETSON_STATS_VERSION (alongside the BSP/toolchain pins). MAVSDK_VERSION and
-# JETSON_STATS_VERSION must match the canonical pins in ARK-OS packaging/versions.env
-# — this repo has no ARK-OS checkout at build time, so they're duplicated there; keep
-# them in sync.
+# Version pins (ARK_OS_VERSION, MAVSDK_VERSION, JETSON_STATS_VERSION) live in
+# versions.env; keep MAVSDK/JETSON_STATS in sync with ARK-OS packaging/versions.env.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=versions.env
 source "$SCRIPT_DIR/versions.env"
 
-# ARK-OS now bakes the build host's OS codename into the package name
-# (ark-os-<platform>-<codename>); the Jetson rootfs is Ubuntu 22.04 = jammy.
+# Package name carries the rootfs codename; the Jetson rootfs is Ubuntu 22.04 = jammy.
 ARK_OS_PKG="ark-os-jetson-jammy"
 ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
-# Upstream publishes no ubuntu22.04_arm64 build; debian12_arm64 is what ARK-OS has
-# historically used on the Jammy rootfs (glibc-compatible in practice).
+# No ubuntu22.04 MAVSDK build is published; the debian12 arm64 deb is glibc-compatible
+# with the Jammy rootfs.
 MAVSDK_DEB="libmavsdk-dev_${MAVSDK_VERSION}_debian12_arm64.deb"
 
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 MAVSDK_URL="https://github.com/mavlink/MAVSDK/releases/download/v${MAVSDK_VERSION}/${MAVSDK_DEB}"
 
-# ARK_OS_CHANNEL=latest ignores the pinned ARK_OS_VERSION above and bakes in the
-# most-recently-created ARK-OS release deb (prerelease or official). Used by the
-# draft image build so a draft kernel release always ships the newest ark-os deb
-# without hand-syncing versions.env. ARK-OS is public and these are (pre)release
-# assets, so the fetch needs no auth (drafts, which would, are intentionally not
-# matched). MAVSDK stays pinned.
+# ARK_OS_CHANNEL=latest ignores the pin and bakes in the newest ARK-OS (pre)release
+# deb, so the draft build always ships the latest without editing versions.env.
+# Public (pre)release assets need no auth (true GitHub drafts are skipped). MAVSDK stays pinned.
 if [ "${ARK_OS_CHANNEL:-}" = "latest" ]; then
     echo "ARK_OS_CHANNEL=latest: resolving most-recent ARK-OS release deb..."
     ARK_OS_URL=$(curl -sfL "https://api.github.com/repos/ARK-Electronics/ARK-OS/releases?per_page=100" \
@@ -63,23 +48,15 @@ sys.exit(1)
     echo "Latest ARK-OS deb: $ARK_OS_DEB"
 fi
 
-# Prefer a deb already sitting in the repo's downloads/ cache, falling back to the
-# release download. This lets a locally-supplied deb — a CI artifact or a
-# pre-release build with no published GitHub release yet — be exercised through the
-# full chroot install: drop the file in downloads/ and set the matching *_VERSION in
-# versions.env so the filename lines up. The match is by exact filename (which embeds
-# the version), so a version bump with nothing cached falls through to the release URL.
-# DOWNLOADS_DIR may be set in the environment to override the default below.
+# Prefer a deb already in downloads/ over downloading, so a locally-supplied deb
+# (CI artifact or unreleased build) can be exercised: drop it in downloads/ and set
+# the matching *_VERSION so the filename lines up. Override the dir via DOWNLOADS_DIR.
 DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
-# Stage a deb into the rootfs's /tmp, caching it under downloads/ first so a rebuild
-# (or --clean) reuses it instead of re-downloading. A cache miss fetches into
-# downloads/ atomically (.partial → final); every path then copies from the cache
-# into the rootfs /tmp. A failed download aborts provisioning with an explicit error
-# rather than silently shipping no ARK-OS. wget -nv keeps the log quiet but still
-# surfaces HTTP errors (-q hid the 404 that previously made this fail silently);
-# -o /dev/stderr pins that log to stderr so wget doesn't drop a wget-log file in the
-# cwd, which it does when it has no controlling terminal (as in the build container).
+# Stage a deb into the rootfs /tmp, caching under downloads/ first (atomic
+# .partial → final) so rebuilds reuse it. A failed download aborts rather than
+# shipping no ARK-OS. wget -nv still surfaces HTTP errors; -o /dev/stderr stops it
+# dropping a wget-log file when it has no TTY (as in the build container).
 fetch_deb() {
     local deb="$1" url="$2"
     if [ ! -f "$DOWNLOADS_DIR/$deb" ]; then
@@ -103,28 +80,21 @@ echo "Fetching MAVSDK and ARK-OS debs..."
 fetch_deb "$MAVSDK_DEB" "$MAVSDK_URL"
 fetch_deb "$ARK_OS_DEB" "$ARK_OS_URL"
 
-# Block all service (re)starts inside the chroot. There is no running init here,
-# so a daemon start attempted by a dependency's maintainer script would fail or
-# hang. policy-rc.d returning 101 makes "no service actions in the chroot" a hard
-# guarantee, independent of each package's script hygiene (ARK-OS's own postinst
-# self-gates on /run/systemd/system, but its dependencies — nginx, avahi, bluez,
-# network-manager … — do not). The trap removes the shim on any exit so the
-# flashed image boots normally.
+# Block service (re)starts in the chroot: there's no init, so a dependency's
+# maintainer script trying to start a daemon would fail or hang. policy-rc.d → 101
+# guarantees this regardless of whether each package's scripts self-gate; the trap
+# removes the shim on exit.
 printf '#!/bin/sh\nexit 101\n' | sudo tee "$ROOTFS_DIR/usr/sbin/policy-rc.d" >/dev/null
 sudo chmod 0755 "$ROOTFS_DIR/usr/sbin/policy-rc.d"
 
-# NVIDIA's apt source ships a templated `<SOC>` repo entry that is resolved only
-# on-device at first boot; in the chroot it stays literal and makes `apt-get
-# update` exit non-zero ("does not have a Release file"), which under set -e would
-# abort provisioning. ARK-OS needs none of the NVIDIA repos — its dependencies
-# come from the Ubuntu ports archive plus the MAVSDK deb — so move the source
-# aside while provisioning and restore it on exit, leaving the shipped image's
-# apt config untouched so first boot resolves `<SOC>` as usual.
+# NVIDIA's apt source has a templated <SOC> entry resolved only on-device; in the
+# chroot it 404s and fails apt-get update under set -e. ARK-OS needs no NVIDIA repos,
+# so move it aside during provisioning and restore on exit — the shipped image is
+# left untouched so first boot resolves <SOC> as usual.
 NV_APT_SRC="$ROOTFS_DIR/etc/apt/sources.list.d/nvidia-l4t-apt-source.list"
 [ -f "$NV_APT_SRC" ] && sudo mv "$NV_APT_SRC" "$NV_APT_SRC.provision-disabled"
 
-# Remove the policy-rc.d shim and restore the NVIDIA apt source on any exit
-# (success or failure) so the flashed image boots and updates normally.
+# Undo both on any exit so the flashed image boots and updates normally.
 cleanup_provision() {
     sudo rm -f "$ROOTFS_DIR/usr/sbin/policy-rc.d"
     [ -f "$NV_APT_SRC.provision-disabled" ] && \
@@ -132,12 +102,9 @@ cleanup_provision() {
 }
 trap cleanup_provision EXIT
 
-# ARK-OS ships no conffiles, so chroot/non-interactive installs never stall on
-# conffile prompts. `apt-get install ./file.deb` installs the local deb and pulls
-# its dependencies from the repos in one step — and, unlike `dpkg -i`, exits
-# non-zero on a real failure instead of leaving the package unconfigured. MAVSDK
-# installs first because ark-os Depends: libmavsdk-dev, which is in no repo, so it
-# must already be installed before ark-os's dependencies can resolve.
+# apt-get install ./file.deb installs the local deb and pulls its deps in one step,
+# and (unlike dpkg -i) fails loud on error. MAVSDK first: ark-os Depends on
+# libmavsdk-dev, which is in no repo, so it must be installed before ark-os resolves.
 echo "Installing MAVSDK (ark-os depends on libmavsdk-dev)..."
 sudo chroot "$ROOTFS_DIR" apt-get update
 sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$MAVSDK_DEB"
@@ -145,9 +112,8 @@ sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$MAVSDK_DEB"
 echo "Installing ${ARK_OS_PKG}..."
 sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$ARK_OS_DEB"
 
-# Belt-and-suspenders: confirm both packages ended up fully configured. apt-get
-# already aborts under set -e on a real failure, but this also catches a package
-# left half-configured and documents the post-condition the image relies on.
+# Confirm both packages are fully configured — catches a half-configured package
+# and documents the post-condition the image relies on.
 echo "Verifying packages are installed..."
 for pkg in libmavsdk-dev "$ARK_OS_PKG"; do
     status=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || true)
@@ -158,32 +124,21 @@ for pkg in libmavsdk-dev "$ARK_OS_PKG"; do
     fi
 done
 
-# The MAVSDK deb is upstream's debian12 (Bookworm) build running on a Jammy rootfs;
-# dpkg confirms it installed, but not that its versioned glibc/libstdc++ symbols are
-# satisfied here (apt declares no such dep, and ldd can't see symbol versions). This
-# static check on the host catches a "GLIBC_2.xx/GLIBCXX_3.4.xx not found" load
-# failure before we ship — the failure mode a MAVSDK_VERSION bump could introduce.
+# The MAVSDK deb is upstream's debian12 build on a Jammy rootfs; dpkg can't verify
+# its glibc/libstdc++ symbol versions resolve here. Catch a "version not found" load
+# failure before shipping (the failure mode a MAVSDK_VERSION bump could introduce).
 echo "Checking MAVSDK ABI compatibility with the rootfs..."
 "$SCRIPT_DIR/scripts/check_mavsdk_abi.sh" "$ROOTFS_DIR"
 
-# jetson-stats provides the jtop daemon (jtop.service) and its Python client,
-# installed system-wide via pip. ARK-OS system-manager imports this same install
-# through the bundled venv's system-site-packages, so the client and daemon are
-# always the same version. jtop stays a *system* install (not a venv, unlike
-# ARK-OS's own app code) on purpose: a venv would hide jtop from the
-# system-site-packages client and detach the service from its install path, and
-# bundling a second copy in ARK-OS's venv would reintroduce client/daemon version
-# skew. Run as root, setup.py installs the unit to /etc/systemd/system/jtop.service;
-# its own systemctl enable/start are no-ops while systemd isn't running in the
-# chroot, so we enable it for first boot below.
+# jetson-stats stays a *system* install (not a venv, unlike ARK-OS app code): jtop's
+# daemon and its client library must be one version, and ARK-OS's venv sees the client
+# via --system-site-packages. setup.py installs jtop.service when run as root; we
+# enable it for first boot below since systemctl can't reach a manager in the chroot.
 echo "Installing jetson-stats (jtop) system-wide..."
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
-# Ubuntu >= 24.04 (JetPack 7) marks the system Python externally-managed (PEP 668),
-# so a system-wide pip install is refused without --break-system-packages. Gate on
-# the marker the rootfs actually ships rather than the codename: present (noble+) →
-# pass the flag (that rootfs's pip is new enough to accept it); absent (jammy/22.04,
-# whose pip 22.0 doesn't know the flag) → plain install. Makes the JetPack 7 bump a
-# no-op here.
+# Ubuntu >= 24.04 (JetPack 7) marks system Python externally-managed (PEP 668), so a
+# system pip install needs --break-system-packages. Gate on the marker the rootfs
+# ships: present (noble+, new pip) → flag; absent (jammy, pip 22 without it) → plain.
 PIP_FLAGS=()
 if sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/python3*/EXTERNALLY-MANAGED >/dev/null 2>&1'; then
     PIP_FLAGS=(--break-system-packages)
@@ -191,9 +146,8 @@ fi
 sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" "jetson-stats==${JETSON_STATS_VERSION}"
 sudo chroot "$ROOTFS_DIR" python3 -c "import jtop"                  # sanity: client installed
 sudo chroot "$ROOTFS_DIR" test -f /etc/systemd/system/jtop.service  # sanity: setup.py placed the unit
-# Enable jtop.service for first boot — offline equivalent of `systemctl enable`
-# (unit is WantedBy=multi-user.target), reliable in the chroot where systemctl
-# cannot reach a running manager.
+# Enable jtop.service for first boot (offline `systemctl enable`; it's
+# WantedBy=multi-user.target), since systemctl can't reach a manager in the chroot.
 sudo chroot "$ROOTFS_DIR" mkdir -p /etc/systemd/system/multi-user.target.wants
 sudo chroot "$ROOTFS_DIR" ln -sf /etc/systemd/system/jtop.service \
     /etc/systemd/system/multi-user.target.wants/jtop.service

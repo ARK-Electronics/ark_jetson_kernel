@@ -24,13 +24,11 @@ jobs:
       contents: write
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      # Sized to sit comfortably above one build's compressed object set
-      # (~1 GB) so ccache doesn't evict its own objects and lose hits. The BSP
-      # cache is read every run (stays warm), so the rotating ccache entries are
-      # the natural LRU victims if the repo nears its 10 GB cache budget.
+      # Above one build's object set (~1 GB) so ccache doesn't evict its own hits;
+      # the rotating ccache is the natural LRU victim under the repo's 10 GB budget.
       CCACHE_MAXSIZE: "2G"
-      # Fresh checkouts/extractions reset timestamps and a couple of kernel files
-      # embed __DATE__/__TIME__; ignore those so they don't force cache misses.
+      # Fresh checkouts reset mtimes and a few kernel files embed __DATE__/__TIME__;
+      # ignore those so they don't force misses.
       CCACHE_SLOPPINESS: time_macros,include_file_ctime,include_file_mtime
 
     steps:
@@ -105,10 +103,8 @@ jobs:
           path: downloads/*.tbz2
           key: l4t-bsp-${{ steps.cachekeys.outputs.bsp }}
 
-      # ccache across runs: most changes here are device tree / scripts, so the
-      # kernel C compile is almost all hits. Rotating key (per run) so each run
-      # saves the updated cache; restore-keys pulls the most recent prior cache.
-      # Bounded by CCACHE_MAXSIZE to stay within the repo's 10 GB cache budget.
+      # ccache across runs (kernel C is mostly hits). Rotating per-run key so each
+      # run saves an updated cache; restore-keys pulls the most recent prior one.
       - name: Cache ccache
         uses: actions/cache@v4
         with:
@@ -124,9 +120,8 @@ jobs:
         run: ccache -z
 
       - name: Build kernel
-        # Draft builds bake in the latest ARK-OS (pre)release deb
-        # (ARK_OS_CHANNEL=latest) via --provision. Production/PR builds are
-        # unchanged (no provisioning until ARK-OS is officially published).
+        # Draft builds provision with the latest ARK-OS deb (ARK_OS_CHANNEL=latest);
+        # production/PR builds don't provision.
         run: |
           if [ "${{ steps.tag.outputs.draft }}" = "true" ]; then
             ARK_OS_CHANNEL=latest ./build.sh ${{ steps.tag.outputs.target }} --provision

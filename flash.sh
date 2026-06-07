@@ -62,10 +62,8 @@ source "$SCRIPT_DIR/scripts/check_bsp.sh"
 
 L4T_DIR="$SCRIPT_DIR/staging/$TARGET/Linux_for_Tegra"
 
-# staging/ is created by the root build container (and the rootfs underneath must
-# be root-owned), so it isn't writable by the invoking user. Flashing needs root
-# anyway, so prime sudo now and tee the log through sudo — otherwise the log write
-# fails with "Permission denied" and no flash.log.txt is saved.
+# staging/ is root-owned (created by the build container), so the user can't write
+# the log here. Flashing needs root anyway: prime sudo and tee through it.
 sudo -v || { echo "ERROR: sudo is required to flash." >&2; exit 1; }
 exec > >(sudo tee "$SCRIPT_DIR/staging/$TARGET/flash.log.txt") 2>&1
 
