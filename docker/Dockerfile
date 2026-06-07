@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         bc \
         kmod \
         wget \
+        curl \
         tar \
         bzip2 \
         cpio \
