@@ -108,10 +108,16 @@ EOF
 # kernel/tools at flash time, so the kernel source tree (several GB), any stale
 # pre-generated images, and the L4T debs (apply_binaries already installed them
 # into the rootfs at build time) are all dead weight in the package.
+# Also never archive the rootfs pseudo-filesystems: if a chroot bind mount leaked
+# (see build.sh cleanup_chroot), tar would otherwise capture live /sys + /proc
+# (tens of thousands of bogus entries, and /proc/kcore is a 128TB trap). Keep the
+# empty mount-point dirs by excluding only their contents.
 PRUNE=(
     --exclude='Linux_for_Tegra/source'
     --exclude='Linux_for_Tegra/tools/kernel_flash/images'
     --exclude='Linux_for_Tegra/nv_tegra/l4t_deb_packages'
+    --exclude='Linux_for_Tegra/rootfs/proc/*'
+    --exclude='Linux_for_Tegra/rootfs/sys/*'
 )
 
 OUTPUT_FILE="$ROOT_DIR/${PACKAGE_NAME}.tar.gz"

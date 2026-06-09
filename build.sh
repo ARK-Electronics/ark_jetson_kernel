@@ -207,10 +207,18 @@ if [ ! -d "$L4T_DIR" ]; then
         ROOTFS_DIR="$L4T_DIR/rootfs"
 
         cleanup_chroot() {
-            sudo umount "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
-            sudo umount "$ROOTFS_DIR/dev" 2>/dev/null || true
-            sudo umount "$ROOTFS_DIR/sys" 2>/dev/null || true
-            sudo umount "$ROOTFS_DIR/proc" 2>/dev/null || true
+            # /proc and /sys pull in nested submounts (binfmt_misc, cgroup, ...) via
+            # mount propagation, so a plain umount fails "busy" and silently leaves them
+            # mounted — later bloating the flash package's rootfs tar with live
+            # /sys + /proc. -R tears down the whole subtree, -l detaches even if briefly
+            # held. Warn loudly if anything survives rather than leaving a dirty rootfs.
+            for mp in dev/pts dev sys proc; do
+                sudo umount -R -l "$ROOTFS_DIR/$mp" 2>/dev/null || true
+            done
+            if mount | grep -q " on $ROOTFS_DIR/"; then
+                echo "WARNING: mounts still present under $ROOTFS_DIR after cleanup:" >&2
+                mount | grep " on $ROOTFS_DIR/" >&2
+            fi
         }
         trap cleanup_chroot EXIT
 
