@@ -99,7 +99,7 @@ if [ "$STORAGE" = "nvme" ]; then
         --external-device "$STORAGE_DEV" \
         -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" \
         -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml \
-        --erase-all --network usb0 \
+        --network usb0 \
         "$FLASH_TARGET" "$STORAGE_DEV"
 else
     sudo -E ./tools/kernel_flash/l4t_initrd_flash.sh \
