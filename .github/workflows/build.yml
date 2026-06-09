@@ -32,6 +32,11 @@ jobs:
       # Fresh checkouts reset mtimes and a few kernel files embed __DATE__/__TIME__;
       # ignore those so they don't force misses.
       CCACHE_SLOPPINESS: time_macros,include_file_ctime,include_file_mtime
+      # The bootlin toolchain is restored from its own cache each run with fresh
+      # mtimes; ccache's default compiler check is the compiler's mtime, so that alone
+      # invalidated the entire cache (observed ~1% hit rate). Hash the compiler's
+      # contents instead so hits survive a toolchain cache restore.
+      CCACHE_COMPILERCHECK: content
 
     steps:
       - name: Parse tag
