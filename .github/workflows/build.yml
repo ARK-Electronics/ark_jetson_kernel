@@ -19,7 +19,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    # Kernel build alone is ~70 min on a cold ccache; leave headroom for packaging
+    # (tar + parallel compress of the rootfs) and the multi-GB release upload.
+    timeout-minutes: 180
     permissions:
       contents: write
     env:
@@ -90,7 +92,7 @@ jobs:
             device-tree-compiler dosfstools \
             iproute2 iputils-ping lbzip2 libxml2-utils lz4 \
             netcat-openbsd nfs-kernel-server openssl \
-            python3-yaml qemu-user-static rsync sshpass \
+            pigz python3-yaml qemu-user-static rsync sshpass \
             udev usbutils uuid-runtime whois xmlstarlet zstd
 
       - name: Resolve cache keys from versions.env

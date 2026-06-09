@@ -118,10 +118,14 @@ OUTPUT_FILE="$ROOT_DIR/${PACKAGE_NAME}.tar.gz"
 rm -f "$OUTPUT_FILE"
 
 # pigz parallelizes the multi-GB compress; fall back to gzip when it's absent.
+# Single-threaded gzip on the full rootfs takes tens of minutes, so say which
+# path we're on rather than silently crawling (CI installs pigz).
 if command -v pigz >/dev/null 2>&1; then
     COMPRESS=(--use-compress-program=pigz)
+    echo "Compressing with pigz (parallel)."
 else
     COMPRESS=(-z)
+    echo "WARNING: pigz not found — using single-threaded gzip (slow). Install pigz to speed this up."
 fi
 
 echo "Archiving Linux_for_Tegra tree (this takes a few minutes)..."
