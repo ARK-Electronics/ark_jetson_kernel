@@ -136,10 +136,19 @@ fi
 
 echo "Archiving Linux_for_Tegra tree (this takes a few minutes)..."
 # --numeric-owner + --xattrs preserve rootfs ownership and file capabilities so
-# the flashed OS matches the staged rootfs exactly.
+# the flashed OS matches the staged rootfs exactly. rootfs/sys (and /proc) are live
+# mount points — their contents are excluded above, but tar still stats the dir and
+# trips "file changed as we read it", which is exit code 1. That's a warning, not a
+# failure: accept rc<=1 and only abort on a real error (rc>=2, e.g. pigz failure).
+tar_rc=0
 sudo tar "${COMPRESS[@]}" --numeric-owner --xattrs --xattrs-include='*' \
+    --warning=no-file-changed --warning=no-file-shrank \
     "${PRUNE[@]}" \
-    -cpf "$OUTPUT_FILE" -C "$STAGING_DIR" Linux_for_Tegra
+    -cpf "$OUTPUT_FILE" -C "$STAGING_DIR" Linux_for_Tegra || tar_rc=$?
+if [ "$tar_rc" -gt 1 ]; then
+    echo "ERROR: tar failed (exit $tar_rc)." >&2
+    exit 1
+fi
 sudo chown "$(id -u):$(id -g)" "$OUTPUT_FILE"
 
 FILE_SIZE=$(stat -c%s "$OUTPUT_FILE")
