@@ -69,6 +69,17 @@ jobs:
           docker-images: true
           swap-storage: false
 
+      - name: Stage build tree on /mnt
+        # staging/ (extracted rootfs + massflash images + the multi-GB mfi tarball)
+        # overran the ~49 GB free on / and crashed the runner with ENOSPC during
+        # packaging. The ephemeral /mnt has ~65 GB free and is otherwise unused, so
+        # build there. The final package + split stay in the workspace on /, where
+        # the release step globs for them.
+        run: |
+          sudo mkdir -p /mnt/staging
+          sudo chown "$(id -u):$(id -g)" /mnt/staging
+          ln -s /mnt/staging staging
+
       - name: Install prerequisites
         env:
           DEBIAN_FRONTEND: noninteractive
