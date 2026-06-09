@@ -62,7 +62,10 @@ source "$SCRIPT_DIR/scripts/check_bsp.sh"
 
 L4T_DIR="$SCRIPT_DIR/staging/$TARGET/Linux_for_Tegra"
 
-exec > >(tee "$SCRIPT_DIR/staging/$TARGET/flash.log.txt") 2>&1
+# staging/ is root-owned (created by the build container), so the user can't write
+# the log here. Flashing needs root anyway: prime sudo and tee through it.
+sudo -v || { echo "ERROR: sudo is required to flash." >&2; exit 1; }
+exec > >(sudo tee "$SCRIPT_DIR/staging/$TARGET/flash.log.txt") 2>&1
 
 if [ ! -d "$L4T_DIR" ]; then
     echo "ERROR: staging/$TARGET/ not found." >&2

@@ -1,10 +1,8 @@
 #!/bin/bash
-# Shared host-detection + container-handoff helpers. Sourced by setup.sh and
-# build.sh. NVIDIA's documented build host for L4T R36.4.4 / JP 6.2.1
-# is Ubuntu 22.04; on anything else we re-exec the calling script inside a
-# 22.04 docker container so that host-tooling differences (notably kmod 31
-# vs kmod 29 in the on-device sample rootfs) cannot silently corrupt the
-# build. See docs/build_host.md for the full background.
+# Host-detection + container handoff, sourced by setup.sh and build.sh. NVIDIA's
+# documented build host is Ubuntu 22.04; on anything else we re-exec inside a 22.04
+# container so host-tool differences (kmod 31 vs the rootfs's kmod 29) can't corrupt
+# the build. See docs/build_host.md.
 
 ARK_BUILDER_IMAGE="ark-jetson-builder:22.04"
 
@@ -17,11 +15,8 @@ needs_container() {
     [ "$host_id" != "22.04" ]
 }
 
-# Installs docker via apt if it isn't on PATH, then sets DOCKER_CMD to either
-# (docker) or (sudo docker) depending on whether the current user can talk to
-# the docker daemon without sudo. The sudo fallback avoids forcing the user
-# to add themselves to the docker group + re-login the first time they run.
-# Exits on failure.
+# Install docker if missing, then set DOCKER_CMD to (docker) or (sudo docker) by
+# probing daemon access. The sudo fallback avoids forcing a docker-group re-login.
 ensure_docker() {
     if ! command -v docker >/dev/null 2>&1; then
         if ! command -v apt-get >/dev/null 2>&1; then
@@ -35,16 +30,13 @@ ensure_docker() {
         sudo apt-get install -y docker.io
     fi
 
-    # Quick path: daemon is reachable without sudo and we're done.
     if docker info >/dev/null 2>&1; then
         DOCKER_CMD=(docker)
         return
     fi
 
-    # Probe failed — either the daemon is stopped or the user isn't in the
-    # docker group. Try starting the daemon first (covers a fresh apt install
-    # and the "installed but service stopped" case); then re-probe and fall
-    # back to sudo docker if the only remaining issue is group membership.
+    # Probe failed: daemon stopped or user not in docker group. Try starting it, then
+    # re-probe and fall back to sudo docker if only group membership remains.
     if command -v systemctl >/dev/null 2>&1; then
         sudo systemctl is-active docker >/dev/null 2>&1 || sudo systemctl start docker
     fi
@@ -56,13 +48,10 @@ ensure_docker() {
     fi
 }
 
-# Re-exec the calling script inside the 22.04 build container. Does not
-# return on success. Builds the image on first use. Bind-mounts the repo
-# at /workspace and the bootlin toolchain at /root/l4t-gcc.
-#
-# Args:
+# Re-exec the calling script in the 22.04 build container (does not return on
+# success; builds the image on first use).
 #   $1     path to the calling script ($0)
-#   $2..   args to pass through to the in-container invocation
+#   $2..   args passed through to the in-container run
 run_in_container() {
     local script_path="$1"; shift
     local repo_dir="$ARK_JETSON_KERNEL_DIR"
@@ -79,31 +68,34 @@ run_in_container() {
         "${DOCKER_CMD[@]}" build -t "$ARK_BUILDER_IMAGE" "$repo_dir/docker/"
     fi
 
-    mkdir -p "$HOME/l4t-gcc"
+    # Persistent ccache for container builds: the container is --rm, so without a host
+    # mount the cache vanishes each run. Dedicated dir (not a shared host ccache) to
+    # avoid cross-project churn; override via ARK_CCACHE_DIR.
+    local ccache_dir="${ARK_CCACHE_DIR:-$HOME/.cache/ark_jetson_ccache}"
+    mkdir -p "$HOME/l4t-gcc" "$ccache_dir"
     echo "Re-executing $(basename "$script_path") in 22.04 build container..."
 
-    # Only request a TTY when our own stdin and stdout are terminals — `docker
-    # run -t` against a non-TTY fd (CI, output redirection, a pipe) errors
-    # with "the input device is not a TTY" before the build can start. `-i`
-    # stays unconditional so the interactive prompt still works from a shell.
+    # Only add -t when stdin/stdout are both TTYs; `docker run -t` against a non-TTY
+    # (CI, pipe, redirection) errors out. -i stays so the interactive prompt still works.
     local tty_flags=(-i)
     if [ -t 0 ] && [ -t 1 ]; then
         tty_flags+=(-t)
     fi
 
-    # SYS_ADMIN + apparmor=unconfined: NVIDIA's l4t_create_default_user.sh and
-    # other rootfs-customization helpers chroot into the staged rootfs and
-    # mount-bind /proc, /sys, /dev. Docker's default seccomp/AppArmor profile
-    # blocks mount(2), so we relax both for the build container. The container
-    # is ephemeral (--rm) and runs only the kernel build, so the broader
-    # privilege scope is acceptable.
+    # SYS_ADMIN + apparmor=unconfined: NVIDIA's rootfs helpers chroot in and bind-mount
+    # /proc,/sys,/dev, which Docker's default profiles block. The container is ephemeral
+    # (--rm) and runs only the build, so the wider privilege is acceptable.
     exec "${DOCKER_CMD[@]}" run --rm "${tty_flags[@]}" \
         --cap-add=SYS_ADMIN \
         --security-opt apparmor=unconfined \
         -v "$repo_dir:/workspace" \
         -v "$HOME/l4t-gcc:/root/l4t-gcc" \
+        -v "$ccache_dir:/root/.ccache" \
         -w /workspace \
         -e IN_BUILD_CONTAINER=1 \
+        -e CCACHE_DIR=/root/.ccache \
+        -e CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-20G}" \
+        -e CCACHE_SLOPPINESS=time_macros,include_file_ctime,include_file_mtime \
         -e ARK_BUILD_OS="$ARK_BUILD_OS" \
         -e ARK_BUILD_COMMIT="$ARK_BUILD_COMMIT" \
         "$ARK_BUILDER_IMAGE" \

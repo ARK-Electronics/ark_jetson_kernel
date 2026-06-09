@@ -7,6 +7,9 @@ on:
       - 'pab-[0-9]*'
       - 'jaj-[0-9]*'
       - 'pab-v3-[0-9]*'
+      - 'draft-pab-[0-9]*'
+      - 'draft-jaj-[0-9]*'
+      - 'draft-pab-v3-[0-9]*'
   pull_request:
 
 concurrency:
@@ -19,6 +22,14 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: write
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      # Above one build's object set (~1 GB) so ccache doesn't evict its own hits;
+      # the rotating ccache is the natural LRU victim under the repo's 10 GB budget.
+      CCACHE_MAXSIZE: "2G"
+      # Fresh checkouts reset mtimes and a few kernel files embed __DATE__/__TIME__;
+      # ignore those so they don't force misses.
+      CCACHE_SLOPPINESS: time_macros,include_file_ctime,include_file_mtime
 
     steps:
       - name: Parse tag
@@ -26,16 +37,24 @@ jobs:
         id: tag
         run: |
           TAG="${GITHUB_REF_NAME}"
+          # draft-<product>-<ver> → build a provisioned image from the latest
+          # ARK-OS (pre)release and publish a hidden DRAFT GitHub release.
+          DRAFT=false
+          BASE="$TAG"
           case "$TAG" in
-            pab-v3-*) PRODUCT="pab-v3"; VERSION="${TAG#pab-v3-}"; TARGET="PAB_V3" ;;
-            pab-*)    PRODUCT="pab";    VERSION="${TAG#pab-}";    TARGET="PAB" ;;
-            jaj-*)    PRODUCT="jaj";    VERSION="${TAG#jaj-}";    TARGET="JAJ" ;;
+            draft-*) DRAFT=true; BASE="${TAG#draft-}" ;;
+          esac
+          case "$BASE" in
+            pab-v3-*) PRODUCT="pab-v3"; VERSION="${BASE#pab-v3-}"; TARGET="PAB_V3" ;;
+            pab-*)    PRODUCT="pab";    VERSION="${BASE#pab-}";    TARGET="PAB" ;;
+            jaj-*)    PRODUCT="jaj";    VERSION="${BASE#jaj-}";    TARGET="JAJ" ;;
             *) echo "::error::Unrecognized tag format: $TAG"; exit 1 ;;
           esac
           echo "product=$PRODUCT" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "target=$TARGET"   >> "$GITHUB_OUTPUT"
-          echo "Parsed tag: product=$PRODUCT version=$VERSION target=$TARGET"
+          echo "draft=$DRAFT"      >> "$GITHUB_OUTPUT"
+          echo "Parsed tag: product=$PRODUCT version=$VERSION target=$TARGET draft=$DRAFT"
 
       - uses: actions/checkout@v4
 
@@ -56,24 +75,63 @@ jobs:
         run: |
           sudo -E apt-get update -qq
           sudo -E apt-get install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
-            abootimg binfmt-support binutils cpio cpp curl \
+            abootimg binfmt-support binutils ccache cpio cpp curl \
             device-tree-compiler dosfstools \
             iproute2 iputils-ping lbzip2 libxml2-utils lz4 \
             netcat-openbsd nfs-kernel-server openssl \
             python3-yaml qemu-user-static rsync sshpass \
             udev usbutils uuid-runtime whois xmlstarlet zstd
 
+      - name: Resolve cache keys from versions.env
+        id: cachekeys
+        run: |
+          source versions.env
+          echo "bsp=${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}" >> "$GITHUB_OUTPUT"
+          echo "toolchain=$(basename "$TOOLCHAIN_URL")" >> "$GITHUB_OUTPUT"
+
       - name: Cache bootlin toolchain
         uses: actions/cache@v4
         with:
           path: ~/l4t-gcc
-          key: l4t-gcc-${{ hashFiles('bsp_version.env') }}
+          key: l4t-gcc-${{ steps.cachekeys.outputs.toolchain }}
+
+      # The L4T BSP/rootfs/sources tarballs (~2.7 GB) are pinned by BSP version, so
+      # cache them on it — setup.sh skips any tarball already present in downloads/.
+      - name: Cache L4T BSP tarballs
+        uses: actions/cache@v4
+        with:
+          path: downloads/*.tbz2
+          key: l4t-bsp-${{ steps.cachekeys.outputs.bsp }}
+
+      # ccache across runs (kernel C is mostly hits). Rotating per-run key so each
+      # run saves an updated cache; restore-keys pulls the most recent prior one.
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ steps.cachekeys.outputs.bsp }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ steps.cachekeys.outputs.bsp }}-
 
       - name: Download BSP
         run: ./setup.sh --force
 
+      - name: Reset ccache stats
+        run: ccache -z
+
       - name: Build kernel
-        run: ./build.sh ${{ steps.tag.outputs.target || 'PAB' }}
+        # Draft builds provision with the latest ARK-OS deb (ARK_OS_CHANNEL=latest);
+        # production/PR builds don't provision.
+        run: |
+          if [ "${{ steps.tag.outputs.draft }}" = "true" ]; then
+            ARK_OS_CHANNEL=latest ./build.sh ${{ steps.tag.outputs.target }} --provision
+          else
+            ./build.sh ${{ steps.tag.outputs.target || 'PAB' }}
+          fi
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
 
       - name: Generate flash package
         if: startsWith(github.ref, 'refs/tags/')
@@ -88,7 +146,7 @@ jobs:
           PRODUCT="${{ steps.tag.outputs.product }}"
           VERSION="${{ steps.tag.outputs.version }}"
 
-          source bsp_version.env
+          source versions.env
           L4T_VERSION="${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}"
 
           PRODUCT_UPPER=$(echo "$PRODUCT" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
@@ -134,7 +192,11 @@ jobs:
           Put the Jetson in recovery mode before running. Requires a Debian/Ubuntu host with USB connection. Supports all Orin Nano/NX module variants.
           EOF
 
-          gh release create "$TAG" \
+          DRAFT_FLAG=""
+          if [ "${{ steps.tag.outputs.draft }}" = "true" ]; then
+            DRAFT_FLAG="--draft"
+          fi
+          gh release create "$TAG" $DRAFT_FLAG \
             --title "${PRODUCT_UPPER} v${VERSION}" \
             --notes-file /tmp/release-notes.md \
             "${RELEASE_FILES[@]}"

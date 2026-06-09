@@ -4,8 +4,8 @@ This repository contains instructions and scripts for flashing your Jetson **Ori
 
 | Component | Version |
 | --- | --- |
-| JetPack | 6.2.1 |
-| L4T (BSP) | R36.4.4 |
+| JetPack | 6.2.2 |
+| L4T (BSP) | R36.5.0 |
 | Kernel | Linux 5.15 |
 | Host OS | Ubuntu 22.04 |
 
@@ -52,7 +52,7 @@ Download the BSP, root filesystem, and kernel source tarballs:
 ```
 
 ### 2. Build
-Build a target. The first build stages the full L4T tree (extract, configure rootfs, apply patches) which takes several minutes. Subsequent builds skip staging and just recompile.
+Build a target. The first build stages the full L4T tree (extract, configure rootfs) which takes several minutes. Subsequent builds skip staging and just recompile.
 ```
 ./build.sh PAB        # build one target
 ./build.sh all        # build all three
@@ -103,6 +103,10 @@ Once complete, SSH in via Micro USB or WiFi.
 ```
 ssh jetson@jetson.local
 ```
+
+> **Tip:** To avoid typing the password on every connection, copy your SSH key to the Jetson once with `ssh-copy-id jetson@jetson.local`.
+
+> **Tip:** Run `./scripts/add_ssh_config.sh` once to add a `jetson` entry to your `~/.ssh/config`. Then you can connect with just `ssh jetson`, and reflashing the Jetson won't trip the "REMOTE HOST IDENTIFICATION HAS CHANGED" warning.
 
 ### 5. Generate & Publish Flash Package (optional)
 

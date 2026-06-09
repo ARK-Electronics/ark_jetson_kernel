@@ -1,20 +1,11 @@
 #!/bin/bash
 
-# Usage: ./build.sh <TARGET> [--clean] [--provision]
-#        ./build.sh all [--clean] [--provision]
+# Usage: ./build.sh <PAB|JAJ|PAB_V3|all> [--clean] [--provision]
+#   --clean      wipe staging/{TARGET}/ and re-stage from downloads before building
+#   --provision  install ARK-OS into the rootfs (staging only: first build or --clean)
 #
-# TARGET: PAB | JAJ | PAB_V3 | all
-# --clean:     wipe staging/{TARGET}/ and re-stage from downloads before building.
-# --provision: run provision.sh to install additional packages into the rootfs.
-#              Only takes effect during staging (first build or --clean).
-#
-# On first build for a target (or after --clean), this script extracts the BSP,
-# root filesystem, and kernel source from downloads/, configures the rootfs,
-# applies defconfig fragments and patches, then builds the kernel.  Subsequent
-# builds skip the staging step and just recompile.
-#
-# Each product gets its own self-contained staging/{TARGET}/Linux_for_Tegra/
-# directory — no shared mutable state between products.
+# First build per target stages the L4T tree under its own staging/{TARGET}/;
+# later builds just recompile. Products share no mutable state.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export ARK_JETSON_KERNEL_DIR="$SCRIPT_DIR"
@@ -65,33 +56,42 @@ if [ -z "$TARGET" ]; then
     fi
 fi
 
-# ── Validate downloads (before container handoff or build) ──────────────────
+# ── Ensure BSP downloads are present (before container handoff or build) ─────
+# build.sh doesn't download — if any BSP tarball is missing, run setup.sh rather
+# than dead-ending. We re-verify after, so a real download failure still aborts.
 
 DOWNLOADS_DIR="$SCRIPT_DIR/downloads"
 L4T_RELEASE_PACKAGE=$(basename "$BSP_URL")
 SAMPLE_FS_PACKAGE=$(basename "$ROOT_FS_URL")
+REQUIRED_TARBALLS=("$L4T_RELEASE_PACKAGE" "$PUBLIC_SOURCES_FILE" "$SAMPLE_FS_PACKAGE")
 
-if [ "$TARGET" != "all" ]; then
-    for f in "$L4T_RELEASE_PACKAGE" "public_sources.tbz2" "$SAMPLE_FS_PACKAGE"; do
-        if [ ! -f "$DOWNLOADS_DIR/$f" ]; then
-            echo "ERROR: $f not found in downloads/." >&2
-            echo "       Run ./setup.sh first to download the BSP." >&2
-            exit 1
-        fi
+downloads_present() {
+    for f in "${REQUIRED_TARBALLS[@]}"; do
+        [ -f "$DOWNLOADS_DIR/$f" ] || return 1
     done
+}
+
+if ! downloads_present; then
+    echo "BSP tarballs for ${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION} are missing from downloads/ — running ./setup.sh first..."
+    if ! "$SCRIPT_DIR/setup.sh"; then
+        echo "ERROR: ./setup.sh failed — aborting build." >&2
+        exit 1
+    fi
+    if ! downloads_present; then
+        echo "ERROR: BSP tarballs still missing after ./setup.sh — aborting build." >&2
+        exit 1
+    fi
 fi
 
 # Capture host OS before any container handoff — inside the build container,
 # /etc/os-release describes the container (always 22.04), not the actual host.
 [ -z "$ARK_BUILD_OS" ] && export ARK_BUILD_OS=$(. /etc/os-release && echo "$PRETTY_NAME")
 
-# Capture the build commit on the host. Inside the container the repo is
-# bind-mounted but owned by the host UID, so git refuses with "dubious
-# ownership" — resolve the hash here where git has the right ownership view.
+# Resolve the build commit on the host: inside the container the bind-mounted repo
+# is host-owned, so git there refuses with "dubious ownership".
 [ -z "$ARK_BUILD_COMMIT" ] && export ARK_BUILD_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
 
-# Cache sudo credentials once upfront so sub-processes and docker don't
-# each prompt independently.
+# Prime sudo once so sub-processes and docker don't each prompt.
 sudo -v
 
 if [ "$TARGET" = "all" ]; then
@@ -111,8 +111,8 @@ fi
 
 export TARGET
 
-# Re-exec inside the 22.04 build container if needed. Pass the resolved
-# TARGET (not the original $@) so the container doesn't re-prompt.
+# Re-exec in the 22.04 container if needed, passing the resolved TARGET so it
+# doesn't re-prompt.
 if needs_container; then
     CONTAINER_ARGS=("$TARGET")
     [ "$CLEAN" -eq 1 ] && CONTAINER_ARGS+=("--clean")
@@ -128,7 +128,22 @@ START_TIME=$(date +%s)
 
 STAGING_DIR="$SCRIPT_DIR/staging/$TARGET"
 
-# Log to the target's staging directory.
+# Clean before opening the log: a later rm -rf of $STAGING_DIR would unlink the
+# just-created build.log.txt and leave tee writing to a dead inode.
+if [ "$CLEAN" -eq 1 ] && [ -d "$STAGING_DIR" ]; then
+    # A leaked bind mount under $STAGING_DIR (interrupted provisioning) would make
+    # rm -rf recurse into host /proc,/sys,/dev. Refuse to clean until it's unmounted.
+    mounts_under=$(mount | awk -v d="$STAGING_DIR/" 'index($3, d)==1 {print $3}')
+    if [ -n "$mounts_under" ]; then
+        echo "ERROR: active mount(s) under $STAGING_DIR — refusing to 'rm -rf' it" >&2
+        echo "       (recursing into them could destroy host /dev). Unmount first:" >&2
+        echo "$mounts_under" | sed 's/^/         sudo umount /' >&2
+        exit 1
+    fi
+    echo "Cleaning staging/$TARGET/..."
+    sudo rm -rf "$STAGING_DIR"
+fi
+
 mkdir -p "$STAGING_DIR"
 if ! needs_container; then
     exec > >(tee "$STAGING_DIR/build.log.txt") 2>&1
@@ -146,13 +161,6 @@ export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-
 export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
 
-# ── Clean if requested ──────────────────────────────────────────────────────
-
-if [ "$CLEAN" -eq 1 ] && [ -d "$STAGING_DIR" ]; then
-    echo "Cleaning staging/$TARGET/..."
-    sudo rm -rf "$STAGING_DIR"
-fi
-
 # ── Stage target (first build only) ────────────────────────────────────────
 
 if [ ! -d "$L4T_DIR" ]; then
@@ -162,34 +170,29 @@ if [ ! -d "$L4T_DIR" ]; then
 
     mkdir -p "$STAGING_DIR"
 
-    # Extract BSP
     echo "Extracting L4T BSP..."
     tar xf "$DOWNLOADS_DIR/$L4T_RELEASE_PACKAGE" -C "$STAGING_DIR/"
 
-    # Extract root filesystem
     echo "Extracting sample root filesystem (this takes a while)..."
     sudo tar xpf "$DOWNLOADS_DIR/$SAMPLE_FS_PACKAGE" -C "$L4T_DIR/rootfs/"
 
-    # Flash prerequisites
     echo "Satisfying flash prerequisites..."
     sudo "$L4T_DIR/tools/l4t_flash_prerequisites.sh"
 
-    # qemu binfmt handler for chroot into aarch64 rootfs
+    # qemu-aarch64 binfmt handler: lets the host run aarch64 binaries when we chroot
+    # into the rootfs during provisioning.
     if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
         echo "Registering qemu-aarch64 binfmt handler"
         sudo update-binfmts --enable qemu-aarch64
     fi
 
-    # Apply NVIDIA binary packages into rootfs
     echo "Applying binaries..."
     sudo "$L4T_DIR/apply_binaries.sh" --debug
 
-    # Configure default user (jetson/jetson)
     echo "Setting up login credentials..."
     sudo "$L4T_DIR/tools/l4t_create_default_user.sh" \
         -u jetson -p jetson -n jetson -a --accept-license
 
-    # Provision rootfs (optional — install additional packages, debs, etc.)
     if [ "$PROVISION" -eq 1 ]; then
         PROVISION_SCRIPT="$SCRIPT_DIR/provision.sh"
         if [ ! -f "$PROVISION_SCRIPT" ]; then
@@ -218,7 +221,10 @@ if [ ! -d "$L4T_DIR" ]; then
         sudo cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
         export ROOTFS_DIR TARGET
-        bash "$PROVISION_SCRIPT"
+        if ! bash "$PROVISION_SCRIPT"; then
+            echo "ERROR: rootfs provisioning failed (see output above); aborting build." >&2
+            exit 1
+        fi
 
         cleanup_chroot
         trap - EXIT
@@ -227,16 +233,14 @@ if [ ! -d "$L4T_DIR" ]; then
         echo ""
     fi
 
-    # Extract kernel source
     echo "Extracting kernel sources..."
-    tar -xjf "$DOWNLOADS_DIR/public_sources.tbz2" -C "$STAGING_DIR/"
+    tar -xjf "$DOWNLOADS_DIR/$PUBLIC_SOURCES_FILE" -C "$STAGING_DIR/"
     pushd "$SOURCE_DIR" > /dev/null
     tar xf kernel_src.tbz2
     tar xf kernel_oot_modules_src.tbz2
     tar xf nvidia_kernel_display_driver_source.tbz2
     popd > /dev/null
 
-    # Apply defconfig fragments
     DEFCONFIG="$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/configs/defconfig"
     echo "Applying shared defconfig fragment..."
     cat "$SCRIPT_DIR/defconfig.fragment" >> "$DEFCONFIG"
@@ -245,46 +249,6 @@ if [ ! -d "$L4T_DIR" ]; then
         echo "Applying $TARGET defconfig fragment..."
         cat "$PRODUCT_DIR/defconfig.fragment" >> "$DEFCONFIG"
     fi
-
-    # Apply patches
-    pushd "$SOURCE_DIR" > /dev/null
-
-    apply_patch() {
-        local patch_file="$1"
-        local label="$2"
-        local apply_dir="$3"
-
-        pushd "$apply_dir" > /dev/null
-        echo "Checking if $label patch has already been applied..."
-        if patch -p1 -R --dry-run --force < "$patch_file" &>/dev/null; then
-            echo "  $label patch is already applied."
-        elif patch -p1 --dry-run --force < "$patch_file" &>/dev/null; then
-            echo "  Applying $label patch..."
-            if ! patch -p1 --force < "$patch_file"; then
-                echo "  Error: Failed to apply $label patch."
-                popd > /dev/null
-                exit 1
-            fi
-            echo "  $label patch applied successfully."
-        else
-            echo "  Error: $label patch cannot be applied cleanly to $apply_dir."
-            popd > /dev/null
-            exit 1
-        fi
-        popd > /dev/null
-    }
-
-    apply_patch \
-        "$SCRIPT_DIR/patches/JetsonOrinNX_OrinNano_JetPack6.2_L4T36.4.3_Jetvariety.patch" \
-        "Jetvariety" \
-        "."
-
-    apply_patch \
-        "$SCRIPT_DIR/patches/pinctrl-tegra-sfsel.patch" \
-        "pinctrl-tegra-sfsel" \
-        "kernel/kernel-jammy-src"
-
-    popd > /dev/null
 
     echo "Staging complete for $TARGET."
     echo ""
@@ -300,14 +264,13 @@ fi
 require_bsp_staging "$STAGING_DIR"
 
 # ── Copy product device tree overlay ────────────────────────────────────────
-# Always runs — picks up device tree edits between builds.
+# Runs every build (not just staging) to pick up device-tree edits.
 
 echo "Copying $TARGET device tree overlay into source tree..."
 cp -r "$PRODUCT_DIR/device_tree/"* "$L4T_DIR/"
 
-# Inject ARK target identifier into super DTS model strings.  The pattern
-# matches both the original NVIDIA string and any previously-injected ARK
-# string, so re-builds after a device tree update work correctly.
+# Inject the ARK target name into super DTS model strings. The pattern also matches
+# an already-injected name, so rebuilds after a device-tree update stay correct.
 find "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/nv-platform/" \
     -name "*-nv-super.dts" \
     -exec sed -i \
@@ -322,7 +285,17 @@ echo "========================================="
 
 cd "$SOURCE_DIR"
 
-make -C kernel && make modules && make dtbs
+# Wrap the cross-compiler with ccache when present (kernel C rarely changes, so warm
+# builds are mostly hits). Passing CC on the command line overrides kbuild's default
+# and reaches the NVIDIA wrapper's sub-makes; no-op without ccache.
+KERNEL_MAKE_ARGS=()
+if command -v ccache >/dev/null 2>&1; then
+    KERNEL_MAKE_ARGS+=("CC=ccache ${CROSS_COMPILE}gcc")
+fi
+
+make -C kernel "${KERNEL_MAKE_ARGS[@]}" \
+    && make modules "${KERNEL_MAKE_ARGS[@]}" \
+    && make dtbs "${KERNEL_MAKE_ARGS[@]}"
 
 echo "Installing in-tree modules and dtbs..."
 sudo -E make install -C kernel
@@ -332,18 +305,29 @@ sudo -E make modules_install
 
 # ── Fix module symlinks ─────────────────────────────────────────────────────
 
-JETSON_KERNEL_VERSION="5.15.148-tegra"
-MODULES_PATH="$INSTALL_MOD_PATH/lib/modules/$JETSON_KERNEL_VERSION"
-HEADERS_TARGET="/usr/src/linux-headers-5.15.148-tegra-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
-
-if [ -d "$MODULES_PATH" ]; then
-    echo "Fixing kernel module symlinks in rootfs..."
-    sudo rm -f "$MODULES_PATH/build" "$MODULES_PATH/source"
-    sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
-    sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
-else
-    echo "WARNING: Module path $MODULES_PATH not found!"
+# Derive the kernel release from the build itself so a BSP kernel bump can't leave
+# these symlinks stale. (`make kernelrelease` drops the -tegra suffix here; this file
+# matches the installed lib/modules/<release>.)
+JETSON_KERNEL_VERSION=$(cat "$KERNEL_HEADERS/include/config/kernel.release" 2>/dev/null || true)
+if [ -z "$JETSON_KERNEL_VERSION" ]; then
+    echo "ERROR: could not read kernel release from" >&2
+    echo "       $KERNEL_HEADERS/include/config/kernel.release — did the kernel build complete?" >&2
+    exit 1
 fi
+echo "Built kernel release: $JETSON_KERNEL_VERSION"
+
+MODULES_PATH="$INSTALL_MOD_PATH/lib/modules/$JETSON_KERNEL_VERSION"
+HEADERS_TARGET="/usr/src/linux-headers-${JETSON_KERNEL_VERSION}-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
+
+if [ ! -d "$MODULES_PATH" ]; then
+    echo "ERROR: module path $MODULES_PATH not found after modules_install" >&2
+    echo "       (kernel release '$JETSON_KERNEL_VERSION' does not match the installed modules)." >&2
+    exit 1
+fi
+echo "Fixing kernel module symlinks in rootfs..."
+sudo rm -f "$MODULES_PATH/build" "$MODULES_PATH/source"
+sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
+sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
 
 # ── Install build outputs ───────────────────────────────────────────────────
 
@@ -391,10 +375,6 @@ for dir in "$L4T_DIR/rootfs/boot" "$L4T_DIR/kernel/dtb"; do
         fi
     done
 done
-
-echo "Installing arducam_csi2.ko..."
-sudo cp "$SOURCE_DIR/nvidia-oot/drivers/media/i2c/arducam_csi2.ko" \
-    "$L4T_DIR/rootfs/usr/lib/modules/$JETSON_KERNEL_VERSION/updates/drivers/media/i2c/"
 
 # ── Record build metadata ───────────────────────────────────────────────────
 
