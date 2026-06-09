@@ -63,7 +63,20 @@ After running `build.sh`, generate a flash package locally:
 ./packaging/generate_flash_package.sh PAB
 ```
 
-No Jetson needs to be connected. The package includes DTBs for all module variants (Orin Nano 4GB/8GB, Orin NX 8GB/16GB) — the correct one is selected automatically at flash time.
+No Jetson needs to be connected to generate the package. It is the staged
+`Linux_for_Tegra` tree (minus the kernel build sources), which NVIDIA's initrd
+flasher consumes directly. Because the flasher reads the connected module's
+EEPROM at flash time, a single package flashes **all** Orin Nano/NX variants
+(4GB/8GB/16GB) — it selects both the kernel DTB and the bootloader/SDRAM config
+to match the attached module. There is no per-SKU build, so one release per
+carrier covers every module variant.
+
+> This replaces the older massflash (`mfi`) package, which had to pre-bake a
+> single `BOARDSKU` and could therefore flash only one variant — NVIDIA massflash
+> requires every unit to be identical hardware
+> (`tools/kernel_flash/README_initrd_flash.txt`). The trade-off: the flasher
+> regenerates the boot binaries on the flashing host each run (~1-2 min), which is
+> dwarfed by the multi-GB rootfs USB write.
 
 The output is saved to the project root, e.g. `ark-pab-nvme-super.tar.gz`.
 
@@ -71,7 +84,6 @@ The output is saved to the project root, e.g. `ark-pab-nvme-super.tar.gz`.
 
 | Flag | Description |
 |------|-------------|
-| `--sdcard` | Generate a package for SD card instead of NVMe |
 | `--no-super` | Target the non-super module variant |
 
 If the package exceeds 2GB (the GitHub Releases per-file limit), it is automatically split into 1.9GB parts in a `_split/` directory.

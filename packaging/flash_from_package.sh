@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # Flash a Jetson from a prebuilt ARK flash package.
-# Downloads the package from GitHub Releases and flashes.
+# Downloads the package from GitHub Releases and flashes the QSPI bootloader plus
+# the rootfs to NVMe. NVIDIA's initrd flasher reads the connected module's EEPROM
+# and selects the matching bootloader/SDRAM config, so one package flashes any
+# Orin Nano/NX variant (4GB/8GB/16GB).
 #
 # Usage:
 #   ./flash_from_package.sh <tag>        # specific release (e.g. pab-6.2.1.1)
@@ -60,12 +63,16 @@ fi
 
 # --- Install prerequisites ---
 
+# Superset of NVIDIA's tools/l4t_flash_prerequisites.sh (plus curl/lz4): the
+# flasher builds the QSPI + rootfs images on this host at flash time, so it needs
+# the full partitioning/imaging toolchain (gdisk, parted, xxd, file, ...), not
+# the minimal set the old --flash-only replay got away with.
 FLASH_PREREQS=(abootimg binfmt-support binutils cpio cpp curl
-    device-tree-compiler dosfstools
+    device-tree-compiler dosfstools file gdisk
     iproute2 iputils-ping lbzip2 libxml2-utils lz4
     netcat-openbsd nfs-kernel-server openssl
-    python3-yaml qemu-user-static rsync sshpass
-    udev usbutils uuid-runtime whois xmlstarlet zstd)
+    parted python3-yaml qemu-user-static rsync sshpass
+    udev usbutils uuid-runtime whois xmlstarlet xxd zstd zlib1g)
 
 missing=()
 for pkg in "${FLASH_PREREQS[@]}"; do
@@ -214,7 +221,9 @@ else
 
     mkdir -p "$EXTRACT_DIR"
     echo "Extracting $(basename "$TARBALL") ..."
-    sudo tar xf "$TARBALL" -C "$EXTRACT_DIR"
+    # --numeric-owner + --xattrs restore rootfs ownership and file capabilities
+    # so the flashed OS matches what was staged at build time.
+    sudo tar --numeric-owner --xattrs --xattrs-include='*' -xpf "$TARBALL" -C "$EXTRACT_DIR"
     touch "$CACHE_DIR/.extract-done"
 
     FLASH_SCRIPT=$(find_flash_script)
@@ -225,7 +234,19 @@ else
     fi
 fi
 
-FLASH_DIR=$(dirname "$FLASH_SCRIPT")
+FLASH_DIR=$(dirname "$FLASH_SCRIPT")          # .../tools/kernel_flash
+L4T_DIR=$(cd "$FLASH_DIR/../.." && pwd)        # .../Linux_for_Tegra
+
+# Flash parameters (board config + storage) travel with the package in
+# ark_flash.conf. Defaults match flash.sh for older packages that predate it.
+FLASH_TARGET="jetson-orin-nano-devkit-super"
+STORAGE_DEV="nvme0n1p1"
+QSPI_CFG="bootloader/generic/cfg/flash_t234_qspi.xml"
+EXTERNAL_CFG="tools/kernel_flash/flash_l4t_t234_nvme.xml"
+if [ -f "$L4T_DIR/ark_flash.conf" ]; then
+    # shellcheck disable=SC1091
+    source "$L4T_DIR/ark_flash.conf"
+fi
 
 # --- Display package build info ---
 
@@ -262,8 +283,17 @@ done
 echo "Jetson detected!"
 echo ""
 
-cd "$FLASH_DIR"
-sudo ./l4t_initrd_flash.sh --flash-only --massflash 1 --network usb0
+cd "$L4T_DIR"
+# The initrd flasher reads the connected module's EEPROM and picks the matching
+# bootloader + SDRAM config, so one package flashes any Orin Nano/NX variant. It
+# writes the QSPI bootloader (-p) and the rootfs to the external device (-c) in
+# a single pass.
+sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
+    --external-device "$STORAGE_DEV" \
+    -p "-c ./$QSPI_CFG" \
+    -c "./$EXTERNAL_CFG" \
+    --showlogs --network usb0 \
+    "$FLASH_TARGET" "$STORAGE_DEV"
 
 echo ""
 echo "========================================="
