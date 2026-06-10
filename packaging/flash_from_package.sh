@@ -7,8 +7,9 @@
 # Orin Nano/NX variant (4GB/8GB/16GB).
 #
 # A successful flash leaves the generated images behind, and when the next
-# module is the same variant (verified against its EEPROM) they are reflashed
-# directly with --flash-only, skipping the ~5 min image build.
+# module is the same variant (verified by its recovery-mode USB product ID,
+# plus an EEPROM probe on Orin Nano 8GB where two SKUs share one ID) they are
+# reflashed directly with --flash-only, skipping the ~5 min image build.
 #
 # Usage:
 #   ./flash_from_package.sh <tag>        # specific release (e.g. pab-6.2.1.1)
@@ -157,14 +158,64 @@ find_flash_script() {
     sudo find "$EXTRACT_DIR" -name "l4t_initrd_flash.sh" -path "*/tools/kernel_flash/*" 2>/dev/null | head -1 || true
 }
 
+# Waits for a Jetson in recovery mode and records its USB product ID in
+# JETSON_USB_PID. The BootROM RCM product ID identifies the module variant:
+# 7323=Orin NX 16GB, 7423=Orin NX 8GB, 7523=Orin Nano 8GB, 7623=Orin Nano 4GB.
 wait_for_jetson() {
     while true; do
         for pid in 7323 7423 7523 7623; do
             if lsusb -d "0955:${pid}" > /dev/null 2>&1; then
+                JETSON_USB_PID="$pid"
                 return 0
             fi
         done
         sleep 1
+    done
+}
+
+variant_name() {
+    case "$1" in
+        7323) echo "Orin NX 16GB" ;;
+        7423) echo "Orin NX 8GB" ;;
+        7523) echo "Orin Nano 8GB" ;;
+        7623) echo "Orin Nano 4GB" ;;
+        *)    echo "unknown" ;;
+    esac
+}
+
+# Bus/device number of the connected Jetson's current USB enumeration
+# (e.g. "003-012"). Changes when the chip resets and re-enumerates.
+jetson_devnum() {
+    lsusb -d "0955:${JETSON_USB_PID}" 2>/dev/null | head -1 | awk '{print $2 "-" $4}' | tr -d ':'
+}
+
+# After the EEPROM probe's "reboot recovery", the MB2 applet resets the chip
+# asynchronously: until the reset actually happens the device still answers RCM
+# queries (the applet replies to UID reads), but an rcmboot download stalls at
+# "Sending mb1" — the failure seen on the production line. The one reliable,
+# non-invasive signal that the chip is back in download-ready BootROM recovery
+# is its USB re-enumeration, so wait for the device number to change instead of
+# poking it with more RCM sessions.
+wait_for_module_reset() {
+    local prev="$1" elapsed=0 now
+    echo "Waiting for the module to reset back into recovery mode..."
+    while true; do
+        now=$(jetson_devnum)
+        if [ -n "$now" ] && [ "$now" != "$prev" ]; then
+            echo "Module re-enumerated after ${elapsed}s."
+            sleep 2
+            return 0
+        fi
+        if [ "$elapsed" -ge 300 ]; then
+            echo "ERROR: module did not reset within ${elapsed}s of the EEPROM probe." >&2
+            echo "Power-cycle the Jetson into recovery mode and rerun (or use --full)." >&2
+            exit 1
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
+        if [ $((elapsed % 30)) -eq 0 ]; then
+            echo "  still waiting (${elapsed}s)..."
+        fi
     done
 }
 
@@ -190,7 +241,7 @@ module_key() {
     if ! [[ "$id" =~ ^[0-9]+$ && "$sku" =~ ^[0-9]+$ && "$chip" =~ ^[0-9A-Fa-f:]+$ && "$ram" =~ ^[0-9A-Fa-f:]+$ ]]; then
         return 1
     fi
-    echo "boardid=$id fab=$fab boardsku=$sku boardrev=$rev chipsku=$chip ramcode=$ram target=$FLASH_TARGET storage=$STORAGE_DEV qspi=$QSPI_CFG external=$EXTERNAL_CFG"
+    echo "usbpid=$JETSON_USB_PID boardid=$id fab=$fab boardsku=$sku boardrev=$rev chipsku=$chip ramcode=$ram target=$FLASH_TARGET storage=$STORAGE_DEV qspi=$QSPI_CFG external=$EXTERNAL_CFG"
 }
 
 # --- Check if already extracted ---
@@ -328,7 +379,7 @@ echo ""
 
 wait_for_jetson
 
-echo "Jetson detected!"
+echo "Jetson detected: $(variant_name "$JETSON_USB_PID") (USB ID 0955:$JETSON_USB_PID)"
 echo ""
 
 # A successful flash leaves everything needed to flash again without rebuilding:
@@ -336,41 +387,50 @@ echo ""
 # (bootloader/), and the saved flash arguments (initrdflashparam.txt), which
 # l4t_initrd_flash.sh --flash-only replays verbatim. Those images are SKU-locked
 # — the rcmboot blob embeds the generating module's SDRAM config, and replaying
-# it on a different variant hangs in RCM boot — so replay only happens after
-# probing the connected module's EEPROM and matching it against the recorded
-# generation state. The marker is written only after a fully successful run, so
-# anything interrupted falls back to full regeneration.
+# it on a different variant hangs in RCM boot — so replay requires proof the
+# module matches the images. The recovery-mode USB product ID identifies the
+# module variant, and within a product ID the generated images are identical
+# (NX 16GB's two SKUs, 0000/0002, select the same files), with one exception:
+# Orin Nano 8GB (7523) covers SKU 0003 and 0005, which need different kernel
+# DTBs, so only that variant needs an EEPROM probe — and probing reboots the
+# module through the MB2 applet, which is exactly why the other variants avoid
+# it and flash straight from the operator-entered recovery state. The marker is
+# written only after a fully successful run, so anything interrupted falls back
+# to full regeneration.
 GEN_MARKER="$L4T_DIR/.ark-flash-gen"
 REPLAY=0
 if [ "$FORCE_FULL" = "1" ]; then
     echo "--full: regenerating flash images."
 elif [ -f "$GEN_MARKER" ] && [ -f tools/kernel_flash/initrdflashparam.txt ] && [ -d tools/kernel_flash/images ]; then
-    echo "Found flash images from a previous run. Probing module EEPROM..."
-    sudo rm -f bootloader/cvm.bin bootloader/chip_info.bin_bak
-    if ! sudo ./nvautoflash.sh --print_boardid; then
-        echo "ERROR: EEPROM probe failed. Power-cycle the Jetson into recovery mode and retry." >&2
-        exit 1
-    fi
-    MODULE_KEY=$(module_key) || { echo "ERROR: cannot parse module EEPROM dump." >&2; exit 1; }
-    # The probe ends by rebooting the module back into recovery mode; wait for
-    # the USB device to re-enumerate before flashing.
-    sleep 2
-    wait_for_jetson
-    # After "reboot recovery" an ECID read must precede any other RCM operation
-    # (nvautoflash.sh documents this; in NVIDIA's own probe-then-flash chain the
-    # next device op, flash.sh's get_fuse_level, is exactly this read). Going
-    # straight to the rcmboot download session here stalls at "Sending mb1".
-    if ! sudo sh -c 'cd bootloader && ./tegrarcm_v2 --new_session --chip 0x23 --uid' | grep BR_CID; then
-        echo "ERROR: Jetson did not respond after the EEPROM probe. Power-cycle it into recovery mode and retry." >&2
-        exit 1
-    fi
-    if [ "$MODULE_KEY" = "$(cat "$GEN_MARKER")" ]; then
+    CACHED_KEY=$(cat "$GEN_MARKER")
+    CACHED_PID=$(echo "$CACHED_KEY" | grep -o 'usbpid=[0-9a-f]*' | cut -d= -f2 || true)
+    if [ -z "$CACHED_PID" ]; then
+        echo "Existing images predate module-variant tracking. Regenerating."
+    elif [ "$JETSON_USB_PID" != "$CACHED_PID" ]; then
+        echo "Connected module ($(variant_name "$JETSON_USB_PID")) differs from the existing images ($(variant_name "$CACHED_PID")). Regenerating."
+    elif [ "$JETSON_USB_PID" != "7523" ]; then
         REPLAY=1
-        echo "Module matches the existing images. Flashing without regenerating (~5 min faster)."
+        echo "Module variant matches the existing images. Flashing without regenerating (~5 min faster)."
     else
-        echo "Module differs from the existing images. Regenerating."
-        echo "  images: $(cat "$GEN_MARKER")"
-        echo "  module: $MODULE_KEY"
+        echo "Found Orin Nano 8GB images. Probing module EEPROM to confirm the SKU..."
+        PRE_PROBE_DEVNUM=$(jetson_devnum)
+        sudo rm -f bootloader/cvm.bin bootloader/chip_info.bin_bak
+        if ! sudo ./nvautoflash.sh --print_boardid; then
+            echo "ERROR: EEPROM probe failed. Power-cycle the Jetson into recovery mode and retry." >&2
+            exit 1
+        fi
+        MODULE_KEY=$(module_key) || { echo "ERROR: cannot parse module EEPROM dump." >&2; exit 1; }
+        if [ "$MODULE_KEY" = "$CACHED_KEY" ]; then
+            echo "Module matches the existing images. Flashing without regenerating once it resets."
+            wait_for_module_reset "$PRE_PROBE_DEVNUM"
+            REPLAY=1
+        else
+            # No reset wait needed here: the full flash starts with NVIDIA's
+            # applet-aware detection, which handles the post-probe state itself.
+            echo "Module differs from the existing images. Regenerating."
+            echo "  images: $CACHED_KEY"
+            echo "  module: $MODULE_KEY"
+        fi
     fi
 fi
 
