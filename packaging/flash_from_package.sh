@@ -170,23 +170,27 @@ wait_for_jetson() {
 
 # Identity of the module the flash images were built for. BOARDID/FAB/BOARDSKU/
 # BOARDREV are the EEPROM fields that parameterize NVIDIA's image generation
-# (tools/kernel_flash/README_initrd_flash.txt, offline mode), and the ark_flash.conf
-# values pin the flash configuration. Reads bootloader/cvm.bin, the module EEPROM
-# dump that both nvautoflash.sh and a full flash run leave behind. Must run from
-# the Linux_for_Tegra directory.
+# (tools/kernel_flash/README_initrd_flash.txt, offline mode), and generation also
+# branches on the chip SKU and DRAM ramcode (p3767.conf.common selects e.g.
+# Micron vs Samsung memory config by ramcode), so those are part of the key too.
+# The ark_flash.conf values pin the flash configuration. Reads bootloader/cvm.bin
+# and chip_info.bin_bak, the EEPROM/chip dumps that both nvautoflash.sh and a
+# full flash run leave behind. Must run from the Linux_for_Tegra directory.
 module_key() {
-    local id fab sku rev
-    [ -f bootloader/cvm.bin ] || return 1
+    local id fab sku rev chip ram
+    [ -f bootloader/cvm.bin ] && [ -f bootloader/chip_info.bin_bak ] || return 1
     id=$(./bootloader/chkbdinfo -i bootloader/cvm.bin 2>/dev/null | tr -d '[:space:]')
     fab=$(./bootloader/chkbdinfo -f bootloader/cvm.bin 2>/dev/null | tr -d '[:space:]')
     sku=$(./bootloader/chkbdinfo -k bootloader/cvm.bin 2>/dev/null | tr -d '[:space:]')
     rev=$(./bootloader/chkbdinfo -r bootloader/cvm.bin 2>/dev/null | tr -d '[:space:]')
+    chip=$(./bootloader/chkbdinfo -C bootloader/chip_info.bin_bak 2>/dev/null | tr -d '[:space:]')
+    ram=$(./bootloader/chkbdinfo -R bootloader/chip_info.bin_bak 2>/dev/null | tr -d '[:space:]')
     # chkbdinfo reports errors on stdout, so validate the fields rather than
     # trusting non-empty output.
-    if ! [[ "$id" =~ ^[0-9]+$ && "$sku" =~ ^[0-9]+$ ]]; then
+    if ! [[ "$id" =~ ^[0-9]+$ && "$sku" =~ ^[0-9]+$ && "$chip" =~ ^[0-9A-Fa-f:]+$ && "$ram" =~ ^[0-9A-Fa-f:]+$ ]]; then
         return 1
     fi
-    echo "boardid=$id fab=$fab boardsku=$sku boardrev=$rev target=$FLASH_TARGET storage=$STORAGE_DEV qspi=$QSPI_CFG external=$EXTERNAL_CFG"
+    echo "boardid=$id fab=$fab boardsku=$sku boardrev=$rev chipsku=$chip ramcode=$ram target=$FLASH_TARGET storage=$STORAGE_DEV qspi=$QSPI_CFG external=$EXTERNAL_CFG"
 }
 
 # --- Check if already extracted ---
@@ -352,6 +356,14 @@ elif [ -f "$GEN_MARKER" ] && [ -f tools/kernel_flash/initrdflashparam.txt ] && [
     # the USB device to re-enumerate before flashing.
     sleep 2
     wait_for_jetson
+    # After "reboot recovery" an ECID read must precede any other RCM operation
+    # (nvautoflash.sh documents this; in NVIDIA's own probe-then-flash chain the
+    # next device op, flash.sh's get_fuse_level, is exactly this read). Going
+    # straight to the rcmboot download session here stalls at "Sending mb1".
+    if ! sudo sh -c 'cd bootloader && ./tegrarcm_v2 --new_session --chip 0x23 --uid' | grep BR_CID; then
+        echo "ERROR: Jetson did not respond after the EEPROM probe. Power-cycle it into recovery mode and retry." >&2
+        exit 1
+    fi
     if [ "$MODULE_KEY" = "$(cat "$GEN_MARKER")" ]; then
         REPLAY=1
         echo "Module matches the existing images. Flashing without regenerating (~5 min faster)."
@@ -373,7 +385,8 @@ if [ "$REPLAY" = "1" ]; then
         --showlogs --network usb0 \
         "$FLASH_TARGET" "$STORAGE_DEV"; then
         echo "" >&2
-        echo "ERROR: flashing from existing images failed. Rerun with --full to regenerate them." >&2
+        echo "ERROR: flashing from existing images failed." >&2
+        echo "Power-cycle the Jetson into recovery mode and rerun (add --full to regenerate the images from scratch)." >&2
         exit 1
     fi
 else
