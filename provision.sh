@@ -28,11 +28,25 @@ MAVSDK_DEB="libmavsdk-dev_${MAVSDK_VERSION}_debian12_arm64.deb"
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 MAVSDK_URL="https://github.com/mavlink/MAVSDK/releases/download/v${MAVSDK_VERSION}/${MAVSDK_DEB}"
 
-# ARK_OS_CHANNEL=latest ignores the pin and bakes in the newest ARK-OS (pre)release
-# deb, so the release build always ships the latest without editing versions.env.
-# Public (pre)release assets need no auth (true GitHub drafts are skipped). MAVSDK stays pinned.
-if [ "${ARK_OS_CHANNEL:-}" = "latest" ]; then
-    echo "ARK_OS_CHANNEL=latest: resolving most-recent ARK-OS release deb..."
+# Prefer a deb already in downloads/ over downloading, so a locally-supplied deb
+# (CI artifact or unreleased build) can be exercised: drop it in downloads/ and set
+# the matching *_VERSION so the filename lines up. Override the dir via DOWNLOADS_DIR.
+DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
+
+# Use the pinned ARK_OS_VERSION when its deb is cached locally or published on
+# GitHub; otherwise fall back loudly to the newest published (pre)release so an
+# unreleased pin (e.g. the 0.0.0 placeholder) doesn't block the build. True GitHub
+# drafts are invisible to both paths. MAVSDK stays pinned.
+if [ -f "$DOWNLOADS_DIR/$ARK_OS_DEB" ]; then
+    echo "Using local ARK-OS deb: $ARK_OS_DEB"
+elif curl -sfIL -o /dev/null "$ARK_OS_URL"; then
+    echo "Using pinned ARK-OS release: v${ARK_OS_VERSION}"
+else
+    echo "WARNING: pinned ARK-OS v${ARK_OS_VERSION} has no published release asset ($ARK_OS_DEB);" >&2
+    echo "WARNING: falling back to the newest published ARK-OS (pre)release." >&2
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        echo "::warning::Pinned ARK-OS v${ARK_OS_VERSION} is not published; provisioning with the newest (pre)release instead."
+    fi
     ARK_OS_URL=$(curl -sfL "https://api.github.com/repos/ARK-Electronics/ARK-OS/releases?per_page=100" \
         | python3 -c '
 import sys, json
@@ -47,11 +61,6 @@ sys.exit(1)
     ARK_OS_DEB="$(basename "$ARK_OS_URL")"
     echo "Latest ARK-OS deb: $ARK_OS_DEB"
 fi
-
-# Prefer a deb already in downloads/ over downloading, so a locally-supplied deb
-# (CI artifact or unreleased build) can be exercised: drop it in downloads/ and set
-# the matching *_VERSION so the filename lines up. Override the dir via DOWNLOADS_DIR.
-DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
 # Stage a deb into the rootfs /tmp, caching under downloads/ first (atomic
 # .partial → final) so rebuilds reuse it. A failed download aborts rather than
