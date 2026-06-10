@@ -6,9 +6,14 @@
 # and selects the matching bootloader/SDRAM config, so one package flashes any
 # Orin Nano/NX variant (4GB/8GB/16GB).
 #
+# A successful flash leaves the generated images behind, and when the next
+# module is the same variant (verified against its EEPROM) they are reflashed
+# directly with --flash-only, skipping the ~5 min image build.
+#
 # Usage:
 #   ./flash_from_package.sh <tag>        # specific release (e.g. pab-6.2.1.1)
 #   ./flash_from_package.sh <product>    # latest release for a product (pab, jaj, pab-v3)
+#   ./flash_from_package.sh <tag> --full # regenerate images even if cached ones match
 #   ./flash_from_package.sh --clean      # remove all cached data
 
 set -euo pipefail
@@ -24,6 +29,7 @@ usage() {
     echo "  $(basename "$0") pab             Flash the latest PAB release"
     echo "  $(basename "$0") jaj             Flash the latest JAJ release"
     echo "  $(basename "$0") pab-v3          Flash the latest PAB_V3 release"
+    echo "  $(basename "$0") pab --full      Regenerate flash images even if cached ones match"
     echo "  $(basename "$0") --clean         Remove all cached data"
     echo ""
     echo "Note: PAB Rev3 is not the same as PAB_V3. PAB_V3 is a separate product."
@@ -38,6 +44,17 @@ is_product_name() {
 }
 
 # --- Handle no args / --help / --clean ---
+
+FORCE_FULL=0
+args=()
+for arg in "$@"; do
+    if [ "$arg" = "--full" ]; then
+        FORCE_FULL=1
+    else
+        args+=("$arg")
+    fi
+done
+set -- "${args[@]}"
 
 if [ $# -eq 0 ] || [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     usage
@@ -138,6 +155,38 @@ find_tarball() {
 
 find_flash_script() {
     sudo find "$EXTRACT_DIR" -name "l4t_initrd_flash.sh" -path "*/tools/kernel_flash/*" 2>/dev/null | head -1 || true
+}
+
+wait_for_jetson() {
+    while true; do
+        for pid in 7323 7423 7523 7623; do
+            if lsusb -d "0955:${pid}" > /dev/null 2>&1; then
+                return 0
+            fi
+        done
+        sleep 1
+    done
+}
+
+# Identity of the module the flash images were built for. BOARDID/FAB/BOARDSKU/
+# BOARDREV are the EEPROM fields that parameterize NVIDIA's image generation
+# (tools/kernel_flash/README_initrd_flash.txt, offline mode), and the ark_flash.conf
+# values pin the flash configuration. Reads bootloader/cvm.bin, the module EEPROM
+# dump that both nvautoflash.sh and a full flash run leave behind. Must run from
+# the Linux_for_Tegra directory.
+module_key() {
+    local id fab sku rev
+    [ -f bootloader/cvm.bin ] || return 1
+    id=$(./bootloader/chkbdinfo -i bootloader/cvm.bin 2>/dev/null | tr -d '[:space:]')
+    fab=$(./bootloader/chkbdinfo -f bootloader/cvm.bin 2>/dev/null | tr -d '[:space:]')
+    sku=$(./bootloader/chkbdinfo -k bootloader/cvm.bin 2>/dev/null | tr -d '[:space:]')
+    rev=$(./bootloader/chkbdinfo -r bootloader/cvm.bin 2>/dev/null | tr -d '[:space:]')
+    # chkbdinfo reports errors on stdout, so validate the fields rather than
+    # trusting non-empty output.
+    if ! [[ "$id" =~ ^[0-9]+$ && "$sku" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+    echo "boardid=$id fab=$fab boardsku=$sku boardrev=$rev target=$FLASH_TARGET storage=$STORAGE_DEV qspi=$QSPI_CFG external=$EXTERNAL_CFG"
 }
 
 # --- Check if already extracted ---
@@ -262,6 +311,8 @@ fi
 
 # --- Wait for Jetson and flash ---
 
+cd "$L4T_DIR"
+
 echo ""
 echo "========================================="
 echo "  Ready to flash"
@@ -271,29 +322,85 @@ echo "Waiting for Jetson in recovery mode..."
 echo "  Connect USB and hold Force Recovery button while powering on."
 echo ""
 
-while true; do
-    for pid in 7323 7423 7523 7623; do
-        if lsusb -d 0955:${pid} > /dev/null 2>&1; then
-            break 2
-        fi
-    done
-    sleep 1
-done
+wait_for_jetson
 
 echo "Jetson detected!"
 echo ""
 
-cd "$L4T_DIR"
-# The initrd flasher reads the connected module's EEPROM and picks the matching
-# bootloader + SDRAM config, so one package flashes any Orin Nano/NX variant. It
-# writes the QSPI bootloader (-p) and the rootfs to the external device (-c) in
-# a single pass.
-sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
-    --external-device "$STORAGE_DEV" \
-    -p "-c ./$QSPI_CFG" \
-    -c "./$EXTERNAL_CFG" \
-    --showlogs --network usb0 \
-    "$FLASH_TARGET" "$STORAGE_DEV"
+# A successful flash leaves everything needed to flash again without rebuilding:
+# the flash images (tools/kernel_flash/images), the signed boot binaries
+# (bootloader/), and the saved flash arguments (initrdflashparam.txt), which
+# l4t_initrd_flash.sh --flash-only replays verbatim. Those images are SKU-locked
+# — the rcmboot blob embeds the generating module's SDRAM config, and replaying
+# it on a different variant hangs in RCM boot — so replay only happens after
+# probing the connected module's EEPROM and matching it against the recorded
+# generation state. The marker is written only after a fully successful run, so
+# anything interrupted falls back to full regeneration.
+GEN_MARKER="$L4T_DIR/.ark-flash-gen"
+REPLAY=0
+if [ "$FORCE_FULL" = "1" ]; then
+    echo "--full: regenerating flash images."
+elif [ -f "$GEN_MARKER" ] && [ -f tools/kernel_flash/initrdflashparam.txt ] && [ -d tools/kernel_flash/images ]; then
+    echo "Found flash images from a previous run. Probing module EEPROM..."
+    sudo rm -f bootloader/cvm.bin bootloader/chip_info.bin_bak
+    if ! sudo ./nvautoflash.sh --print_boardid; then
+        echo "ERROR: EEPROM probe failed. Power-cycle the Jetson into recovery mode and retry." >&2
+        exit 1
+    fi
+    MODULE_KEY=$(module_key) || { echo "ERROR: cannot parse module EEPROM dump." >&2; exit 1; }
+    # The probe ends by rebooting the module back into recovery mode; wait for
+    # the USB device to re-enumerate before flashing.
+    sleep 2
+    wait_for_jetson
+    if [ "$MODULE_KEY" = "$(cat "$GEN_MARKER")" ]; then
+        REPLAY=1
+        echo "Module matches the existing images. Flashing without regenerating (~5 min faster)."
+    else
+        echo "Module differs from the existing images. Regenerating."
+        echo "  images: $(cat "$GEN_MARKER")"
+        echo "  module: $MODULE_KEY"
+    fi
+fi
+
+if [ "$REPLAY" = "1" ]; then
+    # Same invocation as the full flash plus --flash-only: the flasher replays
+    # the recorded images instead of regenerating them.
+    if ! sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
+        --flash-only \
+        --external-device "$STORAGE_DEV" \
+        -p "-c ./$QSPI_CFG" \
+        -c "./$EXTERNAL_CFG" \
+        --showlogs --network usb0 \
+        "$FLASH_TARGET" "$STORAGE_DEV"; then
+        echo "" >&2
+        echo "ERROR: flashing from existing images failed. Rerun with --full to regenerate them." >&2
+        exit 1
+    fi
+else
+    # Drop the marker (and any stale EEPROM dump) before generating, so an
+    # interrupted run is never mistaken for valid replay state and the marker
+    # below provably reflects this run's EEPROM read.
+    sudo rm -f "$GEN_MARKER" bootloader/cvm.bin bootloader/chip_info.bin_bak
+    # The initrd flasher reads the connected module's EEPROM and picks the matching
+    # bootloader + SDRAM config, so one package flashes any Orin Nano/NX variant. It
+    # writes the QSPI bootloader (-p) and the rootfs to the external device (-c) in
+    # a single pass.
+    sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
+        --external-device "$STORAGE_DEV" \
+        -p "-c ./$QSPI_CFG" \
+        -c "./$EXTERNAL_CFG" \
+        --showlogs --network usb0 \
+        "$FLASH_TARGET" "$STORAGE_DEV"
+
+    # Key the cache off the EEPROM dump the generation step itself read, not the
+    # probe, so the marker always describes what the images were built for.
+    if MODULE_KEY=$(module_key); then
+        echo "$MODULE_KEY" | sudo tee "$GEN_MARKER" > /dev/null
+        echo "Recorded module info: same-variant reflashes will skip image generation."
+    else
+        echo "WARNING: could not read the module EEPROM dump; the next flash will regenerate images."
+    fi
+fi
 
 echo ""
 echo "========================================="
