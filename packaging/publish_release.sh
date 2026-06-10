@@ -63,5 +63,6 @@ git -C "$ROOT_DIR" tag -a "$TAG" -m "$TAG"
 git -C "$ROOT_DIR" push origin "$TAG"
 
 echo ""
-echo "Tag '$TAG' pushed. CI will build and create the release."
+echo "Tag '$TAG' pushed. CI will build and create a hidden draft release."
+echo "Validate it on the fixture, then publish it by hand in the GitHub UI."
 echo "Monitor: https://github.com/ARK-Electronics/ark_jetson_kernel/actions"

@@ -29,7 +29,7 @@ ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_O
 MAVSDK_URL="https://github.com/mavlink/MAVSDK/releases/download/v${MAVSDK_VERSION}/${MAVSDK_DEB}"
 
 # ARK_OS_CHANNEL=latest ignores the pin and bakes in the newest ARK-OS (pre)release
-# deb, so the draft build always ships the latest without editing versions.env.
+# deb, so the release build always ships the latest without editing versions.env.
 # Public (pre)release assets need no auth (true GitHub drafts are skipped). MAVSDK stays pinned.
 if [ "${ARK_OS_CHANNEL:-}" = "latest" ]; then
     echo "ARK_OS_CHANNEL=latest: resolving most-recent ARK-OS release deb..."

@@ -7,9 +7,6 @@ on:
       - 'pab-[0-9]*'
       - 'jaj-[0-9]*'
       - 'pab-v3-[0-9]*'
-      - 'draft-pab-[0-9]*'
-      - 'draft-jaj-[0-9]*'
-      - 'draft-pab-v3-[0-9]*'
   pull_request:
 
 concurrency:
@@ -44,24 +41,16 @@ jobs:
         id: tag
         run: |
           TAG="${GITHUB_REF_NAME}"
-          # draft-<product>-<ver> → build a provisioned image from the latest
-          # ARK-OS (pre)release and publish a hidden DRAFT GitHub release.
-          DRAFT=false
-          BASE="$TAG"
           case "$TAG" in
-            draft-*) DRAFT=true; BASE="${TAG#draft-}" ;;
-          esac
-          case "$BASE" in
-            pab-v3-*) PRODUCT="pab-v3"; VERSION="${BASE#pab-v3-}"; TARGET="PAB_V3" ;;
-            pab-*)    PRODUCT="pab";    VERSION="${BASE#pab-}";    TARGET="PAB" ;;
-            jaj-*)    PRODUCT="jaj";    VERSION="${BASE#jaj-}";    TARGET="JAJ" ;;
+            pab-v3-*) PRODUCT="pab-v3"; VERSION="${TAG#pab-v3-}"; TARGET="PAB_V3" ;;
+            pab-*)    PRODUCT="pab";    VERSION="${TAG#pab-}";    TARGET="PAB" ;;
+            jaj-*)    PRODUCT="jaj";    VERSION="${TAG#jaj-}";    TARGET="JAJ" ;;
             *) echo "::error::Unrecognized tag format: $TAG"; exit 1 ;;
           esac
           echo "product=$PRODUCT" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "target=$TARGET"   >> "$GITHUB_OUTPUT"
-          echo "draft=$DRAFT"      >> "$GITHUB_OUTPUT"
-          echo "Parsed tag: product=$PRODUCT version=$VERSION target=$TARGET draft=$DRAFT"
+          echo "Parsed tag: product=$PRODUCT version=$VERSION target=$TARGET"
 
       - uses: actions/checkout@v4
 
@@ -138,13 +127,14 @@ jobs:
         run: ccache -z
 
       - name: Build kernel
-        # Draft builds provision with the latest ARK-OS deb (ARK_OS_CHANNEL=latest);
-        # production/PR builds don't provision.
+        # Tag builds provision with the latest ARK-OS deb (ARK_OS_CHANNEL=latest), so
+        # the draft release ships a flashable, provisioned image; promoting it to
+        # published is a GitHub toggle with no rebuild. PR/main builds only compile-check.
         run: |
-          if [ "${{ steps.tag.outputs.draft }}" = "true" ]; then
+          if [ -n "${{ steps.tag.outputs.target }}" ]; then
             ARK_OS_CHANNEL=latest ./build.sh ${{ steps.tag.outputs.target }} --provision
           else
-            ./build.sh ${{ steps.tag.outputs.target || 'PAB' }}
+            ./build.sh PAB
           fi
 
       - name: ccache stats
@@ -210,11 +200,9 @@ jobs:
           Put the Jetson in recovery mode before running. Requires a Debian/Ubuntu host with USB connection. Supports all Orin Nano/NX module variants.
           EOF
 
-          DRAFT_FLAG=""
-          if [ "${{ steps.tag.outputs.draft }}" = "true" ]; then
-            DRAFT_FLAG="--draft"
-          fi
-          gh release create "$TAG" $DRAFT_FLAG \
+          # Every release is born a hidden draft; promoting it to published is a
+          # manual GitHub toggle (same artifact, same tag — no rebuild, no rename).
+          gh release create "$TAG" --draft \
             --title "${PRODUCT_UPPER} v${VERSION}" \
             --notes-file /tmp/release-notes.md \
             "${RELEASE_FILES[@]}"
