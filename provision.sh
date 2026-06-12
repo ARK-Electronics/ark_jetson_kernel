@@ -161,6 +161,14 @@ sudo chroot "$ROOTFS_DIR" mkdir -p /etc/systemd/system/multi-user.target.wants
 sudo chroot "$ROOTFS_DIR" ln -sf /etc/systemd/system/jtop.service \
     /etc/systemd/system/multi-user.target.wants/jtop.service
 
+# spidev is needed by the manufacturing IMU test (ark_scripts JAJ bundle), which
+# runs under the system python. The test fixture gives the Jetson no internet, so
+# the module must ship in the image; the apt package is a prebuilt binary (PyPI
+# only has the sdist), keeping compilers out of the rootfs.
+echo "Installing python3-spidev (manufacturing IMU test)..."
+sudo chroot "$ROOTFS_DIR" apt-get install -y python3-spidev
+sudo chroot "$ROOTFS_DIR" python3 -c "import spidev"  # sanity: importable system-wide
+
 sudo rm "$ROOTFS_DIR/tmp/$MAVSDK_DEB" "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
 
 PROVISION_ELAPSED=$(( $(date +%s) - PROVISION_START ))
