@@ -40,7 +40,6 @@
 		 gpio_main_default: default {
 			 gpio-input = <
 				 TEGRA234_MAIN_GPIO(B, 0)
-				 TEGRA234_MAIN_GPIO(Y, 1)
 				 TEGRA234_MAIN_GPIO(Y, 4)
 				 TEGRA234_MAIN_GPIO(Z, 1)
 				 TEGRA234_MAIN_GPIO(Z, 3)
@@ -71,9 +70,6 @@
 				 TEGRA234_MAIN_GPIO(K, 5)
 				 >;
 			 gpio-output-high = <
-				 TEGRA234_MAIN_GPIO(Y, 0)
-				 TEGRA234_MAIN_GPIO(Y, 2)
-				 TEGRA234_MAIN_GPIO(Y, 3)
 				 TEGRA234_MAIN_GPIO(Q, 3)
 				 TEGRA234_MAIN_GPIO(Q, 6)
 				 TEGRA234_MAIN_GPIO(A, 0)

@@ -671,7 +671,7 @@
  
 			 spi3_sck_py0 {
 				 nvidia,pins = "spi3_sck_py0";
-				 nvidia,function = "rsvd1";
+				 nvidia,function = "spi3";
 				 nvidia,pull = <TEGRA_PIN_PULL_NONE>;
 				 nvidia,tristate = <TEGRA_PIN_DISABLE>;
 				 nvidia,enable-input = <TEGRA_PIN_DISABLE>;
@@ -681,7 +681,7 @@
  
 			 spi3_miso_py1 {
 				 nvidia,pins = "spi3_miso_py1";
-				 nvidia,function = "rsvd1";
+				 nvidia,function = "spi3";
 				 nvidia,pull = <TEGRA_PIN_PULL_DOWN>;
 				 nvidia,tristate = <TEGRA_PIN_ENABLE>;
 				 nvidia,enable-input = <TEGRA_PIN_ENABLE>;
@@ -691,7 +691,7 @@
  
 			 spi3_mosi_py2 {
 				 nvidia,pins = "spi3_mosi_py2";
-				 nvidia,function = "rsvd1";
+				 nvidia,function = "spi3";
 				 nvidia,pull = <TEGRA_PIN_PULL_NONE>;
 				 nvidia,tristate = <TEGRA_PIN_DISABLE>;
 				 nvidia,enable-input = <TEGRA_PIN_DISABLE>;
@@ -701,7 +701,7 @@
  
 			 spi3_cs0_py3 {
 				 nvidia,pins = "spi3_cs0_py3";
-				 nvidia,function = "rsvd1";
+				 nvidia,function = "spi3";
 				 nvidia,pull = <TEGRA_PIN_PULL_NONE>;
 				 nvidia,tristate = <TEGRA_PIN_DISABLE>;
 				 nvidia,enable-input = <TEGRA_PIN_DISABLE>;
