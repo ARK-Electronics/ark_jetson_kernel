@@ -12,8 +12,8 @@ set -e
 # Wall-clock start, reported at the end.
 PROVISION_START=$(date +%s)
 
-# Version pins (ARK_OS_VERSION, MAVSDK_VERSION, JETSON_STATS_VERSION) live in
-# versions.env; keep MAVSDK/JETSON_STATS in sync with ARK-OS packaging/versions.env.
+# Version pins (ARK_OS_VERSION, JETSON_STATS_VERSION) live in versions.env; keep
+# JETSON_STATS in sync with ARK-OS packaging/versions.env.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=versions.env
 source "$SCRIPT_DIR/versions.env"
@@ -21,12 +21,8 @@ source "$SCRIPT_DIR/versions.env"
 # Package name carries the rootfs codename; the Jetson rootfs is Ubuntu 22.04 = jammy.
 ARK_OS_PKG="ark-os-jetson-jammy"
 ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
-# No ubuntu22.04 MAVSDK build is published; the debian12 arm64 deb is glibc-compatible
-# with the Jammy rootfs.
-MAVSDK_DEB="libmavsdk-dev_${MAVSDK_VERSION}_debian12_arm64.deb"
 
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
-MAVSDK_URL="https://github.com/mavlink/MAVSDK/releases/download/v${MAVSDK_VERSION}/${MAVSDK_DEB}"
 
 # Prefer a deb already in downloads/ over downloading, so a locally-supplied deb
 # (CI artifact or unreleased build) can be exercised: drop it in downloads/ and set
@@ -36,7 +32,7 @@ DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 # Use the pinned ARK_OS_VERSION when its deb is cached locally or published on
 # GitHub; otherwise fall back loudly to the newest published (pre)release so an
 # unreleased pin (e.g. the 0.0.0 placeholder) doesn't block the build. True GitHub
-# drafts are invisible to both paths. MAVSDK stays pinned.
+# drafts are invisible to both paths.
 if [ -f "$DOWNLOADS_DIR/$ARK_OS_DEB" ]; then
     echo "Using local ARK-OS deb: $ARK_OS_DEB"
 elif curl -sfIL -o /dev/null "$ARK_OS_URL"; then
@@ -85,8 +81,7 @@ fetch_deb() {
     sudo cp "$DOWNLOADS_DIR/$deb" "$ROOTFS_DIR/tmp/$deb"
 }
 
-echo "Fetching MAVSDK and ARK-OS debs..."
-fetch_deb "$MAVSDK_DEB" "$MAVSDK_URL"
+echo "Fetching the ARK-OS deb..."
 fetch_deb "$ARK_OS_DEB" "$ARK_OS_URL"
 
 # Block service (re)starts in the chroot: there's no init, so a dependency's
@@ -112,32 +107,25 @@ cleanup_provision() {
 trap cleanup_provision EXIT
 
 # apt-get install ./file.deb installs the local deb and pulls its deps in one step,
-# and (unlike dpkg -i) fails loud on error. MAVSDK first: ark-os Depends on
-# libmavsdk-dev, which is in no repo, so it must be installed before ark-os resolves.
-echo "Installing MAVSDK (ark-os depends on libmavsdk-dev)..."
-sudo chroot "$ROOTFS_DIR" apt-get update
-sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$MAVSDK_DEB"
-
+# and (unlike dpkg -i) fails loud on error. MAVSDK is not installed separately:
+# ark-os bundles its own (ARK-OS#75). A pre-bundling ark-os deb fails here with an
+# unresolvable libmavsdk-dev Depends — fix by bumping ARK_OS_VERSION.
 echo "Installing ${ARK_OS_PKG}..."
+sudo chroot "$ROOTFS_DIR" apt-get update
 sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$ARK_OS_DEB"
 
-# Confirm both packages are fully configured — catches a half-configured package
+# Confirm the package is fully configured — catches a half-configured package
 # and documents the post-condition the image relies on.
-echo "Verifying packages are installed..."
-for pkg in libmavsdk-dev "$ARK_OS_PKG"; do
-    status=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || true)
-    if [ "$status" != "install ok installed" ]; then
-        echo "ERROR: $pkg is not installed (dpkg status: '${status:-not present}')." >&2
-        echo "       Aborting provisioning to avoid shipping an image without ARK-OS." >&2
-        exit 1
-    fi
-done
-
-# The MAVSDK deb is upstream's debian12 build on a Jammy rootfs; dpkg can't verify
-# its glibc/libstdc++ symbol versions resolve here. Catch a "version not found" load
-# failure before shipping (the failure mode a MAVSDK_VERSION bump could introduce).
-echo "Checking MAVSDK ABI compatibility with the rootfs..."
-"$SCRIPT_DIR/scripts/check_mavsdk_abi.sh" "$ROOTFS_DIR"
+echo "Verifying ARK-OS is installed..."
+status=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Status}' "$ARK_OS_PKG" 2>/dev/null || true)
+if [ "$status" != "install ok installed" ]; then
+    echo "ERROR: $ARK_OS_PKG is not installed (dpkg status: '${status:-not present}')." >&2
+    echo "       Aborting provisioning to avoid shipping an image without ARK-OS." >&2
+    exit 1
+fi
+# The services load the MAVSDK bundled inside the deb; assert it shipped.
+sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/dev/null 2>&1' \
+    || { echo "ERROR: installed ark-os ships no bundled MAVSDK under /usr/lib/ark-os/mavsdk." >&2; exit 1; }
 
 # jetson-stats stays a *system* install (not a venv, unlike ARK-OS app code): jtop's
 # daemon and its client library must be one version, and ARK-OS's venv sees the client
@@ -169,7 +157,7 @@ echo "Installing python3-spidev (manufacturing IMU test)..."
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-spidev
 sudo chroot "$ROOTFS_DIR" python3 -c "import spidev"  # sanity: importable system-wide
 
-sudo rm "$ROOTFS_DIR/tmp/$MAVSDK_DEB" "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
+sudo rm "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
 
 PROVISION_ELAPSED=$(( $(date +%s) - PROVISION_START ))
 printf 'ARK-OS provisioning complete after %dm %02ds.\n' \
