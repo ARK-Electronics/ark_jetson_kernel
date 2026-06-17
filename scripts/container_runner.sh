@@ -63,9 +63,25 @@ run_in_container() {
 
     ensure_docker
 
-    if ! "${DOCKER_CMD[@]}" image inspect "$ARK_BUILDER_IMAGE" >/dev/null 2>&1; then
-        echo "Building $ARK_BUILDER_IMAGE (one-time, ~30-60s)..."
-        "${DOCKER_CMD[@]}" build -t "$ARK_BUILDER_IMAGE" "$repo_dir/docker/"
+    # Rebuild when the image is missing OR the Dockerfile changed since it was built.
+    # An existence-only check silently keeps a stale image after a Dockerfile edit (e.g.
+    # missing a newly-added tool, failing later with "command not found"). Stamp the build
+    # with a content-hash label and compare it back — the :22.04 tag stays stable and the
+    # check needs no network.
+    local want_sha have_sha
+    want_sha=$(sha256sum "$repo_dir/docker/Dockerfile" | cut -d' ' -f1)
+    have_sha=$("${DOCKER_CMD[@]}" image inspect \
+        --format '{{ if .Config.Labels }}{{ index .Config.Labels "dockerfile_sha" }}{{ end }}' \
+        "$ARK_BUILDER_IMAGE" 2>/dev/null) || have_sha=""
+
+    if [ "$want_sha" != "$have_sha" ]; then
+        if [ -n "$have_sha" ]; then
+            echo "Dockerfile changed — rebuilding $ARK_BUILDER_IMAGE..."
+        else
+            echo "Building $ARK_BUILDER_IMAGE (one-time, ~30-60s)..."
+        fi
+        "${DOCKER_CMD[@]}" build --label "dockerfile_sha=$want_sha" \
+            -t "$ARK_BUILDER_IMAGE" "$repo_dir/docker/"
     fi
 
     # Persistent ccache for container builds: the container is --rm, so without a host
