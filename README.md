@@ -214,7 +214,7 @@ For example:
    3. FE-PI Audio V1 and Z V2
    4. ReSpeaker 4 Mic Array
    5. ReSpeaker 4 Mic Linear Array
- Header 2: Jetson 24pin CSI Connector
+ Header 2: Jetson 22pin CSI Connector
    Available hardware modules:
    1. Camera ARK IMX219 Quad
    2. Camera ARK IMX477 Single
