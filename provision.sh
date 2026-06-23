@@ -157,6 +157,13 @@ echo "Installing python3-spidev (manufacturing IMU test)..."
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-spidev
 sudo chroot "$ROOTFS_DIR" python3 -c "import spidev"  # sanity: importable system-wide
 
+# ── Your packages ───────────────────────────────────────────────────────────
+# Preinstall anything else you want baked into the image here; it lands in the
+# rootfs via the chroot. apt's lists are already updated and PIP_FLAGS is set for
+# the rootfs's pip. For example:
+#   sudo chroot "$ROOTFS_DIR" apt-get install -y vim tmux
+#   sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" some-package
+
 sudo rm "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
 
 PROVISION_ELAPSED=$(( $(date +%s) - PROVISION_START ))
