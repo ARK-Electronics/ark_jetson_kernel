@@ -43,6 +43,8 @@ IMX477 4-lane overlays have been removed. While the Sony IMX477 sensor silicon s
 
 ## Installing a Camera Overlay
 
+A full flash already includes every overlay — `build.sh` copies them into the image's `/boot`, so after flashing you can skip straight to `jetson-io` below. The build-and-copy steps here are for **iterating on an overlay without reflashing**: rebuild the `.dtbo`, drop it on the running target, and re-select it.
+
 Build the overlay DTBs (from host):
 ```
 ./build.sh PAB   # or JAJ, PAB_V3
