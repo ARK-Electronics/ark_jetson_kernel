@@ -157,6 +157,12 @@ See [docs/cameras.md](docs/cameras.md) for tested cameras, overlays, and test co
 ### 10GbE Ethernet (Auvidea M20E)
 See [docs/10gbe_ethernet.md](docs/10gbe_ethernet.md) for using the Auvidea M20E M.2 10GbE adapter with a USB boot drive.
 
+### I2C Buses
+See [docs/i2c.md](docs/i2c.md) for the I2C bus map (connector signal → `/dev/i2c-N`), on-bus devices, and scanning with `i2cdetect`.
+
+### GPIO
+See [docs/gpio.md](docs/gpio.md) for driving the 40-pin / I2S header pins as GPIO, boot-time pad defaults (MB1 BCT), and safe-state patterns.
+
 ---
 
 ### Manual Kernel Build (Advanced)
