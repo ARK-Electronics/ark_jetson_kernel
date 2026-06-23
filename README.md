@@ -14,7 +14,7 @@ Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an AR
 ## Products
 
 | Target | Carrier Board |
-| --- | --- | --- |
+| --- | --- |
 | `PAB` | ARK Jetson PAB Carrier |
 | `JAJ` | ARK Just a Jetson Carrier |
 | `PAB_V3` | ARK Jetson PAB V3 Carrier |
