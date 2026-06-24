@@ -2,17 +2,19 @@
 // SPDX-FileCopyrightText: Copyright (c) 2023-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-FileCopyrightText: Copyright (c) 2023, RidgeRun. All rights reserved.
 //
-// IMX708 (Raspberry Pi / Arducam Camera Module 3) 2-camera overlay for the ARK
-// p3768 carrier (4x2-lane CSI). Carrier wiring (TCA9546 mux, per-port CAM reset and
-// lane polarity) mirrors the IMX219 quad; sensor nodes and mode0 come from RidgeRun's
-// IMX708 driver. One 10-bit mode, 4608x2592 @ ~14 fps, fixed focus.
+// IMX708 (Raspberry Pi / Arducam Camera Module 3) dual-camera overlay for the
+// dev-kit-wired ARK carriers (PAB_V3, JAJ): GPIO-controlled i2c mux, serial_a +
+// serial_c on ports 0/2. Wiring mirrors the rbpcv2 IMX219 dual; sensor nodes and
+// mode0 come from RidgeRun's IMX708 driver. One 10-bit mode, 4608x2592 @ ~14 fps,
+// fixed focus. (PAB uses a different 4x2-lane overlay — see ark-imx708-quad.)
 
 /dts-v1/;
 /plugin/;
 
+#define CAM0_RST	TEGRA234_MAIN_GPIO(H, 3)
 #define CAM0_PWDN	TEGRA234_MAIN_GPIO(H, 6)
 #define CAM1_PWDN	TEGRA234_MAIN_GPIO(AC, 0)
-#define CAMERA_I2C_MUX_BUS(x) (0x1E + x)
+#define CAM_I2C_MUX	TEGRA234_AON_GPIO(CC, 3)
 
 #include <dt-bindings/tegra234-p3767-0000-common.h>
 
@@ -31,18 +33,18 @@
 					#size-cells = <0>;
 					port@0 {
 						reg = <0>;
-						ark_imx708_vi_in0: endpoint {
+						imx708_vi_in0: endpoint {
 							port-index = <0>;
 							bus-width = <2>;
-							remote-endpoint = <&ark_imx708_csi_out0>;
+							remote-endpoint = <&imx708_csi_out0>;
 						};
 					};
 					port@1 {
 						reg = <1>;
-						ark_imx708_vi_in1: endpoint {
-							port-index = <1>;
+						imx708_vi_in1: endpoint {
+							port-index = <2>;
 							bus-width = <2>;
-							remote-endpoint = <&ark_imx708_csi_out1>;
+							remote-endpoint = <&imx708_csi_out1>;
 						};
 					};
 				};
@@ -59,21 +61,21 @@
 				isp_bw_margin_pct = <25>;
 				modules {
 					module0 {
-						badge = "ark_imx708_bottomleft_IMX708";
-						position = "bottomleft";
-						orientation = "0";
-						drivernode0 {
-							pcl_id = "v4l2_sensor";
-							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/tca9546@70/i2c@0/ark_imx708_a@1a";
-						};
-					};
-					module1 {
-						badge = "ark_imx708_bottomright_IMX708";
-						position = "bottomright";
+						badge = "ark_imx708_front_IMX708";
+						position = "front";
 						orientation = "1";
 						drivernode0 {
 							pcl_id = "v4l2_sensor";
-							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/i2c@3180000/tca9546@70/i2c@1/ark_imx708_b@1a";
+							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/cam_i2cmux/i2c@0/imx708_a@1a";
+						};
+					};
+					module1 {
+						badge = "ark_imx708_rear_IMX708";
+						position = "rear";
+						orientation = "1";
+						drivernode0 {
+							pcl_id = "v4l2_sensor";
+							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/cam_i2cmux/i2c@1/imx708_c@1a";
 						};
 					};
 				};
@@ -92,16 +94,16 @@
 								#size-cells = <0>;
 								port@0 {
 									reg = <0>;
-									ark_imx708_csi_in0: endpoint@0 {
+									imx708_csi_in0: endpoint@0 {
 										port-index = <0>;
 										bus-width = <2>;
-										remote-endpoint = <&ark_imx708_out0>;
+										remote-endpoint = <&imx708_out0>;
 									};
 								};
 								port@1 {
 									reg = <1>;
-									ark_imx708_csi_out0: endpoint@1 {
-										remote-endpoint = <&ark_imx708_vi_in0>;
+									imx708_csi_out0: endpoint@1 {
+										remote-endpoint = <&imx708_vi_in0>;
 									};
 								};
 							};
@@ -113,172 +115,163 @@
 								#size-cells = <0>;
 								port@0 {
 									reg = <0>;
-									ark_imx708_csi_in1: endpoint@2 {
-										port-index = <1>;
+									imx708_csi_in1: endpoint@2 {
+										port-index = <2>;
 										bus-width = <2>;
-										remote-endpoint = <&ark_imx708_out1>;
+										remote-endpoint = <&imx708_out1>;
 									};
 								};
 								port@1 {
 									reg = <1>;
-									ark_imx708_csi_out1: endpoint@3 {
-										remote-endpoint = <&ark_imx708_vi_in1>;
+									imx708_csi_out1: endpoint@3 {
+										remote-endpoint = <&imx708_vi_in1>;
 									};
 								};
 							};
 						};
 					};
 				};
-				i2c@3180000 {
+				cam_i2cmux {
+					status = "okay";
+					compatible = "i2c-mux-gpio";
 					#address-cells = <1>;
 					#size-cells = <0>;
-					tca9546@70 {
+					i2c-parent = <&cam_i2c>;
+					mux-gpios = <&gpio_aon CAM_I2C_MUX GPIO_ACTIVE_HIGH>;
+					i2c@0 {
 						status = "okay";
-						compatible = "nxp,pca9546";
+						reg = <0>;
 						#address-cells = <1>;
 						#size-cells = <0>;
-						reg = <0x70>;
-						i2c-parent = <&cam_i2c>;
-						skip_mux_detect = "yes";
-						force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
-						i2c@0 {
-							reg = <0>;
-							#address-cells = <1>;
-							#size-cells = <0>;
-							i2c-mux,deselect-on-exit;
+
+						imx708_a@1a {
 							status = "okay";
+							reset-gpios = <&gpio CAM0_PWDN GPIO_ACTIVE_HIGH>;
+							compatible = "sony,imx708";
+							reg = <0x1a>;
+							devnode = "video0";
+							physical_w = "6.45";
+							physical_h = "3.63";
+							sensor_model = "imx708";
+							use_sensor_mode_id = "true";
 
-							ark_imx708_a@1a {
-								status = "okay";
-								reset-gpios = <&gpio CAM0_PWDN GPIO_ACTIVE_HIGH>;
-								compatible = "sony,imx708";
-								reg = <0x1a>;
-								devnode = "video0";
-								physical_w = "6.45";
-								physical_h = "3.63";
-								sensor_model = "imx708";
-								use_sensor_mode_id = "true";
+							mode0 { /* IMX708_MODE_4608x2592_14FPS */
+								mclk_khz = "24000";
+								num_lanes = "2";
+								tegra_sinterface = "serial_a";
+								lane_polarity = "6";
+								phy_mode = "DPHY";
+								discontinuous_clk = "yes";
+								dpcm_enable = "false";
+								cil_settletime = "0";
+								active_w = "4608";
+								active_h = "2592";
+								mode_type = "bayer";
+								pixel_phase = "rggb";
+								csi_pixel_bit_depth = "10";
+								readout_orientation = "90";
+								line_length = "4808";
+								inherent_gain = "1";
+								pix_clk_hz = "297600000";
+								gain_factor = "16";
+								framerate_factor = "1000000";
+								exposure_factor = "1000000";
+								min_gain_val = "16";
+								max_gain_val = "256";
+								step_gain_val = "1";
+								default_gain = "16";
+								min_hdr_ratio = "1";
+								max_hdr_ratio = "1";
+								min_framerate = "2000000";
+								max_framerate = "14000000";
+								step_framerate = "1";
+								default_framerate = "14000000";
+								min_exp_time = "500";
+								max_exp_time = "65487";
+								step_exp_time = "1";
+								default_exp_time = "1600";
+								embedded_metadata_height = "4";
+							};
 
-								mode0 { /* IMX708_MODE_4608x2592_14FPS */
-									mclk_khz = "24000";
-									num_lanes = "2";
-									tegra_sinterface = "serial_a";
-									lane_polarity = "6";
-									phy_mode = "DPHY";
-									discontinuous_clk = "yes";
-									dpcm_enable = "false";
-									cil_settletime = "0";
-									active_w = "4608";
-									active_h = "2592";
-									mode_type = "bayer";
-									pixel_phase = "rggb";
-									csi_pixel_bit_depth = "10";
-									readout_orientation = "90";
-									line_length = "4808";
-									inherent_gain = "1";
-									pix_clk_hz = "297600000";
-									gain_factor = "16";
-									framerate_factor = "1000000";
-									exposure_factor = "1000000";
-									min_gain_val = "16";
-									max_gain_val = "256";
-									step_gain_val = "1";
-									default_gain = "16";
-									min_hdr_ratio = "1";
-									max_hdr_ratio = "1";
-									min_framerate = "2000000";
-									max_framerate = "14000000";
-									step_framerate = "1";
-									default_framerate = "14000000";
-									min_exp_time = "500";
-									max_exp_time = "65487";
-									step_exp_time = "1";
-									default_exp_time = "1600";
-									embedded_metadata_height = "4";
-								};
-
-								ports {
-									#address-cells = <1>;
-									#size-cells = <0>;
-									port@0 {
-										reg = <0>;
-										ark_imx708_out0: endpoint {
-											status = "okay";
-											port-index = <0>;
-											bus-width = <2>;
-											remote-endpoint = <&ark_imx708_csi_in0>;
-										};
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									imx708_out0: endpoint {
+										status = "okay";
+										port-index = <0>;
+										bus-width = <2>;
+										remote-endpoint = <&imx708_csi_in0>;
 									};
 								};
 							};
 						};
-						i2c@1 {
-							reg = <1>;
-							#address-cells = <1>;
-							#size-cells = <0>;
-							i2c-mux,deselect-on-exit;
+					};
+					i2c@1 {
+						status = "okay";
+						reg = <1>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+						imx708_c@1a {
 							status = "okay";
+							reset-gpios = <&gpio CAM1_PWDN GPIO_ACTIVE_HIGH>;
+							compatible = "sony,imx708";
+							reg = <0x1a>;
+							devnode = "video1";
+							physical_w = "6.45";
+							physical_h = "3.63";
+							sensor_model = "imx708";
+							use_sensor_mode_id = "true";
 
-							ark_imx708_b@1a {
-								status = "okay";
-								reset-gpios = <&gpio CAM1_PWDN GPIO_ACTIVE_HIGH>;
-								compatible = "sony,imx708";
-								reg = <0x1a>;
-								devnode = "video1";
-								physical_w = "6.45";
-								physical_h = "3.63";
-								sensor_model = "imx708";
-								use_sensor_mode_id = "true";
+							mode0 { /* IMX708_MODE_4608x2592_14FPS */
+								mclk_khz = "24000";
+								num_lanes = "2";
+								tegra_sinterface = "serial_c";
+								phy_mode = "DPHY";
+								discontinuous_clk = "yes";
+								dpcm_enable = "false";
+								cil_settletime = "0";
+								active_w = "4608";
+								active_h = "2592";
+								mode_type = "bayer";
+								pixel_phase = "rggb";
+								csi_pixel_bit_depth = "10";
+								readout_orientation = "90";
+								line_length = "4808";
+								inherent_gain = "1";
+								pix_clk_hz = "297600000";
+								gain_factor = "16";
+								framerate_factor = "1000000";
+								exposure_factor = "1000000";
+								min_gain_val = "16";
+								max_gain_val = "256";
+								step_gain_val = "1";
+								default_gain = "16";
+								min_hdr_ratio = "1";
+								max_hdr_ratio = "1";
+								min_framerate = "2000000";
+								max_framerate = "14000000";
+								step_framerate = "1";
+								default_framerate = "14000000";
+								min_exp_time = "500";
+								max_exp_time = "65487";
+								step_exp_time = "1";
+								default_exp_time = "1600";
+								embedded_metadata_height = "4";
+							};
 
-								mode0 { /* IMX708_MODE_4608x2592_14FPS */
-									mclk_khz = "24000";
-									num_lanes = "2";
-									tegra_sinterface = "serial_b";
-									lane_polarity = "6";
-									phy_mode = "DPHY";
-									discontinuous_clk = "yes";
-									dpcm_enable = "false";
-									cil_settletime = "0";
-									active_w = "4608";
-									active_h = "2592";
-									mode_type = "bayer";
-									pixel_phase = "rggb";
-									csi_pixel_bit_depth = "10";
-									readout_orientation = "90";
-									line_length = "4808";
-									inherent_gain = "1";
-									pix_clk_hz = "297600000";
-									gain_factor = "16";
-									framerate_factor = "1000000";
-									exposure_factor = "1000000";
-									min_gain_val = "16";
-									max_gain_val = "256";
-									step_gain_val = "1";
-									default_gain = "16";
-									min_hdr_ratio = "1";
-									max_hdr_ratio = "1";
-									min_framerate = "2000000";
-									max_framerate = "14000000";
-									step_framerate = "1";
-									default_framerate = "14000000";
-									min_exp_time = "500";
-									max_exp_time = "65487";
-									step_exp_time = "1";
-									default_exp_time = "1600";
-									embedded_metadata_height = "4";
-								};
-
-								ports {
-									#address-cells = <1>;
-									#size-cells = <0>;
-									port@0 {
-										reg = <0>;
-										ark_imx708_out1: endpoint {
-											status = "okay";
-											port-index = <1>;
-											bus-width = <2>;
-											remote-endpoint = <&ark_imx708_csi_in1>;
-										};
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									imx708_out1: endpoint {
+										status = "okay";
+										port-index = <2>;
+										bus-width = <2>;
+										remote-endpoint = <&imx708_csi_in1>;
 									};
 								};
 							};
@@ -286,9 +279,11 @@
 					};
 				};
 				gpio@2200000 {
-					camera-control-output-high {
-						gpios = <CAM0_PWDN 1 CAM1_PWDN 1>;
-						label = "cam0-pwdn", "cam1-pwdn";
+					camera-control-output-low {
+						gpio-hog;
+						output-low;
+						gpios = <CAM0_RST 0>;
+						label = "cam0-rst";
 					};
 				};
 			};
