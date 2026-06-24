@@ -284,6 +284,33 @@ find "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/nv-platform/" \
     -exec sed -i \
         "s/\(Engineering Reference Developer Kit\|ARK [A-Z_0-9]* Jetson Carrier\) Super/ARK ${TARGET} Jetson Carrier Super/" {} +
 
+# ── Inject ARK kernel source overlay ────────────────────────────────────────
+# nvidia-oot has no version-controlled hook of its own, so out-of-tree sensor
+# sources we add (e.g. the IMX708 driver) live under kernel_overlay/ and are
+# layered onto the L4T source tree here. Runs every build so edits to the
+# vendored sources are picked up without a re-stage.
+
+if [ -d "$SCRIPT_DIR/kernel_overlay" ]; then
+    echo "Injecting ARK kernel source overlay..."
+    # Copy only the source subtrees (e.g. nvidia-oot/), not top-level docs.
+    for dir in "$SCRIPT_DIR"/kernel_overlay/*/; do
+        cp -r "$dir" "$SOURCE_DIR/"
+    done
+
+    # Register the IMX708 driver in the OOT media Makefile (idempotent). Fail loud
+    # if the anchor moves on a BSP bump rather than silently building without it.
+    OOT_I2C_MAKEFILE="$SOURCE_DIR/nvidia-oot/drivers/media/i2c/Makefile"
+    if ! grep -q 'nv_imx708.o' "$OOT_I2C_MAKEFILE"; then
+        if ! grep -q '^obj-m += nv_imx477.o' "$OOT_I2C_MAKEFILE"; then
+            echo "ERROR: anchor 'obj-m += nv_imx477.o' not found in" >&2
+            echo "       $OOT_I2C_MAKEFILE — OOT Makefile layout changed;" >&2
+            echo "       refusing to build without the IMX708 driver registered." >&2
+            exit 1
+        fi
+        sed -i '/^obj-m += nv_imx477.o/a obj-m += nv_imx708.o' "$OOT_I2C_MAKEFILE"
+    fi
+fi
+
 # ── Build ───────────────────────────────────────────────────────────────────
 
 echo ""
