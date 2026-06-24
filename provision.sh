@@ -18,21 +18,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=versions.env
 source "$SCRIPT_DIR/versions.env"
 
-# Package name carries the rootfs codename; the Jetson rootfs is Ubuntu 22.04 = jammy.
 ARK_OS_PKG="ark-os-jetson-jammy"
 ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
-
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 
-# Prefer a deb already in downloads/ over downloading, so a locally-supplied deb
-# (CI artifact or unreleased build) can be exercised: drop it in downloads/ and set
-# the matching *_VERSION so the filename lines up. Override the dir via DOWNLOADS_DIR.
+# Prefer a deb already in downloads/ over downloading
 DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
 # Use the pinned ARK_OS_VERSION when its deb is cached locally or published on
-# GitHub; otherwise fall back loudly to the newest published (pre)release so an
-# unreleased pin (e.g. the 0.0.0 placeholder) doesn't block the build. True GitHub
-# drafts are invisible to both paths.
+# GitHub; otherwise fall back loudly to the newest published (pre)release.
 if [ -f "$DOWNLOADS_DIR/$ARK_OS_DEB" ]; then
     echo "Using local ARK-OS deb: $ARK_OS_DEB"
 elif curl -sfIL -o /dev/null "$ARK_OS_URL"; then
@@ -58,10 +52,7 @@ sys.exit(1)
     echo "Latest ARK-OS deb: $ARK_OS_DEB"
 fi
 
-# Stage a deb into the rootfs /tmp, caching under downloads/ first (atomic
-# .partial → final) so rebuilds reuse it. A failed download aborts rather than
-# shipping no ARK-OS. wget -nv still surfaces HTTP errors; -o /dev/stderr stops it
-# dropping a wget-log file when it has no TTY (as in the build container).
+# Stage a deb into the rootfs /tmp, caching under downloads/ so rebuilds reuse it
 fetch_deb() {
     local deb="$1" url="$2"
     if [ ! -f "$DOWNLOADS_DIR/$deb" ]; then
@@ -106,16 +97,12 @@ cleanup_provision() {
 }
 trap cleanup_provision EXIT
 
-# apt-get install ./file.deb installs the local deb and pulls its deps in one step,
-# and (unlike dpkg -i) fails loud on error. MAVSDK is not installed separately:
-# ark-os bundles its own (ARK-OS#75). A pre-bundling ark-os deb fails here with an
-# unresolvable libmavsdk-dev Depends — fix by bumping ARK_OS_VERSION.
+### Install ARK-OS
 echo "Installing ${ARK_OS_PKG}..."
 sudo chroot "$ROOTFS_DIR" apt-get update
 sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$ARK_OS_DEB"
 
-# Confirm the package is fully configured — catches a half-configured package
-# and documents the post-condition the image relies on.
+### Confirm the package is fully configured
 echo "Verifying ARK-OS is installed..."
 status=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Status}' "$ARK_OS_PKG" 2>/dev/null || true)
 if [ "$status" != "install ok installed" ]; then
@@ -127,40 +114,43 @@ fi
 sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/dev/null 2>&1' \
     || { echo "ERROR: installed ark-os ships no bundled MAVSDK under /usr/lib/ark-os/mavsdk." >&2; exit 1; }
 
-# jetson-stats stays a *system* install (not a venv, unlike ARK-OS app code): jtop's
-# daemon and its client library must be one version, and ARK-OS's venv sees the client
-# via --system-site-packages. setup.py installs jtop.service when run as root; we
-# enable it for first boot below since systemctl can't reach a manager in the chroot.
-echo "Installing jetson-stats (jtop) system-wide..."
+### Install pip
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
-# Ubuntu >= 24.04 (JetPack 7) marks system Python externally-managed (PEP 668), so a
-# system pip install needs --break-system-packages. Gate on the marker the rootfs
-# ships: present (noble+, new pip) → flag; absent (jammy, pip 22 without it) → plain.
+
+### Break System Packages on 24.04
 PIP_FLAGS=()
 if sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/python3*/EXTERNALLY-MANAGED >/dev/null 2>&1'; then
     PIP_FLAGS=(--break-system-packages)
 fi
-sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" "jetson-stats==${JETSON_STATS_VERSION}"
-sudo chroot "$ROOTFS_DIR" python3 -c "import jtop"                  # sanity: client installed
-sudo chroot "$ROOTFS_DIR" test -f /etc/systemd/system/jtop.service  # sanity: setup.py placed the unit
-# Enable jtop.service for first boot (offline `systemctl enable`; it's
-# WantedBy=multi-user.target), since systemctl can't reach a manager in the chroot.
-sudo chroot "$ROOTFS_DIR" mkdir -p /etc/systemd/system/multi-user.target.wants
-sudo chroot "$ROOTFS_DIR" ln -sf /etc/systemd/system/jtop.service \
-    /etc/systemd/system/multi-user.target.wants/jtop.service
 
-# spidev is needed by the manufacturing IMU test (ark_scripts JAJ bundle), which
-# runs under the system python. The test fixture gives the Jetson no internet, so
-# the module must ship in the image; the apt package is a prebuilt binary (PyPI
-# only has the sdist), keeping compilers out of the rootfs.
-echo "Installing python3-spidev (manufacturing IMU test)..."
+### Install jtop
+# jetson-stats stays a *system* install (not a venv, unlike ARK-OS app code)
+echo "Installing jetson-stats (jtop) system-wide..."
+sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" "jetson-stats==${JETSON_STATS_VERSION}"
+sudo chroot "$ROOTFS_DIR" python3 -c "import jtop"
+sudo chroot "$ROOTFS_DIR" test -f /etc/systemd/system/jtop.service
+# Enable jtop.service for first boot, since systemctl can't reach a manager in the chroot.
+sudo chroot "$ROOTFS_DIR" mkdir -p /etc/systemd/system/multi-user.target.wants
+sudo chroot "$ROOTFS_DIR" ln -sf /etc/systemd/system/jtop.service /etc/systemd/system/multi-user.target.wants/jtop.service
+
+### Install bench test tooling
+echo "Installing bench-test tools"
+
+# python3-spidev via apt, not pip: it has no aarch64 wheel, so pip would compile from sdist (pulls in a toolchain)
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-spidev
-sudo chroot "$ROOTFS_DIR" python3 -c "import spidev"  # sanity: importable system-wide
+
+sudo chroot "$ROOTFS_DIR" apt-get install -y \
+    gpiod i2c-tools usbutils pciutils v4l-utils \
+    x11-xserver-utils xdotool inxi uhubctl
+
+sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" mavsdk pyserial dronecan smbus2 Jetson.GPIO
+
+# Sanity check: importable system-wide. RPi.GPIO (Jetson.GPIO) is left out since it reads /proc/device-tree to detect the Jetson model at import
+sudo chroot "$ROOTFS_DIR" python3 -c "import serial, mavsdk, dronecan, smbus2, spidev"
 
 # ── Your packages ───────────────────────────────────────────────────────────
-# Preinstall anything else you want baked into the image here; it lands in the
-# rootfs via the chroot. apt's lists are already updated and PIP_FLAGS is set for
-# the rootfs's pip. For example:
+# Preinstall anything else you want baked into the image here.
+# For example:
 #   sudo chroot "$ROOTFS_DIR" apt-get install -y vim tmux
 #   sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" some-package
 
