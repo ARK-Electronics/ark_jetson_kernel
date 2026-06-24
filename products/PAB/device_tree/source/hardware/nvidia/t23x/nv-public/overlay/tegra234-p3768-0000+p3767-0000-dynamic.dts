@@ -5,7 +5,10 @@
 /plugin/;
 
 // #include "tegra234-p3768-camera-rbpcv2-imx219.dtsi"
-#include "tegra234-p3768-camera-ark-quad-imx219.dtsi"
+// Camera is selected via jetson-io (ark-imx219-*, ark-imx708-*); don't force one
+// here — a default camera here collides (tca9546@70 + CAM reset GPIOs) with any
+// camera overlay the user selects.
+// #include "tegra234-p3768-camera-ark-quad-imx219.dtsi"
 
 / {
 	overlay-name = "Tegra234 p3768-0000+p3767-xxxx Dynamic Overlay";
