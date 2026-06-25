@@ -175,7 +175,7 @@ jobs:
             exit 1
           fi
 
-          RELEASE_FILES+=("packaging/flash_from_package.sh")
+          # The flasher isn't a release asset; it's served from main (linked in the notes below).
 
           echo "Release assets:"
           for f in "${RELEASE_FILES[@]}"; do
@@ -183,7 +183,6 @@ jobs:
           done
 
           COMMIT_SHORT=$(git rev-parse --short HEAD)
-          REPO_URL="https://github.com/${GITHUB_REPOSITORY}"
 
           cat > /tmp/release-notes.md <<EOF
           ## ${PRODUCT_UPPER} v${VERSION}
@@ -192,8 +191,10 @@ jobs:
 
           ### Flash
 
+          Fetch the flasher from the main branch (it flashes any release):
+
           \`\`\`
-          curl -LO ${REPO_URL}/releases/download/${TAG}/flash_from_package.sh
+          curl -LO https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/packaging/flash_from_package.sh
           chmod +x flash_from_package.sh
           ./flash_from_package.sh ${TAG}
           \`\`\`
