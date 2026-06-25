@@ -1,0 +1,10 @@
+# Device-tree overlay(s) pre-selected in the shipped image's extlinux.conf
+# `primary` boot entry, so they are active out of the box. One dtbo basename per
+# line ('#' comments allowed); each must be built into /boot via overlay/dtbo.list.
+# The bootloader applies these on top of the base DTB, and a user can still pick a
+# different overlay in jetson-io, which supersedes this default. These are
+# boot-time extlinux overlays, not the flash-time OVERLAY_DTB_FILE that bakes into
+# the DTB partition.
+
+# JAJ ships with the dual IMX219 camera enabled by default.
+tegra234-p3767-camera-p3768-imx219-dual.dtbo
