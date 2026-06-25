@@ -22,6 +22,10 @@ ARK_OS_PKG="ark-os-jetson-jammy"
 ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 
+NV_GSTREAMER_PKG="nvidia-l4t-gstreamer"
+NV_GSTREAMER_DEB="${NV_GSTREAMER_PKG}_${NV_GSTREAMER_VERSION}_arm64.deb"
+NV_GSTREAMER_URL="https://repo.download.nvidia.com/jetson/common/pool/main/n/${NV_GSTREAMER_PKG}/${NV_GSTREAMER_DEB}"
+
 # Prefer a deb already in downloads/ over downloading
 DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
@@ -113,6 +117,19 @@ fi
 # The services load the MAVSDK bundled inside the deb; assert it shipped.
 sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/dev/null 2>&1' \
     || { echo "ERROR: installed ark-os ships no bundled MAVSDK under /usr/lib/ark-os/mavsdk." >&2; exit 1; }
+
+### Install Tegra GStreamer plugins (CSI camera pipelines)
+# nvarguscamerasrc/nvvidconv/nvv4l2* aren't in the BSP set apply_binaries installs; they
+# ship in nvidia-l4t-gstreamer (repo `common` pool). Its nvidia-l4t-* deps are all already
+# provided by the BSP, so it installs as a local deb with no NVIDIA repo — leaving the
+# disabled <SOC> apt source untouched.
+echo "Installing ${NV_GSTREAMER_PKG} (camera GStreamer plugins)..."
+fetch_deb "$NV_GSTREAMER_DEB" "$NV_GSTREAMER_URL"
+sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$NV_GSTREAMER_DEB"
+# Assert the key plugin landed rather than shipping a camera image that can't stream.
+sudo chroot "$ROOTFS_DIR" test -f /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so \
+    || { echo "ERROR: ${NV_GSTREAMER_PKG} installed but nvarguscamerasrc plugin is missing." >&2; exit 1; }
+sudo rm -f "$ROOTFS_DIR/tmp/$NV_GSTREAMER_DEB"
 
 ### Install pip
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip

@@ -89,10 +89,7 @@ v4l2-ctl --set-fmt-video=width=3840,height=2160,pixelformat=RG10 --stream-mmap -
 
 ### GStreamer
 
-Install GStreamer (if not already present):
-```
-sudo apt-get install nvidia-jetpack -y
-```
+Images built with `--provision` already ship the Tegra GStreamer plugins (`nvarguscamerasrc`, `nvvidconv`, `nvv4l2*`) via `nvidia-l4t-gstreamer`. Install `nvidia-jetpack` only if you also need the full CUDA/TensorRT compute stack.
 
 UDP h.264 stream (replace IP/port):
 ```
