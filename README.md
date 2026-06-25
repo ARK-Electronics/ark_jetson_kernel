@@ -69,7 +69,7 @@ ssh jetson@jetson.local
 
 ## Cameras
 
-Select a camera overlay with NVIDIA's `jetson-io` tool. List what's available:
+**PAB** ships with the quad IMX219 overlay already selected, so four IMX219 cameras work out of the box. To use a different camera — or on **JAJ**/**PAB_V3**, which ship no camera default — select an overlay with NVIDIA's `jetson-io` tool. List what's available:
 ```
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
 ```
