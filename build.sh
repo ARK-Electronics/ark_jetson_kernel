@@ -277,18 +277,58 @@ fi
 
 require_bsp_staging "$STAGING_DIR"
 
-# ── Copy product device tree overlay ────────────────────────────────────────
-# Runs every build (not just staging) to pick up device-tree edits.
+# ── Layer ARK's device-tree delta onto the stock BSP ─────────────────────────
+# products/<target>/device_tree/ carries ONLY ARK's delta: the BCT pinmux/gpio
+# files, the per-product ark-<target>-overrides.dtsi fragment, and any product-
+# specific .dtsi it #includes. Everything else tracks the BSP. ARK's fragment is
+# applied by appending an #include to the stock nv-common (so it layers last over
+# the pristine tree), and per-SKU model strings are stamped from dtb_models.env.
+# Runs every build to pick up edits. See docs/device-tree.md.
 
-echo "Copying $TARGET device tree overlay into source tree..."
+echo "Copying $TARGET device tree delta into source tree..."
 cp -r "$PRODUCT_DIR/device_tree/"* "$L4T_DIR/"
 
-# Inject the ARK target name into super DTS model strings. The pattern also matches
-# an already-injected name, so rebuilds after a device-tree update stay correct.
-find "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/nv-platform/" \
-    -name "*-nv-super.dts" \
-    -exec sed -i \
-        "s/\(Engineering Reference Developer Kit\|ARK [A-Z_0-9]* Jetson Carrier\) Super/ARK ${TARGET} Jetson Carrier Super/" {} +
+NV_PLATFORM="$SOURCE_DIR/hardware/nvidia/t23x/nv-public/nv-platform"
+NV_COMMON="$NV_PLATFORM/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi"
+ARK_FRAGMENT="ark-${TARGET}-overrides.dtsi"
+
+# Append the fragment #include to the stock nv-common so ARK's nodes apply last.
+# Idempotent (skip if already there); fail loud if the BSP renamed nv-common or the
+# fragment is missing, rather than silently building without ARK's overrides.
+if [ ! -f "$NV_PLATFORM/$ARK_FRAGMENT" ]; then
+    echo "ERROR: $ARK_FRAGMENT not found under products/$TARGET/device_tree/ —" >&2
+    echo "       cannot apply ARK's device-tree delta." >&2
+    exit 1
+fi
+if [ ! -f "$NV_COMMON" ]; then
+    echo "ERROR: stock $(basename "$NV_COMMON") missing — BSP device-tree layout" >&2
+    echo "       changed; refusing to build without ARK's overrides applied." >&2
+    exit 1
+fi
+if ! grep -q "$ARK_FRAGMENT" "$NV_COMMON"; then
+    echo "Applying ARK device-tree fragment ($ARK_FRAGMENT)..."
+    printf '\n#include "%s"\n' "$ARK_FRAGMENT" >> "$NV_COMMON"
+fi
+
+# Stamp per-SKU model strings onto the stock DTS: the listed model goes on the SKU's
+# "-nv" DTB and "<model> Super" on its "-nv-super" DTB. Re-derived every build (drop
+# any prior ARK-MODEL block, re-append) so a model edit needs no re-stage.
+MODELS_FILE="$PRODUCT_DIR/dtb_models.env"
+if [ -f "$MODELS_FILE" ]; then
+    echo "Stamping $TARGET model strings..."
+    while IFS='=' read -r sku model; do
+        sku="${sku%%#*}"; sku="${sku//[[:space:]]/}"
+        [ -z "$sku" ] && continue
+        model="$(echo "$model" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        for variant in "-nv" "-nv-super"; do
+            dts="$NV_PLATFORM/tegra234-p3768-0000+p3767-${sku}${variant}.dts"
+            [ -f "$dts" ] || continue
+            m="$model"; [ "$variant" = "-nv-super" ] && m="$model Super"
+            awk '/\/\* ARK-MODEL \*\//{exit} {print}' "$dts" > "$dts.tmp" && mv "$dts.tmp" "$dts"
+            printf '\n/* ARK-MODEL */\n/ {\n\tmodel = "%s";\n};\n' "$m" >> "$dts"
+        done
+    done < "$MODELS_FILE"
+fi
 
 # ── Inject ARK kernel source overlay ────────────────────────────────────────
 # nvidia-oot has no version-controlled hook of its own, so out-of-tree sensor

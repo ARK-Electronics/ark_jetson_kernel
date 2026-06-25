@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * ARK PAB carrier device-tree delta.
+ *
+ * build.sh appends an #include of this file to the stock
+ * tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi, so it is layered last over the
+ * pristine BSP tree. Only ARK's delta lives here; everything else tracks the BSP.
+ * Per-SKU model strings are stamped separately from products/PAB/dtb_models.env.
+ */
+
+/ {
+	aliases {
+		serial3 = &uartb;
+	};
+};
+
+/* UARTB is wired on the carrier but left undefined by the stock SoC dtsi. */
+&{/bus@0} {
+	uartb: serial@3110000 {
+		compatible = "nvidia,tegra234-uart", "nvidia,tegra20-uart";
+		reg = <0x0 0x03110000 0x0 0x10000>;
+		interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&bpmp TEGRA234_CLK_UARTB>;
+		resets = <&bpmp TEGRA234_RESET_UARTB>;
+		status = "okay";
+	};
+};
+
+/* HD-Audio is used on the carrier. */
+&{/bus@0/hda@3510000} {
+	status = "okay";
+};
+
+/* ARK carrier has no FUSB301 USB-C controller / I2C USB switcher. */
+&{/bus@0/i2c@c240000} {
+	/delete-node/ fusb301@25;
+};
+
+/* Third USB3 lane for the dual USB-A port. */
+&{/bus@0/padctl@3520000/pads/usb3/lanes} {
+	usb3-2 {
+		nvidia,function = "xusb";
+		status = "okay";
+	};
+};
+
+/* Recovery/OTG port carries a micro-USB connector (drop the stock typec link). */
+&{/bus@0/padctl@3520000/ports/usb2-0} {
+	/delete-node/ port;
+	connector {
+		compatible = "usb-b-connector", "gpio-usb-b-connector";
+		label = "micro-USB";
+		type = "micro";
+		id-gpio = <&gpio TEGRA234_MAIN_GPIO(Z, 1) GPIO_ACTIVE_LOW>;
+	};
+};
+
+/* Carrier USB-A port mapping. */
+&{/bus@0/padctl@3520000/ports} {
+	usb3-0 { nvidia,usb2-companion = <2>; };
+	usb3-1 { nvidia,usb2-companion = <1>; };
+	usb3-2 {
+		nvidia,usb2-companion = <1>;
+		status = "okay";
+	};
+};
+
+/* Recovery/OTG controller drives only usb2-0 on this carrier. */
+&{/bus@0/usb@3550000} {
+	phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>;
+	phy-names = "usb2-0";
+};
+
+/* Host controller gains the third USB3 lane. */
+&{/bus@0/usb@3610000} {
+	phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>,
+	       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-1}>,
+	       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-2}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-1}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-2}>;
+	phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0",
+		    "usb3-1", "usb3-2";
+};

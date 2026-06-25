@@ -28,7 +28,7 @@ cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../kernel/
 
 ## Modifying the device tree
 
-To change the device tree you must build from source. The device tree sources for each product live in `products/{TARGET}/device_tree/`. `build.sh` overlays these onto the NVIDIA kernel source on every build, so edit the files there and re-run `./build.sh <TARGET>`.
+To change the device tree you must build from source. ARK carries only its **delta** under `products/{TARGET}/device_tree/` — the BCT pinmux/gpio files and a single `ark-{TARGET}-overrides.dtsi` fragment — which `build.sh` layers onto the stock NVIDIA tree every build; model strings live in `products/{TARGET}/dtb_models.env`. Edit those and re-run `./build.sh <TARGET>`. See [docs/device-tree.md](device-tree.md) for the layout and how to add an override.
 
 The base DTB is selected by module and RAM ([NVIDIA porting guide](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/HR/JetsonModuleAdaptationAndBringUp/JetsonOrinNxNanoSeries.html#porting-the-linux-kernel-device-tree)):
 
