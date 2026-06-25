@@ -21,7 +21,7 @@ Tested and working in 2-lane mode.
 | Overlay | Filename | Ports |
 |---------|----------|-------|
 | Single  | `tegra234-p3767-camera-p3768-ark-imx219-single.dtbo` | CAM0 |
-| Dual    | `tegra234-p3767-camera-p3768-imx219-dual.dtbo` | CAM0 + CAM1 |
+| Dual    | `tegra234-p3767-camera-p3768-imx219-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3 default) |
 | Quad    | `tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo` | All 4 ports (PAB only, default) |
 
 ## IMX477 (Sony Starvis, 12.3MP)
@@ -45,7 +45,9 @@ IMX477 4-lane overlays have been removed. While the Sony IMX477 sensor silicon s
 
 A full flash already includes every overlay — `build.sh` copies them into the image's `/boot`, so after flashing you can skip straight to `jetson-io` below. The build-and-copy steps here are for **iterating on an overlay without reflashing**: rebuild the `.dtbo`, drop it on the running target, and re-select it.
 
-**PAB** ships with the quad IMX219 overlay pre-selected — `build.sh` adds it to the `OVERLAYS` line of the `primary` boot entry in `extlinux.conf` (driven by `products/PAB/default_overlays`), so all four IMX219 cameras work on first boot with no `jetson-io` step. The bootloader applies it on top of the base DTB, so it does not collide with a later `jetson-io` choice: selecting another camera writes a separate default boot entry that supersedes it. To make a different camera the shipped default, edit `products/PAB/default_overlays` and rebuild.
+Each carrier ships with an IMX219 overlay pre-selected — `build.sh` adds it to the `OVERLAYS` line of the `primary` boot entry in `extlinux.conf` (driven by `products/<TARGET>/default_overlays`), so cameras work on first boot with no `jetson-io` step: the quad overlay on PAB, the dual overlay on JAJ and PAB_V3. The bootloader applies it on top of the base DTB, so it does not collide with a later `jetson-io` choice — selecting another camera writes a separate default boot entry that supersedes it. To change the shipped default, edit `products/<TARGET>/default_overlays` and rebuild.
+
+The overlays ARK ships live under `products/<TARGET>/overlay/` (the `.dts`/`.dtsi` sources) and are enumerated in `products/<TARGET>/overlay/dtbo.list` (the explicit built set); `build.sh` layers them onto the BSP's stock overlay tree at build time. Add or drop a camera overlay by editing those two — not a BSP source mirror.
 
 Build the overlay DTBs (from host):
 ```

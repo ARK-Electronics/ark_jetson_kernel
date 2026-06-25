@@ -249,6 +249,12 @@ if [ ! -d "$L4T_DIR" ]; then
     tar xf nvidia_kernel_display_driver_source.tbz2
     popd > /dev/null
 
+    # Snapshot the pristine stock overlay Makefile so the per-build ARK overlay step
+    # re-derives its dtbo set from a clean base (idempotent across rebuilds; a BSP
+    # layout change then fails loud instead of compounding edits).
+    cp "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay/Makefile" \
+       "$STAGING_DIR/.overlay-makefile.stock"
+
     DEFCONFIG="$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/configs/defconfig"
     echo "Applying shared defconfig fragment..."
     cat "$SCRIPT_DIR/defconfig.fragment" >> "$DEFCONFIG"
@@ -308,6 +314,81 @@ if [ -d "$SCRIPT_DIR/kernel_overlay" ]; then
             exit 1
         fi
         sed -i '/^obj-m += nv_imx477.o/a obj-m += nv_imx708.o' "$OOT_I2C_MAKEFILE"
+    fi
+fi
+
+# ── Stage ARK device-tree overlays ───────────────────────────────────────────
+# ARK overlay sources live in products/<target>/overlay/, not the BSP source
+# mirror. Copy them into the stock overlay dir and make the built dtbo set
+# explicit: disable the stock p3768 camera overlays, then build exactly the dtbos
+# in overlay/dtbo.list. The stock overlay Makefile is re-derived from the
+# stage-time snapshot each build, so this is idempotent and a BSP layout change
+# fails loud. Non-camera stock overlays (audio/csi/hdr/AGX) keep building from the
+# BSP untouched. See docs/cameras.md and products/<target>/overlay/dtbo.list.
+
+OVERLAY_SRC_DIR="$PRODUCT_DIR/overlay"
+if [ -d "$OVERLAY_SRC_DIR" ]; then
+    echo "Staging ARK overlays from products/$TARGET/overlay/..."
+    STAGED_OVERLAY_DIR="$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay"
+    OVERLAY_MK="$STAGED_OVERLAY_DIR/Makefile"
+    STOCK_OVERLAY_MK="$STAGING_DIR/.overlay-makefile.stock"
+
+    if [ ! -f "$STOCK_OVERLAY_MK" ]; then
+        echo "ERROR: $STOCK_OVERLAY_MK not found — the staged tree predates the" >&2
+        echo "       products/<target>/overlay/ refactor. Re-stage: ./build.sh $TARGET --clean" >&2
+        exit 1
+    fi
+
+    # Re-derive the overlay Makefile from the pristine stock snapshot, then layer
+    # ARK's sources on top (overwriting the stock file where ARK ships its own
+    # version, e.g. the 22pin-renamed imx219 overlays).
+    cp "$STOCK_OVERLAY_MK" "$OVERLAY_MK"
+    for f in "$OVERLAY_SRC_DIR"/*.dts "$OVERLAY_SRC_DIR"/*.dtsi; do
+        [ -e "$f" ] && cp "$f" "$STAGED_OVERLAY_DIR/"
+    done
+
+    # Disable the stock p3768 camera overlays so overlay/dtbo.list is authoritative.
+    # We operate on a pristine Makefile, so a zero match means the BSP renamed them —
+    # fail loud rather than ship a camera set that no longer matches dtbo.list.
+    if [ "$(grep -cE '^dtbo-y[[:space:]]*\+=[[:space:]]*tegra234-p3767-camera-p3768-' "$OVERLAY_MK")" -eq 0 ]; then
+        echo "ERROR: no stock 'tegra234-p3767-camera-p3768-*' dtbo-y entries in $OVERLAY_MK" >&2
+        echo "       — BSP overlay layout changed; refusing to build a mismatched camera set." >&2
+        exit 1
+    fi
+    sed -i -E 's|^(dtbo-y[[:space:]]*\+=[[:space:]]*tegra234-p3767-camera-p3768-)|# ARK (see overlay/dtbo.list): \1|' "$OVERLAY_MK"
+
+    # Build exactly the dtbos in overlay/dtbo.list, asserting each has a source file.
+    DTBO_LIST="$OVERLAY_SRC_DIR/dtbo.list"
+    if [ ! -f "$DTBO_LIST" ]; then
+        echo "ERROR: $DTBO_LIST missing." >&2
+        exit 1
+    fi
+    ark_dtbo_lines=""
+    while IFS= read -r entry; do
+        entry="${entry%%#*}"
+        entry="$(echo "$entry" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$entry" ] && continue
+        if [ ! -f "$STAGED_OVERLAY_DIR/${entry%.dtbo}.dts" ]; then
+            echo "ERROR: $DTBO_LIST lists '$entry' but ${entry%.dtbo}.dts is not in the" >&2
+            echo "       overlay dir (missing from products/$TARGET/overlay/?)." >&2
+            exit 1
+        fi
+        ark_dtbo_lines+="dtbo-y += $entry"$'\n'
+    done < "$DTBO_LIST"
+
+    # Insert the ARK block before the first dtbo path-prefix guard so the entries get
+    # the t23x/nv-public/overlay/ prefix like the rest.
+    awk -v block="$ark_dtbo_lines" '
+        /^ifneq \(\$\(dtbo?-y\),\)/ && !inserted {
+            printf "# >>> ARK overlays (products/'"$TARGET"'/overlay/dtbo.list)\n%s# <<< ARK overlays\n\n", block
+            inserted = 1
+        }
+        { print }
+    ' "$OVERLAY_MK" > "$OVERLAY_MK.tmp" && mv "$OVERLAY_MK.tmp" "$OVERLAY_MK"
+
+    if ! grep -q '^# >>> ARK overlays' "$OVERLAY_MK"; then
+        echo "ERROR: failed to inject ARK overlays into $OVERLAY_MK (no dtbo prefix guard found)." >&2
+        exit 1
     fi
 fi
 
