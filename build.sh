@@ -532,67 +532,6 @@ for dir in "$L4T_DIR/rootfs/boot" "$L4T_DIR/kernel/dtb"; do
     done
 done
 
-# ── Pre-select default device-tree overlay(s) ────────────────────────────────
-# Ship a product default by adding an OVERLAYS line to extlinux's `primary`
-# entry, so e.g. cameras work out of the box. The bootloader applies these on top
-# of the SKU-correct base DTB from the kernel-dtb partition (no FDT line, so one
-# image still flashes every Orin Nano/NX SKU). A user can pick a different overlay
-# in jetson-io later: it writes its own DEFAULT'd "JetsonIO" entry that supersedes
-# this one — never both at once, so other overlays need no imx219 "disable"
-# fragments. We patch `primary`, not a JetsonIO entry, because nv-update-extlinux
-# forces DEFAULT=primary on every kernel upgrade (which would silently drop a
-# JetsonIO default); it never rewrites OVERLAYS.
-
-DEFAULT_OVERLAYS_FILE="$PRODUCT_DIR/default_overlays"
-if [ -f "$DEFAULT_OVERLAYS_FILE" ]; then
-    EXTLINUX="$L4T_DIR/rootfs/boot/extlinux/extlinux.conf"
-    if [ ! -f "$EXTLINUX" ]; then
-        echo "ERROR: $EXTLINUX not found — cannot set default overlay." >&2
-        exit 1
-    fi
-
-    # Join configured dtbo basenames into a comma-separated /boot/<name> list,
-    # asserting each was actually built into /boot — a typo or a dtbo missing from
-    # the overlay Makefile's dtbo-y would otherwise ship a dangling default.
-    overlay_paths=""
-    while IFS= read -r name; do
-        name="${name%%#*}"
-        name="$(echo "$name" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-        if [ -z "$name" ]; then
-            continue
-        fi
-        if [ ! -f "$L4T_DIR/rootfs/boot/$name" ]; then
-            echo "ERROR: default overlay '$name' (from $DEFAULT_OVERLAYS_FILE) is not in" >&2
-            echo "       rootfs/boot — is it listed in the overlay Makefile's dtbo-y?" >&2
-            exit 1
-        fi
-        overlay_paths+="${overlay_paths:+,}/boot/$name"
-    done < "$DEFAULT_OVERLAYS_FILE"
-    if [ -z "$overlay_paths" ]; then
-        echo "ERROR: $DEFAULT_OVERLAYS_FILE lists no overlays." >&2
-        exit 1
-    fi
-
-    echo "Pre-selecting default boot overlay(s): $overlay_paths"
-    # Idempotent across rebuilds: drop any prior OVERLAYS in `primary`, re-add ours
-    # after its APPEND line. Verify the insert landed so an APPEND-anchor change in
-    # a future BSP fails loud instead of shipping without the default.
-    tmp_extlinux="$(mktemp)"
-    awk -v ov="      OVERLAYS $overlay_paths" '
-        /^[[:space:]]*LABEL[[:space:]]/ { in_primary = ($2 == "primary") }
-        in_primary && /^[[:space:]]*OVERLAYS[[:space:]]/ { next }
-        { print }
-        in_primary && /^[[:space:]]*APPEND[[:space:]]/ { print ov }
-    ' "$EXTLINUX" > "$tmp_extlinux"
-    if ! grep -qF "OVERLAYS $overlay_paths" "$tmp_extlinux"; then
-        rm -f "$tmp_extlinux"
-        echo "ERROR: could not insert OVERLAYS into $EXTLINUX (no APPEND in primary entry?)." >&2
-        exit 1
-    fi
-    sudo cp "$tmp_extlinux" "$EXTLINUX"
-    rm -f "$tmp_extlinux"
-fi
-
 # ── Record build metadata ───────────────────────────────────────────────────
 
 BUILD_COMMIT=$ARK_BUILD_COMMIT

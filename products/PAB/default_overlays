@@ -1,10 +1,11 @@
-# Device-tree overlay(s) pre-selected in the shipped image's extlinux.conf
-# `primary` boot entry, so they are active out of the box. One dtbo basename per
-# line ('#' comments allowed); each must be built into /boot via the overlay
-# Makefile's dtbo-y. The bootloader applies these on top of the base DTB, and a
-# user can still pick a different overlay in jetson-io, which supersedes this
-# default. These are boot-time extlinux overlays, not the flash-time
-# OVERLAY_DTB_FILE that bakes into the DTB partition.
+# Device-tree overlay(s) baked into this product's image at flash time, so they are
+# active on the first boot with no jetson-io step. flash.sh hands each dtbo to
+# tegraflash as ADDITIONAL_DTB_OVERLAY, which merges it into the base DTB on top of
+# whichever Orin Nano/NX SKU the flasher detects — so one image still covers every
+# SKU. One dtbo basename per line ('#' comments allowed); each must be built into
+# kernel/dtb/ via overlay/dtbo.list. A user can still switch cameras with jetson-io:
+# it boots its own FDT'd entry off the clean /boot/dtb kernel DTB, superseding this
+# without a duplicate-node collision.
 
 # PAB ships with the quad IMX219 camera enabled by default.
 tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo
