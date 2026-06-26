@@ -226,6 +226,11 @@
 							i2c-mux,deselect-on-exit;
 							status = "okay";
 
+							/* Disable the baked-default IMX219 quad on the shared TCA9546 buses so only IMX708 is active. */
+							ark_imx219_a@10 {
+								status = "disabled";
+							};
+
 							ark_imx708_a@1a {
 								status = "okay";
 								reset-gpios = <&gpio CAM0_PWDN GPIO_ACTIVE_HIGH>;
@@ -296,6 +301,10 @@
 							#size-cells = <0>;
 							i2c-mux,deselect-on-exit;
 							status = "okay";
+
+							ark_imx219_b@10 {
+								status = "disabled";
+							};
 
 							ark_imx708_b@1a {
 								status = "okay";
@@ -368,6 +377,10 @@
 							i2c-mux,deselect-on-exit;
 							status = "okay";
 
+							ark_imx219_c@10 {
+								status = "disabled";
+							};
+
 							ark_imx708_c@1a {
 								status = "okay";
 								reset-gpios = <&gpio CAM2_PWDN GPIO_ACTIVE_HIGH>;
@@ -438,6 +451,10 @@
 							#size-cells = <0>;
 							i2c-mux,deselect-on-exit;
 							status = "okay";
+
+							ark_imx219_d@10 {
+								status = "disabled";
+							};
 
 							ark_imx708_d@1a {
 								status = "okay";

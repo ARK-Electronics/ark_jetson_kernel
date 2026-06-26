@@ -144,6 +144,11 @@
 						#address-cells = <1>;
 						#size-cells = <0>;
 
+						/* Disable the baked-default IMX219 dual on the shared camera i2c-mux so only IMX708 is active. */
+						rbpcv2_imx219_a@10 {
+							status = "disabled";
+						};
+
 						imx708_a@1a {
 							status = "okay";
 							reset-gpios = <&gpio CAM0_PWDN GPIO_ACTIVE_HIGH>;
@@ -213,6 +218,10 @@
 						reg = <1>;
 						#address-cells = <1>;
 						#size-cells = <0>;
+
+						rbpcv2_imx219_c@10 {
+							status = "disabled";
+						};
 
 						imx708_c@1a {
 							status = "okay";

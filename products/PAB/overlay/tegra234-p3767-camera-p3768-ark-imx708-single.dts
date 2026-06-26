@@ -111,6 +111,11 @@
 							i2c-mux,deselect-on-exit;
 							status = "okay";
 
+							/* Disable the baked-default IMX219 on this mux bus so only IMX708 is active here. */
+							ark_imx219_a@10 {
+								status = "disabled";
+							};
+
 							ark_imx708_a@1a {
 								status = "okay";
 								reset-gpios = <&gpio CAM0_PWDN GPIO_ACTIVE_HIGH>;
