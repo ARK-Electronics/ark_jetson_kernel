@@ -902,39 +902,43 @@
 				 nvidia,lpdr = <TEGRA_PIN_DISABLE>;
 			 };
  
+			 /* I2S0_SCLK connector pin: GPIO, idle hi-z input (pulled high); driven on request. */
 			 soc_gpio41_ph7 {
 				 nvidia,pins = "soc_gpio41_ph7";
 				 nvidia,function = "rsvd2";
 				 nvidia,pull = <TEGRA_PIN_PULL_NONE>;
 				 nvidia,tristate = <TEGRA_PIN_DISABLE>;
-				 nvidia,enable-input = <TEGRA_PIN_DISABLE>;
+				 nvidia,enable-input = <TEGRA_PIN_ENABLE>;
 				 nvidia,lpdr = <TEGRA_PIN_DISABLE>;
 			 };
  
+			 /* I2S0_DOUT connector pin: GPIO, idle hi-z input (pulled high); driven on request. */
 			 soc_gpio42_pi0 {
 				 nvidia,pins = "soc_gpio42_pi0";
 				 nvidia,function = "rsvd2";
 				 nvidia,pull = <TEGRA_PIN_PULL_NONE>;
 				 nvidia,tristate = <TEGRA_PIN_DISABLE>;
-				 nvidia,enable-input = <TEGRA_PIN_DISABLE>;
+				 nvidia,enable-input = <TEGRA_PIN_ENABLE>;
 				 nvidia,lpdr = <TEGRA_PIN_DISABLE>;
 			 };
  
+			 /* I2S0_DIN connector input: hi-z GPIO input, floats (no carrier pull-up, unlike the four pulled-high outputs). See docs/gpio.md. */
 			 soc_gpio43_pi1 {
 				 nvidia,pins = "soc_gpio43_pi1";
 				 nvidia,function = "rsvd2";
 				 nvidia,pull = <TEGRA_PIN_PULL_NONE>;
-				 nvidia,tristate = <TEGRA_PIN_DISABLE>;
-				 nvidia,enable-input = <TEGRA_PIN_DISABLE>;
+				 nvidia,tristate = <TEGRA_PIN_ENABLE>;
+				 nvidia,enable-input = <TEGRA_PIN_ENABLE>;
 				 nvidia,lpdr = <TEGRA_PIN_DISABLE>;
 			 };
  
+			 /* I2S0_LRCLK connector pin: GPIO, idle hi-z input (pulled high); driven on request. */
 			 soc_gpio44_pi2 {
 				 nvidia,pins = "soc_gpio44_pi2";
 				 nvidia,function = "rsvd2";
 				 nvidia,pull = <TEGRA_PIN_PULL_NONE>;
 				 nvidia,tristate = <TEGRA_PIN_DISABLE>;
-				 nvidia,enable-input = <TEGRA_PIN_DISABLE>;
+				 nvidia,enable-input = <TEGRA_PIN_ENABLE>;
 				 nvidia,lpdr = <TEGRA_PIN_DISABLE>;
 			 };
  
@@ -956,12 +960,13 @@
 				 nvidia,lpdr = <TEGRA_PIN_DISABLE>;
 			 };
  
+			 /* AUD_MCLK connector pin: GPIO, idle hi-z input (pulled high); driven on request. */
 			 soc_gpio59_pac6 {
 				 nvidia,pins = "soc_gpio59_pac6";
 				 nvidia,function = "rsvd2";
 				 nvidia,pull = <TEGRA_PIN_PULL_NONE>;
 				 nvidia,tristate = <TEGRA_PIN_DISABLE>;
-				 nvidia,enable-input = <TEGRA_PIN_DISABLE>;
+				 nvidia,enable-input = <TEGRA_PIN_ENABLE>;
 				 nvidia,lpdr = <TEGRA_PIN_DISABLE>;
 			 };
  

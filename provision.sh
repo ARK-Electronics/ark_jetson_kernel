@@ -171,6 +171,14 @@ sudo chroot "$ROOTFS_DIR" python3 -c "import serial, dronecan, smbus2, spidev"
 #   sudo chroot "$ROOTFS_DIR" apt-get install -y vim tmux
 #   sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" some-package
 
+# Set the boot clock to build time: an RTC-less fixture with no NTP otherwise boots at a
+# stale epoch, and a clock behind the jetson password date breaks gdm-autologin (no X on :0).
+sudo mkdir -p "$ROOTFS_DIR/var/lib/systemd/timesync"
+sudo touch "$ROOTFS_DIR/var/lib/systemd/timesync/clock"
+sudo chroot "$ROOTFS_DIR" chown systemd-timesync:systemd-timesync /var/lib/systemd/timesync/clock
+# Pin the password date to the past so clock skew can't trip autologin regardless.
+sudo chroot "$ROOTFS_DIR" chage -d 2020-01-01 jetson
+
 sudo rm "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
 
 PROVISION_ELAPSED=$(( $(date +%s) - PROVISION_START ))
