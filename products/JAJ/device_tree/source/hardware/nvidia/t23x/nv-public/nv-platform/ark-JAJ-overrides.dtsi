@@ -19,7 +19,8 @@
 
 /* UARTB is wired on the carrier but undefined by the stock SoC dtsi. Declared as an
  * hsuart (not the tegra20-uart/8250 base) so it enumerates as /dev/ttyTHS*, like the
- * other Tegra UARTs; PIO mode (add dmas/dma-names for DMA). */
+ * other Tegra UARTs. Stays PIO — stock's gpcdma RX-DMA corrupts the hsuart RX stream
+ * at high baud (see UART-A below). */
 &{/bus@0} {
 	uartb: serial@3110000 {
 		compatible = "nvidia,tegra194-hsuart";
@@ -30,6 +31,13 @@
 		reset-names = "serial";
 		status = "okay";
 	};
+};
+
+/* UART-A (ttyTHS1) inherits gpcdma RX/TX DMA from stock R36.5.0, and that DMA path
+ * corrupts the hsuart RX stream at 3 Mbaud. Force PIO, like UART-B. */
+&{/bus@0/serial@3100000} {
+	/delete-property/ dmas;
+	/delete-property/ dma-names;
 };
 
 /* HD-Audio is used on the carrier. */
