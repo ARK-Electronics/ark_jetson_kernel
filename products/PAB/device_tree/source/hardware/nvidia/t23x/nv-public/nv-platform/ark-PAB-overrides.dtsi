@@ -1,0 +1,122 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * ARK PAB carrier device-tree delta.
+ *
+ * build.sh appends an #include of this file to the stock
+ * tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi, so it is layered last over the
+ * pristine BSP tree. Only ARK's delta lives here; everything else tracks the BSP.
+ * Per-SKU model strings are stamped separately from products/PAB/dtb_models.env.
+ */
+
+/ {
+	aliases {
+		serial3 = &uartb;
+	};
+
+	/* VBUS for the single USB-A (J33) is a load switch (U20, active-high enable) gated by
+	 * soc_gpio39/PN.01. Stock DT left that pin a pulled-up input, so the port leaned on the
+	 * board's 100K pull-up (R144) alone and enumerated unreliably — the USBSS0 USB3 drive (and
+	 * its USB2 companion) would intermittently go missing. Model the switch as a regulator so
+	 * the kernel drives the enable high at boot. The other three USB-A ports are powered by the
+	 * onboard USB2 hub (uhubctl), not a SoC GPIO. */
+	vdd_5v0_usbss0: regulator-usbss0-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "VDD_5V0_USBSS0";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&gpio TEGRA234_MAIN_GPIO(N, 1) GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-boot-on;
+		vin-supply = <&vdd_5v0_sys>;
+	};
+};
+
+/* UARTB is wired on the carrier but undefined by the stock SoC dtsi. Declared as an
+ * hsuart (not the tegra20-uart/8250 base) so it enumerates as /dev/ttyTHS*, like the
+ * other Tegra UARTs. Stays PIO — stock's gpcdma RX-DMA corrupts the hsuart RX stream
+ * at high baud (see UART-A below). */
+&{/bus@0} {
+	uartb: serial@3110000 {
+		compatible = "nvidia,tegra194-hsuart";
+		reg = <0x0 0x03110000 0x0 0x10000>;
+		interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&bpmp TEGRA234_CLK_UARTB>;
+		resets = <&bpmp TEGRA234_RESET_UARTB>;
+		reset-names = "serial";
+		status = "okay";
+	};
+};
+
+/* UART-A (TELEM2/ttyTHS1) inherits gpcdma RX/TX DMA from stock R36.5.0, and that DMA
+ * path corrupts the hsuart RX stream at 3 Mbaud. Force PIO, like UART-B. */
+&{/bus@0/serial@3100000} {
+	/delete-property/ dmas;
+	/delete-property/ dma-names;
+};
+
+/* HD-Audio is used on the carrier. */
+&{/bus@0/hda@3510000} {
+	status = "okay";
+};
+
+/* JetPack 6.2.2 (R36.5.0) regression: the stock display node's hdcp_enabled breaks the
+ * DP->HDMI adapter negotiation path (DpAuxchCtrl DCE RPC 0x731341 fails, so the adapter
+ * yields no EDID/modes and the SOR never lights), while a native DP sink is unaffected.
+ * L4T doesn't implement HDCP, so the property is inert here — drop it. */
+&{/display@13800000} {
+	/delete-property/ hdcp_enabled;
+};
+
+/* ARK carrier has no FUSB301 USB-C controller / I2C USB switcher. */
+&{/bus@0/i2c@c240000} {
+	/delete-node/ fusb301@25;
+};
+
+/* Third USB3 lane for the dual USB-A port. */
+&{/bus@0/padctl@3520000/pads/usb3/lanes} {
+	usb3-2 {
+		nvidia,function = "xusb";
+		status = "okay";
+	};
+};
+
+/* Recovery/OTG port carries a micro-USB connector (drop the stock typec link). */
+&{/bus@0/padctl@3520000/ports/usb2-0} {
+	/delete-node/ port;
+	connector {
+		compatible = "usb-b-connector", "gpio-usb-b-connector";
+		label = "micro-USB";
+		type = "micro";
+		id-gpio = <&gpio TEGRA234_MAIN_GPIO(Z, 1) GPIO_ACTIVE_LOW>;
+	};
+};
+
+/* Carrier USB-A port mapping. */
+&{/bus@0/padctl@3520000/ports} {
+	/* usb2-2 + usb3-0 are the single USB-A (J33); point its VBUS at the GPIO-gated switch above. */
+	usb2-2 { vbus-supply = <&vdd_5v0_usbss0>; };
+	usb3-0 { nvidia,usb2-companion = <2>; };
+	usb3-1 { nvidia,usb2-companion = <1>; };
+	usb3-2 {
+		nvidia,usb2-companion = <1>;
+		status = "okay";
+	};
+};
+
+/* Recovery/OTG controller drives only usb2-0 on this carrier. */
+&{/bus@0/usb@3550000} {
+	phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>;
+	phy-names = "usb2-0";
+};
+
+/* Host controller gains the third USB3 lane. */
+&{/bus@0/usb@3610000} {
+	phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>,
+	       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-1}>,
+	       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-2}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-1}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-2}>;
+	phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0",
+		    "usb3-1", "usb3-2";
+};

@@ -1,0 +1,11 @@
+# Overlays ARK ships for PAB — the explicit dtbo set built into the image and
+# offered by jetson-io. One dtbo basename per line ('#' comments allowed); each
+# must have a matching source file in this dir. build.sh disables the stock p3768
+# camera overlays and builds exactly this list (plus the BSP's non-camera
+# overlays). PAB is the quad-camera carrier (TCA9546 mux), so it ships the ARK
+# quad/single overlays, not the dev-kit dual overlays.
+tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo
+tegra234-p3767-camera-p3768-ark-imx219-single.dtbo
+tegra234-p3767-camera-p3768-ark-imx477-single.dtbo
+tegra234-p3767-camera-p3768-ark-imx708-quad.dtbo
+tegra234-p3767-camera-p3768-ark-imx708-single.dtbo

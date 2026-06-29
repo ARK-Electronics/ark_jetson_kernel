@@ -28,7 +28,7 @@ cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../kernel/
 
 ## Modifying the device tree
 
-To change the device tree you must build from source. The device tree sources for each product live in `products/{TARGET}/device_tree/`. `build.sh` overlays these onto the NVIDIA kernel source on every build, so edit the files there and re-run `./build.sh <TARGET>`.
+To change the device tree you must build from source. ARK carries only its **delta** under `products/{TARGET}/device_tree/` — the BCT pinmux/gpio files and a single `ark-{TARGET}-overrides.dtsi` fragment — which `build.sh` layers onto the stock NVIDIA tree every build; model strings live in `products/{TARGET}/dtb_models.env`. Edit those and re-run `./build.sh <TARGET>`. See [docs/device-tree.md](device-tree.md) for the layout and how to add an override.
 
 The base DTB is selected by module and RAM ([NVIDIA porting guide](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/HR/JetsonModuleAdaptationAndBringUp/JetsonOrinNxNanoSeries.html#porting-the-linux-kernel-device-tree)):
 
@@ -39,7 +39,7 @@ The base DTB is selected by module and RAM ([NVIDIA porting guide](https://docs.
 | Orin Nano 8GB | `tegra234-p3768-0000+p3767-0003-nv.dtb` |
 | Orin Nano 4GB | `tegra234-p3768-0000+p3767-0004-nv.dtb` |
 
-Changing the base DTB requires a reflash. **Overlays do not** — a rebuilt `.dtbo` can be copied to the target's `/boot` and selected with `jetson-io`, no reflash needed. Overlay sources live next to the base tree under `products/{TARGET}/device_tree/source/hardware/nvidia/t23x/nv-public/overlay/` (the ARK camera overlays are the `*-ark-*.dts` files) and compile to `kernel-devicetree/generic-dts/dtbs/*.dtbo`. See [cameras.md](cameras.md#installing-a-camera-overlay) for the build → copy → `jetson-io` loop.
+Changing the base DTB requires a reflash. **Overlays do not** — a rebuilt `.dtbo` can be copied to the target's `/boot` and selected with `jetson-io`, no reflash needed. ARK overlay sources live under `products/{TARGET}/overlay/`; `build.sh` layers them onto the BSP's stock overlay tree and builds exactly the set listed in that dir's `dtbo.list`, compiling to `kernel-devicetree/generic-dts/dtbs/*.dtbo`. See [cameras.md](cameras.md#installing-a-camera-overlay) for the build → copy → `jetson-io` loop.
 
 ## Out-of-tree kernel modules
 

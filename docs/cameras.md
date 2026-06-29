@@ -21,8 +21,8 @@ Tested and working in 2-lane mode.
 | Overlay | Filename | Ports |
 |---------|----------|-------|
 | Single  | `tegra234-p3767-camera-p3768-ark-imx219-single.dtbo` | CAM0 |
-| Dual    | `tegra234-p3767-camera-p3768-imx219-dual.dtbo` | CAM0 + CAM1 |
-| Quad    | `tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo` | All 4 ports (PAB only) |
+| Dual    | `tegra234-p3767-camera-p3768-imx219-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3 default) |
+| Quad    | `tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo` | All 4 ports (PAB only, default) |
 
 ## IMX477 (Sony Starvis, 12.3MP)
 
@@ -44,6 +44,10 @@ IMX477 4-lane overlays have been removed. While the Sony IMX477 sensor silicon s
 ## Installing a Camera Overlay
 
 A full flash already includes every overlay — `build.sh` copies them into the image's `/boot`, so after flashing you can skip straight to `jetson-io` below. The build-and-copy steps here are for **iterating on an overlay without reflashing**: rebuild the `.dtbo`, drop it on the running target, and re-select it.
+
+Each carrier ships with an IMX219 overlay baked into the image at flash time, so cameras work on the first boot with no `jetson-io` step: the quad overlay on PAB, the dual overlay on JAJ and PAB_V3. `flash.sh` reads `products/<TARGET>/default_overlays` and hands each dtbo to `tegraflash` as `ADDITIONAL_DTB_OVERLAY`, which merges it into the base DTB on top of whichever Orin Nano/NX SKU the flasher detects — so one image still covers every SKU. The bootloader hands that merged DTB to the kernel; an `extlinux` `OVERLAYS` line would instead be applied to the symbol-stripped UEFI DTB and silently fail to resolve, which is why the default is baked at flash time rather than pre-selected in `extlinux.conf`. A later `jetson-io` choice still supersedes it cleanly — `jetson-io` boots its own `FDT`'d entry off the clean `/boot/dtb` kernel DTB, so selecting another camera doesn't collide. To change the shipped default, edit `products/<TARGET>/default_overlays` and re-flash.
+
+The overlays ARK ships live under `products/<TARGET>/overlay/` (the `.dts`/`.dtsi` sources) and are enumerated in `products/<TARGET>/overlay/dtbo.list` (the explicit built set); `build.sh` layers them onto the BSP's stock overlay tree at build time. Add or drop a camera overlay by editing those two — not a BSP source mirror.
 
 Build the overlay DTBs (from host):
 ```
@@ -85,10 +89,7 @@ v4l2-ctl --set-fmt-video=width=3840,height=2160,pixelformat=RG10 --stream-mmap -
 
 ### GStreamer
 
-Install GStreamer (if not already present):
-```
-sudo apt-get install nvidia-jetpack -y
-```
+Images built with `--provision` already ship the Tegra GStreamer plugins (`nvarguscamerasrc`, `nvvidconv`, `nvv4l2*`) via `nvidia-l4t-gstreamer`. Install `nvidia-jetpack` only if you also need the full CUDA/TensorRT compute stack.
 
 UDP h.264 stream (replace IP/port):
 ```
