@@ -441,17 +441,47 @@ echo "========================================="
 
 cd "$SOURCE_DIR"
 
-# Wrap the cross-compiler with ccache when present (kernel C rarely changes, so warm
-# builds are mostly hits). Passing CC on the command line overrides kbuild's default
-# and reaches the NVIDIA wrapper's sub-makes; no-op without ccache.
+# The bootlin toolchain defaults to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
+# startfiles and fails — its LAST line is a collect2 error, which NVIDIA's nv_compiler.h
+# recipe bakes into the module's /proc version banner via `tail -1`. Repoint it at
+# `--version | head -1`, which never links. Fail loud if the BSP moved the recipe; drop the
+# stale header so it regenerates.
+NVIDIA_KBUILD="$SOURCE_DIR/nvdisplay/kernel-open/nvidia/nvidia.Kbuild"
+if grep -qF -- '-v 2>&1 | tail -n 1' "$NVIDIA_KBUILD"; then
+    sed -i 's/\$(CC) -v 2>&1 | tail -n 1/$(CC) --version 2>\&1 | head -n 1/' "$NVIDIA_KBUILD"
+    rm -f "$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
+elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
+    echo "ERROR: nv_compiler.h version probe in nvidia.Kbuild is neither the known-bad nor" >&2
+    echo "       the patched form — BSP layout changed; re-check the probe patch in build.sh." >&2
+    exit 1
+fi
+
+# ccache wraps the cross-compiler for the kernel proper only (kernel C rarely changes → warm
+# hits). The OOT NVIDIA modules build without it on purpose: their conftest/version steps
+# regenerate headers and ccache direct-mode can serve a stale object across that — a silent
+# nondeterministic miscompile, not worth the small speedup on these modules. dtbs are no-C.
 KERNEL_MAKE_ARGS=()
 if command -v ccache >/dev/null 2>&1; then
     KERNEL_MAKE_ARGS+=("CC=ccache ${CROSS_COMPILE}gcc")
 fi
 
 make -C kernel "${KERNEL_MAKE_ARGS[@]}" \
-    && make modules "${KERNEL_MAKE_ARGS[@]}" \
-    && make dtbs "${KERNEL_MAKE_ARGS[@]}"
+    && make modules CC="${CROSS_COMPILE}gcc" \
+    && make dtbs CC="${CROSS_COMPILE}gcc"
+
+# Sanity-check the display-driver build: nv_compiler.h must read as a real compiler version
+# (probe fixed above) and the three display .kos must be non-empty — catches a broken or
+# missing cross-compiler instead of silently shipping a bad module.
+NV_COMPILER_H="$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
+if [ ! -s "$NV_COMPILER_H" ] || ! grep -qE 'version|[0-9]+\.[0-9]+\.[0-9]+' "$NV_COMPILER_H"; then
+    echo "ERROR: NVIDIA compiler-version probe produced no sane version string:" >&2
+    echo "       $NV_COMPILER_H: $(cat "$NV_COMPILER_H" 2>/dev/null)" >&2
+    exit 1
+fi
+for ko in nvidia.ko nvidia-modeset.ko nvidia-drm.ko; do
+    [ -s "$SOURCE_DIR/nvdisplay/kernel-open/$ko" ] \
+        || { echo "ERROR: NVIDIA module $ko missing or empty after build" >&2; exit 1; }
+done
 
 echo "Installing in-tree modules and dtbs..."
 sudo -E make install -C kernel
