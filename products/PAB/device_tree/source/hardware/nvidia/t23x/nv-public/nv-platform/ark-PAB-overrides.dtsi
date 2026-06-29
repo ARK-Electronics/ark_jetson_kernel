@@ -59,6 +59,14 @@
 	status = "okay";
 };
 
+/* JetPack 6.2.2 (R36.5.0) regression: the stock display node's hdcp_enabled breaks the
+ * DP->HDMI adapter negotiation path (DpAuxchCtrl DCE RPC 0x731341 fails, so the adapter
+ * yields no EDID/modes and the SOR never lights), while a native DP sink is unaffected.
+ * L4T doesn't implement HDCP, so the property is inert here — drop it. */
+&{/display@13800000} {
+	/delete-property/ hdcp_enabled;
+};
+
 /* ARK carrier has no FUSB301 USB-C controller / I2C USB switcher. */
 &{/bus@0/i2c@c240000} {
 	/delete-node/ fusb301@25;

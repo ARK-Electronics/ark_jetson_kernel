@@ -47,9 +47,13 @@
 	status = "okay";
 };
 
-/* Hotplug detect line is active-low on the PAB_V3 carrier. */
+/* Hotplug detect line is active-low on the PAB_V3 carrier. Also drop the stock
+ * hdcp_enabled: it's inert on L4T (no HDCP) and triggers the JP6.2.2 DpAuxchCtrl DCE-RPC
+ * regression on the DP->HDMI path. Native HDMI here shouldn't hit it, but keep HDCP off
+ * across all carriers for consistency. */
 &{/display@13800000} {
 	os_gpio_hotplug_a = <&gpio TEGRA234_MAIN_GPIO(M, 0) GPIO_ACTIVE_LOW>;
+	/delete-property/ hdcp_enabled;
 };
 
 /* SPI1 pin group for the KSZ8795 management interface. */
