@@ -89,7 +89,12 @@
 	};
 };
 
-/* Carrier USB port mapping: only usb3-0 (USB-C) is brought out. */
+/* Carrier USB port mapping: only usb3-0 (USB-C) is brought out. Stock wires
+ * usb3-1 for the devkit's second SS port; drop the port and disable its lane. */
+&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-1} {
+	status = "disabled";
+};
+
 &{/bus@0/padctl@3520000/ports} {
 	/delete-node/ usb3-1;
 	usb3-0 { nvidia,usb2-companion = <0>; };
