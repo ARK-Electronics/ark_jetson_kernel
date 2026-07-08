@@ -454,12 +454,14 @@ fi
 FLASH_DIR=$(dirname "$FLASH_SCRIPT")          # .../tools/kernel_flash
 L4T_DIR=$(cd "$FLASH_DIR/../.." && pwd)        # .../Linux_for_Tegra
 
-# Flash parameters (board config + storage) travel with the package in
-# ark_flash.conf. Defaults match flash.sh for older packages that predate it.
+# Flash parameters (board config + storage + default DTB overlays) travel with
+# the package in ark_flash.conf. Defaults match flash.sh for older packages that
+# predate it.
 FLASH_TARGET="jetson-orin-nano-devkit-super"
 STORAGE_DEV="nvme0n1p1"
 QSPI_CFG="bootloader/generic/cfg/flash_t234_qspi.xml"
 EXTERNAL_CFG="tools/kernel_flash/flash_l4t_t234_nvme.xml"
+ADDITIONAL_DTB_OVERLAY=""
 if [ -f "$L4T_DIR/ark_flash.conf" ]; then
     # shellcheck disable=SC1091
     source "$L4T_DIR/ark_flash.conf"
@@ -567,11 +569,19 @@ else
     # interrupted run is never mistaken for valid replay state and the marker
     # below provably reflects this run's EEPROM read.
     sudo rm -f "$GEN_MARKER" bootloader/cvm.bin bootloader/chip_info.bin_bak
+    if [ -n "$ADDITIONAL_DTB_OVERLAY" ]; then
+        echo "Baking default device-tree overlay(s) into the image: $ADDITIONAL_DTB_OVERLAY"
+    fi
     # The initrd flasher reads the connected module's EEPROM and picks the matching
     # bootloader + SDRAM config, so one package flashes any Orin Nano/NX variant. It
     # writes the QSPI bootloader (-p) and the rootfs to the external device (-c) in
-    # a single pass.
-    sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
+    # a single pass. ADDITIONAL_DTB_OVERLAY_OPT merges the product's default
+    # overlay(s) into the DTB during image generation; the --flash-only replay
+    # above needs no equivalent because its images already contain the merged DTB.
+    # dtbo basenames carry no spaces, so the unquoted ${var:+NAME=$var} prefix
+    # passes cleanly as a single sudo environment assignment.
+    sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY_OPT=$ADDITIONAL_DTB_OVERLAY} \
+        ./tools/kernel_flash/l4t_initrd_flash.sh \
         --external-device "$STORAGE_DEV" \
         -p "-c ./$QSPI_CFG" \
         -c "./$EXTERNAL_CFG" \
