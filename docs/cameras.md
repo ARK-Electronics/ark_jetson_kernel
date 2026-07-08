@@ -6,8 +6,11 @@ This document covers tested camera sensors, available device tree overlays, and 
 
 | Sensor | Lanes | Resolution | Overlays | Status |
 |--------|-------|------------|----------|--------|
-| IMX477 | 2     | 4056x3040  | single, dual | Working |
-| IMX219 | 2     | 3280x2464  | single, dual, quad (PAB only) | Working |
+| IMX219 | 2     | 3280x2464  | dual (JAJ/PAB_V3), quad (PAB) | Working |
+| IMX477 | 2     | 4056x3040  | dual (JAJ/PAB_V3), quad (PAB) | Working |
+| IMX708 | 2     | 4608x2592  | dual (JAJ/PAB_V3), quad (PAB) | Working |
+
+Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports).
 
 ## IMX219 (Sony, 8MP)
 
@@ -20,9 +23,8 @@ Tested and working in 2-lane mode.
 
 | Overlay | Filename | Ports |
 |---------|----------|-------|
-| Single  | `tegra234-p3767-camera-p3768-ark-imx219-single.dtbo` | CAM0 |
 | Dual    | `tegra234-p3767-camera-p3768-imx219-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3 default) |
-| Quad    | `tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo` | All 4 ports (PAB only, default) |
+| Quad    | `tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo` | All 4 ports (PAB default) |
 
 ## IMX477 (Sony Starvis, 12.3MP)
 
@@ -32,14 +34,27 @@ Tested and working in 2-lane mode on all carrier boards.
 
 | Overlay | Filename | Ports |
 |---------|----------|-------|
-| Single  | `tegra234-p3767-camera-p3768-ark-imx477-single.dtbo` | CAM0 |
-| Dual    | `tegra234-p3767-camera-p3768-imx477-dual.dtbo` | CAM0 + CAM1 |
+| Dual    | `tegra234-p3767-camera-p3768-imx477-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
+| Quad    | `tegra234-p3767-camera-p3768-ark-imx477-quad.dtbo` | All 4 ports (PAB) |
+
+The quad overlay is new and not yet hardware-validated: it pairs the port wiring of the IMX219 quad (the PAB default) with the sensor modes of the retired single overlay.
 
 ### 4-Lane Mode (Not Working)
 
 IMX477 4-lane overlays have been removed. While the Sony IMX477 sensor silicon supports 4 lanes, the RidgeRun `nv_imx477` driver's 4-lane register initialization tables are incorrect. Getting correct values requires access to the Sony sensor NDA documentation. NVIDIA has acknowledged their own `imx477-dual-4lane.dts` reference overlay is broken.
 
 2-lane mode provides full 12MP at 30fps which is sufficient for most use cases.
+
+## IMX708 (Sony, 12MP — Raspberry Pi / Arducam Camera Module 3)
+
+Driver is RidgeRun's `nv_imx708`, vendored under `kernel_overlay/`. One 10-bit mode: 4608x2592 @ ~14 fps, fixed focus.
+
+### Overlays
+
+| Overlay | Filename | Ports |
+|---------|----------|-------|
+| Dual    | `tegra234-p3767-camera-p3768-ark-imx708-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
+| Quad    | `tegra234-p3767-camera-p3768-ark-imx708-quad.dtbo` | All 4 ports (PAB) |
 
 ## Installing a Camera Overlay
 
@@ -63,7 +78,7 @@ scp $DTB_PATH/<overlay>.dtbo jetson@192.168.55.1:~
 On the Jetson, install and activate:
 ```
 sudo mv <overlay>.dtbo /boot
-sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera ARK IMX477 Single"
+sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera ARK IMX477 Quad"
 sudo reboot
 ```
 

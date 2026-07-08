@@ -2,10 +2,8 @@
 # offered by jetson-io. One dtbo basename per line ('#' comments allowed); each
 # must have a matching source file in this dir. build.sh disables the stock p3768
 # camera overlays and builds exactly this list (plus the BSP's non-camera
-# overlays). JAJ uses the dev-kit i2c-mux-gpio wiring, so it ships the dual/A/C
-# IMX219 + dual IMX477 overlays alongside the ARK IMX708 dual.
+# overlays). JAJ uses the dev-kit i2c-mux-gpio wiring, so it ships the dual
+# IMX219/IMX477 overlays alongside the ARK IMX708 dual.
 tegra234-p3767-camera-p3768-imx219-dual.dtbo
-tegra234-p3767-camera-p3768-imx219-A.dtbo
-tegra234-p3767-camera-p3768-imx219-C.dtbo
 tegra234-p3767-camera-p3768-imx477-dual.dtbo
 tegra234-p3767-camera-p3768-ark-imx708-dual.dtbo
