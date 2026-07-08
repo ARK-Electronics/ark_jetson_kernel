@@ -6,7 +6,7 @@
 // dev-kit-wired ARK carriers (PAB_V3, JAJ): GPIO-controlled i2c mux, serial_a +
 // serial_c on ports 0/2. Wiring mirrors the rbpcv2 IMX219 dual; sensor nodes and
 // mode0 come from RidgeRun's IMX708 driver. One 10-bit mode, 4608x2592 @ ~14 fps,
-// fixed focus. (PAB uses a different 4x2-lane overlay — see ark-imx708-quad.)
+// fixed focus. (PAB uses a different 4x2-lane overlay — see imx708-quad.)
 
 /dts-v1/;
 /plugin/;
@@ -19,7 +19,7 @@
 #include <dt-bindings/tegra234-p3767-0000-common.h>
 
 / {
-	overlay-name = "Camera ARK IMX708 Dual";
+	overlay-name = "Camera IMX708 Dual";
 	jetson-header-name = "Jetson 22pin CSI Connector";
 	compatible = JETSON_COMPATIBLE_P3768;
 

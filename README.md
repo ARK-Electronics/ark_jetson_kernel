@@ -78,13 +78,13 @@ sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
    ...
  Header 2: Jetson 22pin CSI Connector
    Available hardware modules:
-   1. Camera ARK IMX219 Quad
-   2. Camera ARK IMX477 Quad
-   3. Camera ARK IMX708 Quad
+   1. Camera IMX219 Quad
+   2. Camera IMX477 Quad
+   3. Camera IMX708 Quad
 ```
 Apply one and reboot:
 ```
-sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera ARK IMX477 Quad"
+sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera IMX477 Quad"
 sudo reboot
 ```
 See [docs/cameras.md](docs/cameras.md) for supported sensors, overlay names, and how to verify and stream a camera.

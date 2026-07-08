@@ -8,4 +8,4 @@
 # without a duplicate-node collision.
 
 # PAB ships with the quad IMX219 camera enabled by default.
-tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo
+tegra234-p3767-camera-p3768-imx219-quad.dtbo

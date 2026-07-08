@@ -24,7 +24,7 @@ Tested and working in 2-lane mode.
 | Overlay | Filename | Ports |
 |---------|----------|-------|
 | Dual    | `tegra234-p3767-camera-p3768-imx219-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3 default) |
-| Quad    | `tegra234-p3767-camera-p3768-ark-imx219-quad.dtbo` | All 4 ports (PAB default) |
+| Quad    | `tegra234-p3767-camera-p3768-imx219-quad.dtbo` | All 4 ports (PAB default) |
 
 ## IMX477 (Sony Starvis, 12.3MP)
 
@@ -35,7 +35,7 @@ Tested and working in 2-lane mode on all carrier boards.
 | Overlay | Filename | Ports |
 |---------|----------|-------|
 | Dual    | `tegra234-p3767-camera-p3768-imx477-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
-| Quad    | `tegra234-p3767-camera-p3768-ark-imx477-quad.dtbo` | All 4 ports (PAB) |
+| Quad    | `tegra234-p3767-camera-p3768-imx477-quad.dtbo` | All 4 ports (PAB) |
 
 The quad overlay is new and not yet hardware-validated: it pairs the port wiring of the IMX219 quad (the PAB default) with the sensor modes of the retired single overlay.
 
@@ -53,8 +53,8 @@ Driver is RidgeRun's `nv_imx708`, vendored under `kernel_overlay/`. One 10-bit m
 
 | Overlay | Filename | Ports |
 |---------|----------|-------|
-| Dual    | `tegra234-p3767-camera-p3768-ark-imx708-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
-| Quad    | `tegra234-p3767-camera-p3768-ark-imx708-quad.dtbo` | All 4 ports (PAB) |
+| Dual    | `tegra234-p3767-camera-p3768-imx708-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
+| Quad    | `tegra234-p3767-camera-p3768-imx708-quad.dtbo` | All 4 ports (PAB) |
 
 ## Installing a Camera Overlay
 
@@ -78,7 +78,7 @@ scp $DTB_PATH/<overlay>.dtbo jetson@192.168.55.1:~
 On the Jetson, install and activate:
 ```
 sudo mv <overlay>.dtbo /boot
-sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera ARK IMX477 Quad"
+sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera IMX477 Quad"
 sudo reboot
 ```
 
