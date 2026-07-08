@@ -56,16 +56,17 @@
 				 TEGRA234_MAIN_GPIO(G, 7)
 				 TEGRA234_MAIN_GPIO(H, 0)
 				 TEGRA234_MAIN_GPIO(L, 2)
-				 >;
-			 gpio-output-low = <
-				 TEGRA234_MAIN_GPIO(H, 6)
+				 /* ARK I2S0 connector - idle as hi-z GPIO inputs so nothing drives at boot: four outputs (SCLK/DOUT/FS/MCLK) sit HIGH on the carrier pull-ups, DIN floats. See docs/gpio.md. */
 				 TEGRA234_MAIN_GPIO(H, 7)
 				 TEGRA234_MAIN_GPIO(I, 0)
 				 TEGRA234_MAIN_GPIO(I, 1)
 				 TEGRA234_MAIN_GPIO(I, 2)
+				 TEGRA234_MAIN_GPIO(AC, 6)
+				 >;
+			 gpio-output-low = <
+				 TEGRA234_MAIN_GPIO(H, 6)
 				 TEGRA234_MAIN_GPIO(I, 5)
 				 TEGRA234_MAIN_GPIO(AC, 0)
-				 TEGRA234_MAIN_GPIO(AC, 6)
 				 TEGRA234_MAIN_GPIO(K, 4)
 				 TEGRA234_MAIN_GPIO(K, 5)
 				 >;

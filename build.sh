@@ -249,6 +249,12 @@ if [ ! -d "$L4T_DIR" ]; then
     tar xf nvidia_kernel_display_driver_source.tbz2
     popd > /dev/null
 
+    # Snapshot the pristine stock overlay Makefile so the per-build ARK overlay step
+    # re-derives its dtbo set from a clean base (idempotent across rebuilds; a BSP
+    # layout change then fails loud instead of compounding edits).
+    cp "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay/Makefile" \
+       "$STAGING_DIR/.overlay-makefile.stock"
+
     DEFCONFIG="$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/configs/defconfig"
     echo "Applying shared defconfig fragment..."
     cat "$SCRIPT_DIR/defconfig.fragment" >> "$DEFCONFIG"
@@ -271,18 +277,160 @@ fi
 
 require_bsp_staging "$STAGING_DIR"
 
-# ── Copy product device tree overlay ────────────────────────────────────────
-# Runs every build (not just staging) to pick up device-tree edits.
+# ── Layer ARK's device-tree delta onto the stock BSP ─────────────────────────
+# products/<target>/device_tree/ carries ONLY ARK's delta: the BCT pinmux/gpio
+# files, the per-product ark-<target>-overrides.dtsi fragment, and any product-
+# specific .dtsi it #includes. Everything else tracks the BSP. ARK's fragment is
+# applied by appending an #include to the stock nv-common (so it layers last over
+# the pristine tree), and per-SKU model strings are stamped from dtb_models.env.
+# Runs every build to pick up edits. See docs/device-tree.md.
 
-echo "Copying $TARGET device tree overlay into source tree..."
+echo "Copying $TARGET device tree delta into source tree..."
 cp -r "$PRODUCT_DIR/device_tree/"* "$L4T_DIR/"
 
-# Inject the ARK target name into super DTS model strings. The pattern also matches
-# an already-injected name, so rebuilds after a device-tree update stay correct.
-find "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/nv-platform/" \
-    -name "*-nv-super.dts" \
-    -exec sed -i \
-        "s/\(Engineering Reference Developer Kit\|ARK [A-Z_0-9]* Jetson Carrier\) Super/ARK ${TARGET} Jetson Carrier Super/" {} +
+NV_PLATFORM="$SOURCE_DIR/hardware/nvidia/t23x/nv-public/nv-platform"
+NV_COMMON="$NV_PLATFORM/tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi"
+ARK_FRAGMENT="ark-${TARGET}-overrides.dtsi"
+
+# Append the fragment #include to the stock nv-common so ARK's nodes apply last.
+# Idempotent (skip if already there); fail loud if the BSP renamed nv-common or the
+# fragment is missing, rather than silently building without ARK's overrides.
+if [ ! -f "$NV_PLATFORM/$ARK_FRAGMENT" ]; then
+    echo "ERROR: $ARK_FRAGMENT not found under products/$TARGET/device_tree/ —" >&2
+    echo "       cannot apply ARK's device-tree delta." >&2
+    exit 1
+fi
+if [ ! -f "$NV_COMMON" ]; then
+    echo "ERROR: stock $(basename "$NV_COMMON") missing — BSP device-tree layout" >&2
+    echo "       changed; refusing to build without ARK's overrides applied." >&2
+    exit 1
+fi
+if ! grep -q "$ARK_FRAGMENT" "$NV_COMMON"; then
+    echo "Applying ARK device-tree fragment ($ARK_FRAGMENT)..."
+    printf '\n#include "%s"\n' "$ARK_FRAGMENT" >> "$NV_COMMON"
+fi
+
+# Stamp per-SKU model strings onto the stock DTS: the listed model goes on the SKU's
+# "-nv" DTB and "<model> Super" on its "-nv-super" DTB. Re-derived every build (drop
+# any prior ARK-MODEL block, re-append) so a model edit needs no re-stage.
+MODELS_FILE="$PRODUCT_DIR/dtb_models.env"
+if [ -f "$MODELS_FILE" ]; then
+    echo "Stamping $TARGET model strings..."
+    while IFS='=' read -r sku model; do
+        sku="${sku%%#*}"; sku="${sku//[[:space:]]/}"
+        [ -z "$sku" ] && continue
+        model="$(echo "$model" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        for variant in "-nv" "-nv-super"; do
+            dts="$NV_PLATFORM/tegra234-p3768-0000+p3767-${sku}${variant}.dts"
+            [ -f "$dts" ] || continue
+            m="$model"; [ "$variant" = "-nv-super" ] && m="$model Super"
+            awk '/\/\* ARK-MODEL \*\//{exit} {print}' "$dts" > "$dts.tmp" && mv "$dts.tmp" "$dts"
+            printf '\n/* ARK-MODEL */\n/ {\n\tmodel = "%s";\n};\n' "$m" >> "$dts"
+        done
+    done < "$MODELS_FILE"
+fi
+
+# ── Inject ARK kernel source overlay ────────────────────────────────────────
+# nvidia-oot has no version-controlled hook of its own, so out-of-tree sensor
+# sources we add (e.g. the IMX708 driver) live under kernel_overlay/ and are
+# layered onto the L4T source tree here. Runs every build so edits to the
+# vendored sources are picked up without a re-stage.
+
+if [ -d "$SCRIPT_DIR/kernel_overlay" ]; then
+    echo "Injecting ARK kernel source overlay..."
+    # Copy only the source subtrees (e.g. nvidia-oot/), not top-level docs.
+    for dir in "$SCRIPT_DIR"/kernel_overlay/*/; do
+        cp -r "$dir" "$SOURCE_DIR/"
+    done
+
+    # Register the IMX708 driver in the OOT media Makefile (idempotent). Fail loud
+    # if the anchor moves on a BSP bump rather than silently building without it.
+    OOT_I2C_MAKEFILE="$SOURCE_DIR/nvidia-oot/drivers/media/i2c/Makefile"
+    if ! grep -q 'nv_imx708.o' "$OOT_I2C_MAKEFILE"; then
+        if ! grep -q '^obj-m += nv_imx477.o' "$OOT_I2C_MAKEFILE"; then
+            echo "ERROR: anchor 'obj-m += nv_imx477.o' not found in" >&2
+            echo "       $OOT_I2C_MAKEFILE — OOT Makefile layout changed;" >&2
+            echo "       refusing to build without the IMX708 driver registered." >&2
+            exit 1
+        fi
+        sed -i '/^obj-m += nv_imx477.o/a obj-m += nv_imx708.o' "$OOT_I2C_MAKEFILE"
+    fi
+fi
+
+# ── Stage ARK device-tree overlays ───────────────────────────────────────────
+# ARK overlay sources live in products/<target>/overlay/, not the BSP source
+# mirror. Copy them into the stock overlay dir and make the built dtbo set
+# explicit: disable the stock p3768 camera overlays, then build exactly the dtbos
+# in overlay/dtbo.list. The stock overlay Makefile is re-derived from the
+# stage-time snapshot each build, so this is idempotent and a BSP layout change
+# fails loud. Non-camera stock overlays (audio/csi/hdr/AGX) keep building from the
+# BSP untouched. See docs/cameras.md and products/<target>/overlay/dtbo.list.
+
+OVERLAY_SRC_DIR="$PRODUCT_DIR/overlay"
+if [ -d "$OVERLAY_SRC_DIR" ]; then
+    echo "Staging ARK overlays from products/$TARGET/overlay/..."
+    STAGED_OVERLAY_DIR="$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay"
+    OVERLAY_MK="$STAGED_OVERLAY_DIR/Makefile"
+    STOCK_OVERLAY_MK="$STAGING_DIR/.overlay-makefile.stock"
+
+    if [ ! -f "$STOCK_OVERLAY_MK" ]; then
+        echo "ERROR: $STOCK_OVERLAY_MK not found — the staged tree predates the" >&2
+        echo "       products/<target>/overlay/ refactor. Re-stage: ./build.sh $TARGET --clean" >&2
+        exit 1
+    fi
+
+    # Re-derive the overlay Makefile from the pristine stock snapshot, then layer
+    # ARK's sources on top (overwriting the stock file where ARK ships its own
+    # version, e.g. the 22pin-renamed imx219 overlays).
+    cp "$STOCK_OVERLAY_MK" "$OVERLAY_MK"
+    for f in "$OVERLAY_SRC_DIR"/*.dts "$OVERLAY_SRC_DIR"/*.dtsi; do
+        [ -e "$f" ] && cp "$f" "$STAGED_OVERLAY_DIR/"
+    done
+
+    # Disable the stock p3768 camera overlays so overlay/dtbo.list is authoritative.
+    # We operate on a pristine Makefile, so a zero match means the BSP renamed them —
+    # fail loud rather than ship a camera set that no longer matches dtbo.list.
+    if [ "$(grep -cE '^dtbo-y[[:space:]]*\+=[[:space:]]*tegra234-p3767-camera-p3768-' "$OVERLAY_MK")" -eq 0 ]; then
+        echo "ERROR: no stock 'tegra234-p3767-camera-p3768-*' dtbo-y entries in $OVERLAY_MK" >&2
+        echo "       — BSP overlay layout changed; refusing to build a mismatched camera set." >&2
+        exit 1
+    fi
+    sed -i -E 's|^(dtbo-y[[:space:]]*\+=[[:space:]]*tegra234-p3767-camera-p3768-)|# ARK (see overlay/dtbo.list): \1|' "$OVERLAY_MK"
+
+    # Build exactly the dtbos in overlay/dtbo.list, asserting each has a source file.
+    DTBO_LIST="$OVERLAY_SRC_DIR/dtbo.list"
+    if [ ! -f "$DTBO_LIST" ]; then
+        echo "ERROR: $DTBO_LIST missing." >&2
+        exit 1
+    fi
+    ark_dtbo_lines=""
+    while IFS= read -r entry; do
+        entry="${entry%%#*}"
+        entry="$(echo "$entry" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$entry" ] && continue
+        if [ ! -f "$STAGED_OVERLAY_DIR/${entry%.dtbo}.dts" ]; then
+            echo "ERROR: $DTBO_LIST lists '$entry' but ${entry%.dtbo}.dts is not in the" >&2
+            echo "       overlay dir (missing from products/$TARGET/overlay/?)." >&2
+            exit 1
+        fi
+        ark_dtbo_lines+="dtbo-y += $entry"$'\n'
+    done < "$DTBO_LIST"
+
+    # Insert the ARK block before the first dtbo path-prefix guard so the entries get
+    # the t23x/nv-public/overlay/ prefix like the rest.
+    awk -v block="$ark_dtbo_lines" '
+        /^ifneq \(\$\(dtbo?-y\),\)/ && !inserted {
+            printf "# >>> ARK overlays (products/'"$TARGET"'/overlay/dtbo.list)\n%s# <<< ARK overlays\n\n", block
+            inserted = 1
+        }
+        { print }
+    ' "$OVERLAY_MK" > "$OVERLAY_MK.tmp" && mv "$OVERLAY_MK.tmp" "$OVERLAY_MK"
+
+    if ! grep -q '^# >>> ARK overlays' "$OVERLAY_MK"; then
+        echo "ERROR: failed to inject ARK overlays into $OVERLAY_MK (no dtbo prefix guard found)." >&2
+        exit 1
+    fi
+fi
 
 # ── Build ───────────────────────────────────────────────────────────────────
 
@@ -293,17 +441,47 @@ echo "========================================="
 
 cd "$SOURCE_DIR"
 
-# Wrap the cross-compiler with ccache when present (kernel C rarely changes, so warm
-# builds are mostly hits). Passing CC on the command line overrides kbuild's default
-# and reaches the NVIDIA wrapper's sub-makes; no-op without ccache.
+# The bootlin toolchain defaults to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
+# startfiles and fails — its LAST line is a collect2 error, which NVIDIA's nv_compiler.h
+# recipe bakes into the module's /proc version banner via `tail -1`. Repoint it at
+# `--version | head -1`, which never links. Fail loud if the BSP moved the recipe; drop the
+# stale header so it regenerates.
+NVIDIA_KBUILD="$SOURCE_DIR/nvdisplay/kernel-open/nvidia/nvidia.Kbuild"
+if grep -qF -- '-v 2>&1 | tail -n 1' "$NVIDIA_KBUILD"; then
+    sed -i 's/\$(CC) -v 2>&1 | tail -n 1/$(CC) --version 2>\&1 | head -n 1/' "$NVIDIA_KBUILD"
+    rm -f "$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
+elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
+    echo "ERROR: nv_compiler.h version probe in nvidia.Kbuild is neither the known-bad nor" >&2
+    echo "       the patched form — BSP layout changed; re-check the probe patch in build.sh." >&2
+    exit 1
+fi
+
+# ccache wraps the cross-compiler for the kernel proper only (kernel C rarely changes → warm
+# hits). The OOT NVIDIA modules build without it on purpose: their conftest/version steps
+# regenerate headers and ccache direct-mode can serve a stale object across that — a silent
+# nondeterministic miscompile, not worth the small speedup on these modules. dtbs are no-C.
 KERNEL_MAKE_ARGS=()
 if command -v ccache >/dev/null 2>&1; then
     KERNEL_MAKE_ARGS+=("CC=ccache ${CROSS_COMPILE}gcc")
 fi
 
 make -C kernel "${KERNEL_MAKE_ARGS[@]}" \
-    && make modules "${KERNEL_MAKE_ARGS[@]}" \
-    && make dtbs "${KERNEL_MAKE_ARGS[@]}"
+    && make modules CC="${CROSS_COMPILE}gcc" \
+    && make dtbs CC="${CROSS_COMPILE}gcc"
+
+# Sanity-check the display-driver build: nv_compiler.h must read as a real compiler version
+# (probe fixed above) and the three display .kos must be non-empty — catches a broken or
+# missing cross-compiler instead of silently shipping a bad module.
+NV_COMPILER_H="$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
+if [ ! -s "$NV_COMPILER_H" ] || ! grep -qE 'version|[0-9]+\.[0-9]+\.[0-9]+' "$NV_COMPILER_H"; then
+    echo "ERROR: NVIDIA compiler-version probe produced no sane version string:" >&2
+    echo "       $NV_COMPILER_H: $(cat "$NV_COMPILER_H" 2>/dev/null)" >&2
+    exit 1
+fi
+for ko in nvidia.ko nvidia-modeset.ko nvidia-drm.ko; do
+    [ -s "$SOURCE_DIR/nvdisplay/kernel-open/$ko" ] \
+        || { echo "ERROR: NVIDIA module $ko missing or empty after build" >&2; exit 1; }
+done
 
 echo "Installing in-tree modules and dtbs..."
 sudo -E make install -C kernel

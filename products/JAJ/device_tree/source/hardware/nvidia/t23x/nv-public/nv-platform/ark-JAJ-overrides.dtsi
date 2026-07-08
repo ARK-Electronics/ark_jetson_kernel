@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * ARK JAJ carrier device-tree delta.
+ *
+ * build.sh appends an #include of this file to the stock
+ * tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi, so it is layered last over the
+ * pristine BSP tree. Only ARK's delta lives here; everything else tracks the BSP.
+ * Per-SKU model strings are stamped separately from products/JAJ/dtb_models.env.
+ */
+
+/* HDMI display: re-assigns display@13800000's nvidia,dcb-image with the HDMI blob. */
+#include "tegra234-dcb-p3737-0000-p3701-0000-hdmi.dtsi"
+
+/ {
+	aliases {
+		serial3 = &uartb;
+	};
+};
+
+/* UARTB is wired on the carrier but undefined by the stock SoC dtsi. Declared as an
+ * hsuart (not the tegra20-uart/8250 base) so it enumerates as /dev/ttyTHS*, like the
+ * other Tegra UARTs. Stays PIO — stock's gpcdma RX-DMA corrupts the hsuart RX stream
+ * at high baud (see UART-A below). */
+&{/bus@0} {
+	uartb: serial@3110000 {
+		compatible = "nvidia,tegra194-hsuart";
+		reg = <0x0 0x03110000 0x0 0x10000>;
+		interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&bpmp TEGRA234_CLK_UARTB>;
+		resets = <&bpmp TEGRA234_RESET_UARTB>;
+		reset-names = "serial";
+		status = "okay";
+	};
+};
+
+/* UART-A (ttyTHS1) inherits gpcdma RX/TX DMA from stock R36.5.0, and that DMA path
+ * corrupts the hsuart RX stream at 3 Mbaud. Force PIO, like UART-B. */
+&{/bus@0/serial@3100000} {
+	/delete-property/ dmas;
+	/delete-property/ dma-names;
+};
+
+/* HD-Audio is used on the carrier. */
+&{/bus@0/hda@3510000} {
+	status = "okay";
+};
+
+/* Hotplug detect line is active-low on the JAJ carrier. Also drop the stock
+ * hdcp_enabled: it's inert on L4T (no HDCP) and triggers the JP6.2.2 DpAuxchCtrl DCE-RPC
+ * regression on the DP->HDMI path. Native HDMI here shouldn't hit it, but keep HDCP off
+ * across all carriers for consistency. */
+&{/display@13800000} {
+	os_gpio_hotplug_a = <&gpio TEGRA234_MAIN_GPIO(M, 0) GPIO_ACTIVE_LOW>;
+	/delete-property/ hdcp_enabled;
+};
+
+/* Third USB3 lane for the dual USB-A port. */
+&{/bus@0/padctl@3520000/pads/usb3/lanes} {
+	usb3-2 {
+		nvidia,function = "xusb";
+		status = "okay";
+	};
+};
+
+/* Carrier USB port mapping: usb3-0 = USB-C, usb3-1/usb3-2 = dual USB-A. */
+&{/bus@0/padctl@3520000/ports} {
+	usb3-0 { nvidia,usb2-companion = <0>; };
+	usb3-1 { nvidia,usb2-companion = <1>; status = "okay"; };
+	usb3-2 {
+		nvidia,usb2-companion = <1>;
+		status = "okay";
+	};
+};
+
+&{/bus@0/usb@3550000} {
+	phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>;
+	phy-names = "usb2-0", "usb3-0";
+};
+
+&{/bus@0/usb@3610000} {
+	phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>,
+	       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-1}>,
+	       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-2}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-1}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-2}>;
+	phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0",
+		    "usb3-1", "usb3-2";
+};

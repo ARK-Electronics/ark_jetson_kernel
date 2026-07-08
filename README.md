@@ -69,7 +69,7 @@ ssh jetson@jetson.local
 
 ## Cameras
 
-Select a camera overlay with NVIDIA's `jetson-io` tool. List what's available:
+Every carrier ships with an IMX219 overlay already selected, so cameras work out of the box: the quad overlay on **PAB**, the dual overlay on **JAJ** and **PAB_V3**. To use a different camera, select an overlay with NVIDIA's `jetson-io` tool. List what's available:
 ```
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
 ```
@@ -78,12 +78,13 @@ sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
    ...
  Header 2: Jetson 22pin CSI Connector
    Available hardware modules:
-   1. Camera ARK IMX219 Quad
-   2. Camera ARK IMX477 Single
+   1. Camera IMX219 Quad
+   2. Camera IMX477 Quad
+   3. Camera IMX708 Quad
 ```
 Apply one and reboot:
 ```
-sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera ARK IMX477 Single"
+sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera IMX477 Quad"
 sudo reboot
 ```
 See [docs/cameras.md](docs/cameras.md) for supported sensors, overlay names, and how to verify and stream a camera.

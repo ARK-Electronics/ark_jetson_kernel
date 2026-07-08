@@ -22,6 +22,10 @@ ARK_OS_PKG="ark-os-jetson-jammy"
 ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 
+NV_GSTREAMER_PKG="nvidia-l4t-gstreamer"
+NV_GSTREAMER_DEB="${NV_GSTREAMER_PKG}_${NV_GSTREAMER_VERSION}_arm64.deb"
+NV_GSTREAMER_URL="https://repo.download.nvidia.com/jetson/common/pool/main/n/${NV_GSTREAMER_PKG}/${NV_GSTREAMER_DEB}"
+
 # Prefer a deb already in downloads/ over downloading
 DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
@@ -114,6 +118,24 @@ fi
 sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/dev/null 2>&1' \
     || { echo "ERROR: installed ark-os ships no bundled MAVSDK under /usr/lib/ark-os/mavsdk." >&2; exit 1; }
 
+### Install Tegra GStreamer plugins (CSI camera pipelines)
+# nvarguscamerasrc/nvvidconv/nvv4l2* aren't in the BSP set apply_binaries installs; they
+# ship in nvidia-l4t-gstreamer (repo `common` pool). Its nvidia-l4t-* deps are all already
+# provided by the BSP, so it installs as a local deb with no NVIDIA repo — leaving the
+# disabled <SOC> apt source untouched.
+echo "Installing ${NV_GSTREAMER_PKG} (camera GStreamer plugins)..."
+fetch_deb "$NV_GSTREAMER_DEB" "$NV_GSTREAMER_URL"
+sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$NV_GSTREAMER_DEB"
+# Assert the plugin actually loads and registers nvarguscamerasrc — file existence
+# alone misses unresolvable libraries. Inspect the plugin *file*, not the element:
+# element instantiation (e.g. --exists) dials nvargus-daemon/EGL, absent in a chroot.
+# The registry cache is pointed at /tmp so scan state doesn't ship in the image.
+sudo chroot "$ROOTFS_DIR" env GST_REGISTRY=/tmp/provision-gst-registry.bin \
+    gst-inspect-1.0 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so \
+    | grep -qw nvarguscamerasrc \
+    || { echo "ERROR: nvarguscamerasrc missing or failed to load after installing ${NV_GSTREAMER_PKG}." >&2; exit 1; }
+sudo rm -f "$ROOTFS_DIR/tmp/provision-gst-registry.bin" "$ROOTFS_DIR/tmp/$NV_GSTREAMER_DEB"
+
 ### Install pip
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
 
@@ -153,6 +175,14 @@ sudo chroot "$ROOTFS_DIR" python3 -c "import serial, dronecan, smbus2, spidev"
 # For example:
 #   sudo chroot "$ROOTFS_DIR" apt-get install -y vim tmux
 #   sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" some-package
+
+# Set the boot clock to build time: an RTC-less fixture with no NTP otherwise boots at a
+# stale epoch, and a clock behind the jetson password date breaks gdm-autologin (no X on :0).
+sudo mkdir -p "$ROOTFS_DIR/var/lib/systemd/timesync"
+sudo touch "$ROOTFS_DIR/var/lib/systemd/timesync/clock"
+sudo chroot "$ROOTFS_DIR" chown systemd-timesync:systemd-timesync /var/lib/systemd/timesync/clock
+# Pin the password date to the past so clock skew can't trip autologin regardless.
+sudo chroot "$ROOTFS_DIR" chage -d 2020-01-01 jetson
 
 sudo rm "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
 
