@@ -126,10 +126,15 @@ sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/
 echo "Installing ${NV_GSTREAMER_PKG} (camera GStreamer plugins)..."
 fetch_deb "$NV_GSTREAMER_DEB" "$NV_GSTREAMER_URL"
 sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$NV_GSTREAMER_DEB"
-# Assert the key plugin landed rather than shipping a camera image that can't stream.
-sudo chroot "$ROOTFS_DIR" test -f /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so \
-    || { echo "ERROR: ${NV_GSTREAMER_PKG} installed but nvarguscamerasrc plugin is missing." >&2; exit 1; }
-sudo rm -f "$ROOTFS_DIR/tmp/$NV_GSTREAMER_DEB"
+# Assert the plugin actually loads and registers nvarguscamerasrc — file existence
+# alone misses unresolvable libraries. Inspect the plugin *file*, not the element:
+# element instantiation (e.g. --exists) dials nvargus-daemon/EGL, absent in a chroot.
+# The registry cache is pointed at /tmp so scan state doesn't ship in the image.
+sudo chroot "$ROOTFS_DIR" env GST_REGISTRY=/tmp/provision-gst-registry.bin \
+    gst-inspect-1.0 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so \
+    | grep -qw nvarguscamerasrc \
+    || { echo "ERROR: nvarguscamerasrc missing or failed to load after installing ${NV_GSTREAMER_PKG}." >&2; exit 1; }
+sudo rm -f "$ROOTFS_DIR/tmp/provision-gst-registry.bin" "$ROOTFS_DIR/tmp/$NV_GSTREAMER_DEB"
 
 ### Install pip
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
