@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // SPDX-FileCopyrightText: Copyright (c) 2023-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-//
-// IMX477 (Raspberry Pi HQ / Arducam 12MP) 4-camera overlay for the ARK p3768
-// carrier (4x2-lane CSI). Carrier wiring (TCA9546 mux, per-port CAM reset and
-// lane polarity) mirrors the IMX219/IMX708 quads; sensor nodes and modes come
-// from the stock ridgerun,imx477 driver. Two 10-bit modes per camera:
-// 3840x2160 @ 30 fps and 1920x1080 @ 60 fps.
 
 /dts-v1/;
 /plugin/;

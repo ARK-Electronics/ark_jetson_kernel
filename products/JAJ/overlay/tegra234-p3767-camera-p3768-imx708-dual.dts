@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // SPDX-FileCopyrightText: Copyright (c) 2023-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-FileCopyrightText: Copyright (c) 2023, RidgeRun. All rights reserved.
-//
-// IMX708 (Raspberry Pi / Arducam Camera Module 3) dual-camera overlay for the
-// dev-kit-wired ARK carriers (PAB_V3, JAJ): GPIO-controlled i2c mux, serial_a +
-// serial_c on ports 0/2. Wiring mirrors the rbpcv2 IMX219 dual; sensor nodes and
-// mode0 come from RidgeRun's IMX708 driver. One 10-bit mode, 4608x2592 @ ~14 fps,
-// fixed focus. (PAB uses a different 4x2-lane overlay — see imx708-quad.)
 
 /dts-v1/;
 /plugin/;
