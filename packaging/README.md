@@ -71,6 +71,8 @@ EEPROM at flash time, a single package flashes **all** Orin Nano/NX variants
 to match the attached module. There is no per-SKU build, so one release per
 carrier covers every module variant.
 
+The package also records the product's default camera overlay(s) (`products/<TARGET>/default_overlays`) in its `ark_flash.conf`; `flash_from_package.sh` bakes them into the DTB at flash time, same as `./flash.sh`.
+
 > This replaces the older massflash (`mfi`) package, which had to pre-bake a single `BOARDSKU` and could therefore flash only one variant — NVIDIA massflash requires every unit to be identical hardware (`tools/kernel_flash/README_initrd_flash.txt`). The trade-off: the flasher builds the flash images on the flashing host, which adds several minutes per run — but `flash_from_package.sh` reuses the previous run's images when the connected module is the same variant, so repeat flashes skip the rebuild.
 
 The output is saved to the project root, e.g. `ark-pab-nvme-super.tar.gz`.

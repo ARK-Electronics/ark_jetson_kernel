@@ -56,6 +56,28 @@ if [ ! -f "$L4T_DIR/kernel/Image" ]; then
     exit 1
 fi
 
+# Resolve the product's default device-tree overlay(s) exactly like flash.sh and
+# record them in ark_flash.conf, so flash_from_package.sh bakes them into the DTB
+# at flash time too — the default camera must be live on first boot for release
+# flashes, not just local ./flash.sh runs. Each dtbo must have been built into
+# kernel/dtb/ by build.sh; fail loud if not.
+DEFAULT_OVERLAYS_FILE="$ROOT_DIR/products/$TARGET/default_overlays"
+ADDITIONAL_DTB_OVERLAY=""
+if [ -f "$DEFAULT_OVERLAYS_FILE" ]; then
+    while IFS= read -r name; do
+        name="${name%%#*}"
+        name="$(echo "$name" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$name" ] && continue
+        if [ ! -f "$L4T_DIR/kernel/dtb/$name" ]; then
+            echo "ERROR: default overlay '$name' (from $DEFAULT_OVERLAYS_FILE) is not in" >&2
+            echo "       staging/$TARGET/Linux_for_Tegra/kernel/dtb/ — rebuild with ./build.sh $TARGET" >&2
+            echo "       (is it listed in products/$TARGET/overlay/dtbo.list?)." >&2
+            exit 1
+        fi
+        ADDITIONAL_DTB_OVERLAY="${ADDITIONAL_DTB_OVERLAY:+$ADDITIONAL_DTB_OVERLAY,}$name"
+    done < "$DEFAULT_OVERLAYS_FILE"
+fi
+
 GIT_COMMIT=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_DESCRIBE=$(git -C "$ROOT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -80,11 +102,14 @@ echo "========================================="
 
 # Flash parameters consumed by flash_from_package.sh. The module variant is read
 # from the module EEPROM at flash time, so nothing here pins a BOARDSKU.
+# ADDITIONAL_DTB_OVERLAY is the product's default overlay set, merged into the
+# base DTB at flash time (see flash.sh for the mechanism).
 sudo tee "$L4T_DIR/ark_flash.conf" >/dev/null <<EOF
 FLASH_TARGET="$FLASH_TARGET"
 STORAGE_DEV="$STORAGE_DEV"
 QSPI_CFG="bootloader/generic/cfg/flash_t234_qspi.xml"
 EXTERNAL_CFG="tools/kernel_flash/flash_l4t_t234_nvme.xml"
+ADDITIONAL_DTB_OVERLAY="$ADDITIONAL_DTB_OVERLAY"
 EOF
 
 sudo tee "$L4T_DIR/BUILD_INFO.txt" >/dev/null <<EOF
@@ -100,6 +125,7 @@ Describe:        $GIT_DESCRIBE
 Target:          $TARGET
 Flash target:    $FLASH_TARGET
 Storage:         $STORAGE_DEV
+Default overlays: ${ADDITIONAL_DTB_OVERLAY:-none}
 Package name:    ${PACKAGE_NAME}.tar.gz
 Module variants: auto-detected at flash time (Orin Nano/NX 4/8/16GB)
 EOF
