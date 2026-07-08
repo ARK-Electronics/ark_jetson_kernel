@@ -18,8 +18,6 @@ Each carrier has its own device tree. A flash package built for one carrier will
 
 Releases are driven by git tags. Push a tag matching `{product}-{version}` and CI builds the flash package and creates a GitHub Release automatically.
 
-Every release is created as a hidden **draft** — invisible to customers and to the public releases API. Validate the draft on the production fixture (the bundle test's `--draft` flag), then promote it to a published release in the GitHub UI: edit the release and clear "Set as a pre-release/draft". Promotion keeps the same tag and the same artifact — no rebuild, no rename — so the bits a technician validated as a draft are exactly the bits customers get.
-
 ### Tag format
 
 `{product}-{jetpack_version}.{ark_revision}` — for example `pab-6.2.1.1`.
@@ -44,7 +42,7 @@ git tag -a pab-6.2.1.1 -m "pab-6.2.1.1"
 git push origin pab-6.2.1.1
 ```
 
-CI will build the kernel, generate the flash package, and create the draft release. Monitor progress at https://github.com/ARK-Electronics/ark_jetson_kernel/actions.
+CI will build the kernel, generate the flash package, and create the release. Monitor progress at https://github.com/ARK-Electronics/ark_jetson_kernel/actions.
 
 ### Releasing all products at the same version
 
@@ -87,10 +85,10 @@ If the package exceeds 2GB (the GitHub Releases per-file limit), it is automatic
 
 ## Flashing from a Release (customer)
 
-Download and run the flash script:
+Download the flasher from `main` and run it:
 
 ```
-curl -LO https://github.com/ARK-Electronics/ark_jetson_kernel/releases/download/pab-6.2.1.1/flash_from_package.sh
+curl -LO https://raw.githubusercontent.com/ARK-Electronics/ark_jetson_kernel/main/packaging/flash_from_package.sh
 chmod +x flash_from_package.sh
 ./flash_from_package.sh pab-6.2.1.1
 ```

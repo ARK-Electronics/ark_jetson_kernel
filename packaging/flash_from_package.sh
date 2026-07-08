@@ -11,11 +11,17 @@
 # plus an EEPROM probe on Orin Nano 8GB where two SKUs share one ID) they are
 # reflashed directly with --flash-only, skipping the ~5 min image build.
 #
+# Can also flash an unpublished draft release: a specific tag that isn't published is
+# looked up as a draft automatically, and --draft selects the latest draft for a
+# product. Drafts are invisible to the public API, so that path uses the gh CLI and
+# needs an account with read access to the repo.
+#
 # Usage:
-#   ./flash_from_package.sh <tag>        # specific release (e.g. pab-6.2.1.1)
-#   ./flash_from_package.sh <product>    # latest release for a product (pab, jaj, pab-v3)
-#   ./flash_from_package.sh <tag> --full # regenerate images even if cached ones match
-#   ./flash_from_package.sh --clean      # remove all cached data
+#   ./flash_from_package.sh <tag>             # specific release (e.g. pab-6.2.1.1); auto-detects a draft of that tag
+#   ./flash_from_package.sh <product>         # latest published release for a product (pab, jaj, pab-v3)
+#   ./flash_from_package.sh <product> --draft # latest DRAFT release for a product (needs gh read access)
+#   ./flash_from_package.sh <tag> --full      # regenerate images even if cached ones match
+#   ./flash_from_package.sh --clean           # remove all cached data
 
 set -euo pipefail
 
@@ -26,10 +32,11 @@ CACHE_BASE="$HOME/.ark-jetson-cache"
 usage() {
     echo "Usage: $(basename "$0") <tag|product>"
     echo ""
-    echo "  $(basename "$0") pab-6.2.1.1    Flash a specific release"
+    echo "  $(basename "$0") pab-6.2.1.1    Flash a specific release (published or unpublished draft)"
     echo "  $(basename "$0") pab             Flash the latest PAB release"
     echo "  $(basename "$0") jaj             Flash the latest JAJ release"
     echo "  $(basename "$0") pab-v3          Flash the latest PAB_V3 release"
+    echo "  $(basename "$0") pab-v3 --draft  Flash the latest PAB_V3 DRAFT (needs gh read access)"
     echo "  $(basename "$0") pab --full      Regenerate flash images even if cached ones match"
     echo "  $(basename "$0") --clean         Remove all cached data"
     echo ""
@@ -47,13 +54,14 @@ is_product_name() {
 # --- Handle no args / --help / --clean ---
 
 FORCE_FULL=0
+WANT_DRAFT=0
 args=()
 for arg in "$@"; do
-    if [ "$arg" = "--full" ]; then
-        FORCE_FULL=1
-    else
-        args+=("$arg")
-    fi
+    case "$arg" in
+        --full)  FORCE_FULL=1 ;;
+        --draft) WANT_DRAFT=1 ;;
+        *)       args+=("$arg") ;;
+    esac
 done
 set -- "${args[@]}"
 
@@ -111,28 +119,53 @@ fi
 
 INPUT="$1"
 RELEASE_TAG=""
+# Whether the resolved release is an unpublished draft (fetched via gh, not the
+# public API). Set here for the product --draft case, and later by the automatic
+# fallback when a specific tag turns out to be an unpublished draft.
+IS_DRAFT=0
 
 if is_product_name "$INPUT"; then
-    echo "Finding latest $INPUT release..."
-    releases_json=$(curl -sfL "${API_URL}?per_page=100")
+    if [ "$WANT_DRAFT" = 1 ]; then
+        # Drafts are invisible to the public API; list them through gh.
+        ensure_gh
+        echo "Finding latest $INPUT draft release..."
+        RELEASE_TAG=$(gh release list -R "$REPO" --limit 100 --json tagName,isDraft \
+            -q '.[] | select(.isDraft) | .tagName' \
+            | grep "^${INPUT}-[0-9]" \
+            | sort -V \
+            | tail -1)
+        if [ -z "$RELEASE_TAG" ]; then
+            echo "ERROR: No draft releases found for product '$INPUT'"
+            exit 1
+        fi
+        IS_DRAFT=1
+        echo "Latest draft: $RELEASE_TAG"
+    else
+        echo "Finding latest $INPUT release..."
+        releases_json=$(curl -sfL "${API_URL}?per_page=100")
 
-    RELEASE_TAG=$(echo "$releases_json" \
-        | grep -o '"tag_name": *"[^"]*"' \
-        | sed 's/"tag_name": *"//;s/"//' \
-        | grep "^${INPUT}-[0-9]" \
-        | sort -V \
-        | tail -1)
+        RELEASE_TAG=$(echo "$releases_json" \
+            | grep -o '"tag_name": *"[^"]*"' \
+            | sed 's/"tag_name": *"//;s/"//' \
+            | grep "^${INPUT}-[0-9]" \
+            | sort -V \
+            | tail -1)
 
-    if [ -z "$RELEASE_TAG" ]; then
-        echo "ERROR: No releases found for product '$INPUT'"
-        echo ""
-        echo "Available releases:"
-        echo "$releases_json" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/"//' | head -10
-        exit 1
+        if [ -z "$RELEASE_TAG" ]; then
+            echo "ERROR: No releases found for product '$INPUT'"
+            echo ""
+            echo "Available releases:"
+            echo "$releases_json" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/"//' | head -10
+            exit 1
+        fi
+        echo "Latest: $RELEASE_TAG"
     fi
-    echo "Latest: $RELEASE_TAG"
 else
     RELEASE_TAG="$INPUT"
+    # A specific tag that's actually a draft is detected at download time (the
+    # public tags endpoint 404s on it) and handled by the automatic fallback below;
+    # --draft skips that probe and goes straight to gh.
+    [ "$WANT_DRAFT" = 1 ] && IS_DRAFT=1
 fi
 
 CACHE_DIR="$CACHE_BASE/$RELEASE_TAG"
@@ -156,6 +189,62 @@ find_tarball() {
 
 find_flash_script() {
     sudo find "$EXTRACT_DIR" -name "l4t_initrd_flash.sh" -path "*/tools/kernel_flash/*" 2>/dev/null | head -1 || true
+}
+
+# Ensures the GitHub CLI is installed and authenticated. Draft releases are not
+# visible to the public API, so fetching one needs gh with an account that has
+# read access to the repo. Installs gh from GitHub's apt repo if missing and runs
+# the interactive login if needed. This only runs on the draft path, never for a
+# normal published flash.
+ensure_gh() {
+    if ! command -v gh &>/dev/null; then
+        echo "gh CLI not found; installing from the GitHub apt repo..."
+        sudo mkdir -p -m 755 /etc/apt/keyrings
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+        sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+            | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+        # Scope the update to just this new source so an unrelated broken third-party
+        # apt repo on the host can't block the gh install; the command -v gate below
+        # is what actually decides success.
+        sudo apt-get update \
+            -o Dir::Etc::sourcelist="sources.list.d/github-cli.list" \
+            -o Dir::Etc::sourceparts="-" \
+            -o APT::Get::List-Cleanup="0" || true
+        sudo apt-get install -y gh || true
+        command -v gh &>/dev/null || { echo "ERROR: failed to install the gh CLI." >&2; exit 1; }
+    fi
+    if ! gh auth status &>/dev/null; then
+        echo "gh CLI is not authenticated; launching 'gh auth login'..."
+        # Output is mirrored through tee (exec redirect above), so gh's stdout is a
+        # pipe, not a TTY, and its prompts won't run; point login at the terminal.
+        if [ -e /dev/tty ]; then
+            gh auth login </dev/tty >/dev/tty 2>&1 || true
+        else
+            gh auth login || true
+        fi
+        gh auth status &>/dev/null || {
+            echo "ERROR: draft releases need an authenticated gh CLI ('gh auth login' or set GH_TOKEN)." >&2
+            exit 1
+        }
+    fi
+}
+
+# Downloads the release's package assets into $CACHE_DIR via gh — the only way to
+# fetch a draft, which the public API can't see. --clobber re-pulls the parts
+# cleanly so an interrupted run can't leave a half-written split fragment that
+# would corrupt the reassembly; the outer find_tarball guard means this only runs
+# when the assembled package isn't already cached.
+download_draft() {
+    echo ""
+    echo "Downloading draft $RELEASE_TAG to $CACHE_DIR via gh (multi-GB image)..."
+    if ! gh release download "$RELEASE_TAG" -R "$REPO" --dir "$CACHE_DIR" --clobber; then
+        echo "ERROR: failed to download draft assets for '$RELEASE_TAG'." >&2
+        echo "  Confirm access with: gh release view $RELEASE_TAG -R $REPO" >&2
+        exit 1
+    fi
+    echo ""
 }
 
 # Waits for a Jetson in recovery mode and records its USB product ID in
@@ -261,47 +350,71 @@ else
     if [ -n "$TARBALL" ]; then
         echo "Using cached download: $(basename "$TARBALL")"
     else
-        echo "Fetching release $RELEASE_TAG..."
-        release_json=$(curl -sL "$API_URL/tags/$RELEASE_TAG")
-
-        if echo "$release_json" | grep -q '"message"'; then
-            msg=$(echo "$release_json" | grep -o '"message": *"[^"]*"' | head -1)
-            echo "ERROR: Release '$RELEASE_TAG' not found ($msg)"
-            echo ""
-            echo "Available releases:"
-            curl -sL "$API_URL" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/"//' | head -10
-            exit 1
-        fi
-
-        assets=$(echo "$release_json" | grep -o '"browser_download_url": *"[^"]*"' | sed 's/"browser_download_url": *"//;s/"//' | grep -v '/archive/')
-
-        if [ -z "$assets" ]; then
-            echo "ERROR: No downloadable assets found in release $RELEASE_TAG"
-            exit 1
-        fi
-
         mkdir -p "$CACHE_DIR"
-        rm -f "$CACHE_DIR"/*.tmp
 
-        echo ""
-        echo "Downloading to $CACHE_DIR ..."
+        if [ "$IS_DRAFT" = 1 ]; then
+            download_draft
+        else
+            echo "Fetching release $RELEASE_TAG..."
+            release_json=$(curl -sL "$API_URL/tags/$RELEASE_TAG")
 
-        while IFS= read -r url; do
-            filename=$(basename "$url")
-            [ "$filename" = "flash_from_package.sh" ] && continue
+            if echo "$release_json" | grep -q '"message"'; then
+                msg=$(echo "$release_json" | grep -o '"message": *"[^"]*"' | head -1)
+                # A draft release has no git tag, so the public tags endpoint 404s
+                # on it. Before giving up, fall back to gh: the tag may just be an
+                # unpublished draft awaiting validation.
+                if echo "$msg" | grep -qi 'not found'; then
+                    echo "Release '$RELEASE_TAG' is not published; checking for a draft..."
+                    ensure_gh
+                    if ! gh release view "$RELEASE_TAG" -R "$REPO" &>/dev/null; then
+                        echo "ERROR: '$RELEASE_TAG' is neither a published release nor a draft visible to your gh account." >&2
+                        echo "  It may not exist, or your account may lack read access to $REPO (check 'gh auth status')." >&2
+                        echo "" >&2
+                        echo "Available published releases:" >&2
+                        curl -sL "$API_URL" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/"//' | head -10 >&2
+                        exit 1
+                    fi
+                    IS_DRAFT=1
+                    download_draft
+                else
+                    echo "ERROR: Release '$RELEASE_TAG' not found ($msg)"
+                    echo ""
+                    echo "Available releases:"
+                    curl -sL "$API_URL" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/"//' | head -10
+                    exit 1
+                fi
+            else
+                assets=$(echo "$release_json" | grep -o '"browser_download_url": *"[^"]*"' | sed 's/"browser_download_url": *"//;s/"//' | grep -v '/archive/')
 
-            if [ -f "$CACHE_DIR/$filename" ]; then
-                echo "  Already downloaded: $filename"
-                continue
+                if [ -z "$assets" ]; then
+                    echo "ERROR: No downloadable assets found in release $RELEASE_TAG"
+                    exit 1
+                fi
+
+                rm -f "$CACHE_DIR"/*.tmp
+
+                echo ""
+                echo "Downloading to $CACHE_DIR ..."
+
+                while IFS= read -r url; do
+                    filename=$(basename "$url")
+                    [ "$filename" = "flash_from_package.sh" ] && continue
+
+                    if [ -f "$CACHE_DIR/$filename" ]; then
+                        echo "  Already downloaded: $filename"
+                        continue
+                    fi
+
+                    echo "  Downloading $filename..."
+                    curl -fL --progress-bar -o "$CACHE_DIR/$filename.tmp" "$url"
+                    mv "$CACHE_DIR/$filename.tmp" "$CACHE_DIR/$filename"
+                done <<< "$assets"
+                echo ""
             fi
+        fi
 
-            echo "  Downloading $filename..."
-            curl -fL --progress-bar -o "$CACHE_DIR/$filename.tmp" "$url"
-            mv "$CACHE_DIR/$filename.tmp" "$CACHE_DIR/$filename"
-        done <<< "$assets"
-        echo ""
-
-        # Reassemble split parts if needed
+        # Reassemble split parts if needed. Both the curl and gh paths leave the
+        # package as either a single *.tar.gz or a set of *.part.* fragments.
         if ls "$CACHE_DIR"/*.part.* &>/dev/null; then
             echo "Reassembling split parts..."
             cat "$CACHE_DIR"/*.part.* > "$CACHE_DIR/package.tar.gz.tmp"
