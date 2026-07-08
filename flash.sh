@@ -143,6 +143,18 @@ while true; do
     sleep 1
 done
 
+# NetworkManager must not touch the flash-time USB NIC: host profiles matched on
+# the gadget drivers (ark-jetson-usb) auto-activate on the initrd's rndis/ncm
+# interface and tear down the flasher's NFS link mid-write. Mark those drivers
+# unmanaged for the duration of the flash.
+NM_FLASH_GUARD=/etc/NetworkManager/conf.d/99-ark-jetson-flash-guard.conf
+if command -v nmcli > /dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
+    printf '[keyfile]\nunmanaged-devices+=driver:rndis_host;driver:cdc_ncm\n' | \
+        sudo tee "$NM_FLASH_GUARD" > /dev/null
+    sudo nmcli general reload
+    trap 'sudo rm -f "$NM_FLASH_GUARD"; sudo nmcli general reload' EXIT
+fi
+
 cd "$L4T_DIR"
 
 if [ -n "$ADDITIONAL_DTB_OVERLAY" ]; then
