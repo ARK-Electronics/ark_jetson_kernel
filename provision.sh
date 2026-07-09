@@ -165,7 +165,7 @@ sudo chroot "$ROOTFS_DIR" apt-get install -y \
     gpiod i2c-tools usbutils pciutils v4l-utils \
     x11-xserver-utils xdotool inxi uhubctl
 
-sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" pyserial dronecan smbus2 Jetson.GPIO
+sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" pyserial dronecan smbus2 Jetson.GPIO spidev
 
 # Sanity check: importable system-wide. RPi.GPIO (Jetson.GPIO) is left out since it reads /proc/device-tree to detect the Jetson model at import
 sudo chroot "$ROOTFS_DIR" python3 -c "import serial, dronecan, smbus2, spidev"
