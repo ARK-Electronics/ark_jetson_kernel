@@ -454,6 +454,30 @@ fi
 FLASH_DIR=$(dirname "$FLASH_SCRIPT")          # .../tools/kernel_flash
 L4T_DIR=$(cd "$FLASH_DIR/../.." && pwd)        # .../Linux_for_Tegra
 
+# --- Patch the gadget-rename race in NVIDIA's initrd flasher ---
+
+# Between l4t_initrd_flash_internal.sh's ping_device() listing /sys/class/net
+# and configuring the flashing gadget, udev can rename the interface from its
+# kernel name (usb0) to the persistent enx<mac> name. The stock script's
+# one-shot IP_SET latch is then consumed by the vanished name: the
+# fc00:1:1:<n>::1/fe80::2 host addresses are never added to the renamed
+# interface and the flash dies at "Waiting for device to expose ssh" (seen on
+# desktop hosts; the bench laptops happen to list the interface after the
+# rename and never hit the window). Rewrite the latch into an idempotent
+# per-name check so a later 1 s retry configures the interface under its final
+# name. Runs every flash so caches extracted before this fix get patched too;
+# a no-op once applied, and if NVIDIA restructures the script the pattern
+# simply won't match, leaving stock behavior.
+INTERNAL_FLASH_SCRIPT="$FLASH_DIR/l4t_initrd_flash_internal.sh"
+if sudo grep -qF 'if [ -z "${IP_SET}" ]; then' "$INTERNAL_FLASH_SCRIPT" 2>/dev/null; then
+    echo "Patching interface-rename race in l4t_initrd_flash_internal.sh..."
+    sudo sed -i \
+        -e 's|if \[ -z "\${IP_SET}" \]; then|if ! ip -6 addr show dev "${REPLY}" 2>/dev/null \| grep -q "fc00:1:1:${device_instance}::1"; then|' \
+        -e 's|"\$(sysctl -n "net.ipv6.conf.\${REPLY}.disable_ipv6")" -eq 1|"$(sysctl -n "net.ipv6.conf.${REPLY}.disable_ipv6" 2>/dev/null)" = "1"|' \
+        -e '/^[[:space:]]*IP_SET=0$/d' \
+        "$INTERNAL_FLASH_SCRIPT"
+fi
+
 # Flash parameters (board config + storage + default DTB overlays) travel with
 # the package in ark_flash.conf. Defaults match flash.sh for older packages that
 # predate it.
