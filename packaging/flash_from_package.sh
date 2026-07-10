@@ -284,7 +284,12 @@ jetson_devnum() {
 # "Sending mb1" — the failure seen on the production line. The one reliable,
 # non-invasive signal that the chip is back in download-ready BootROM recovery
 # is its USB re-enumeration, so wait for the device number to change instead of
-# poking it with more RCM sessions.
+# poking it with more RCM sessions. The baseline ($1) must be sampled right
+# after the probe returns: the probe already re-enumerated the chip once
+# (BootROM → applet), so a pre-probe baseline is satisfied by that first
+# transition while the reset is still pending — the exact stall this wait
+# exists to prevent. The applet's enumeration outlives the probe by seconds,
+# so a post-probe sample reliably lands on it.
 wait_for_module_reset() {
     local prev="$1" elapsed=0 now
     echo "Waiting for the module to reset back into recovery mode..."
@@ -552,16 +557,18 @@ elif [ -f "$GEN_MARKER" ] && [ -f tools/kernel_flash/initrdflashparam.txt ] && [
         echo "Module variant matches the existing images. Flashing without regenerating (~5 min faster)."
     else
         echo "Found Orin Nano 8GB images. Probing module EEPROM to confirm the SKU..."
-        PRE_PROBE_DEVNUM=$(jetson_devnum)
         sudo rm -f bootloader/cvm.bin bootloader/chip_info.bin_bak
         if ! sudo ./nvautoflash.sh --print_boardid; then
             echo "ERROR: EEPROM probe failed. Power-cycle the Jetson into recovery mode and retry." >&2
             exit 1
         fi
+        # Baseline for wait_for_module_reset: the applet's enumeration. Sample
+        # it immediately, before the applet's pending reset can land.
+        POST_PROBE_DEVNUM=$(jetson_devnum)
         MODULE_KEY=$(module_key) || { echo "ERROR: cannot parse module EEPROM dump." >&2; exit 1; }
         if [ "$MODULE_KEY" = "$CACHED_KEY" ]; then
             echo "Module matches the existing images. Flashing without regenerating once it resets."
-            wait_for_module_reset "$PRE_PROBE_DEVNUM"
+            wait_for_module_reset "$POST_PROBE_DEVNUM"
             REPLAY=1
         else
             # No reset wait needed here: the full flash starts with NVIDIA's
