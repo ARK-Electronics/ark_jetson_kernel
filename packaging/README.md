@@ -77,6 +77,12 @@ The package also records the product's default camera overlay(s) (`products/<TAR
 
 The output is saved to the project root, e.g. `ark-pab-nvme-super.tar.gz`.
 
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--no-super` | Target the non-super module variant |
+
 If the package exceeds 2GB (the GitHub Releases per-file limit), it is automatically split into 1.9GB parts in a `_split/` directory.
 
 ## Flashing from a Release (customer)

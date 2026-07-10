@@ -13,7 +13,7 @@
 #
 # Prerequisites: run setup.sh and build.sh <TARGET> --provision first.
 #
-# Usage: ./generate_flash_package.sh <TARGET>
+# Usage: ./generate_flash_package.sh <TARGET> [--no-super]
 
 set -euo pipefail
 
@@ -24,16 +24,17 @@ TARGET=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         PAB|JAJ|PAB_V3) TARGET="$1"; shift ;;
+        --no-super)     FLASH_TARGET="jetson-orin-nano-devkit"; shift ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3>" >&2
+            echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3> [--no-super]" >&2
             exit 1 ;;
     esac
 done
 
 if [ -z "$TARGET" ]; then
     echo "ERROR: target required (PAB | JAJ | PAB_V3)." >&2
-    echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3>" >&2
+    echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3> [--no-super]" >&2
     exit 1
 fi
 
@@ -85,9 +86,10 @@ BUILD_HOST=$(hostname)
 BUILD_USER=$(whoami)
 
 TARGET_LOWER=$(echo "$TARGET" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
-# "-super" is the only flash target now; kept in the name so release asset
-# naming stays consistent across versions.
-PACKAGE_NAME="ark-${TARGET_LOWER}-nvme-super"
+PACKAGE_NAME="ark-${TARGET_LOWER}-nvme"
+if [[ "$FLASH_TARGET" == *"-super" ]]; then
+    PACKAGE_NAME="${PACKAGE_NAME}-super"
+fi
 
 echo "========================================="
 echo "  Generating flash package (auto-detect, all module variants)"
