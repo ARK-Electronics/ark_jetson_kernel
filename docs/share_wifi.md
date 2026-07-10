@@ -1,6 +1,6 @@
 # Sharing WiFi over USB
 
-`scripts/share_wifi.sh` shares your host PC's WiFi connection with the Jetson over the micro-USB (RNDIS) link, so the Jetson gets internet access without a network connection of its own.
+`scripts/share_wifi.sh` shares your host PC's WiFi connection with the Jetson over the USB network link, so the Jetson gets internet access without a network connection of its own.
 
 The Jetson's side is already set up out of the box: L4T's USB device mode assigns the Jetson 192.168.55.1, hands the host 192.168.55.100 over DHCP, and adds a low-priority default route back through the host. The script fills in the host side by enabling IPv4 forwarding and NAT-masquerading the Jetson's traffic out through the WiFi interface.
 
