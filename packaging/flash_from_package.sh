@@ -599,6 +599,23 @@ if [ "$REPLAY" = "1" ]; then
         echo "Power-cycle the Jetson into recovery mode and rerun (add --full to regenerate the images from scratch)." >&2
         exit 1
     }
+    # The EEPROM probe regenerates several boot binaries in bootloader/ with
+    # its readinfo/diag-boot flavor, silently replacing the generation-era
+    # set that the saved flash command replays by name (the BR/MB1 BCTs
+    # differ materially). Downloading that mixed set makes the chip reject
+    # the boot chain and reset mid-download — tegrarcm's "might be timeout
+    # in USB write". The signing stage keeps canonical generation-era copies
+    # in bootloader/signed/, which the probe never touches: restore any that
+    # shadow a top-level file before replaying.
+    if [ -d bootloader/signed ]; then
+        echo "Restoring generation-era boot binaries over the probe's..."
+        for _signed in bootloader/signed/*; do
+            _shadowed="bootloader/$(basename "${_signed}")"
+            if [ -f "${_shadowed}" ]; then
+                sudo cp -f "${_signed}" "${_shadowed}"
+            fi
+        done
+    fi
     replay_started=$(date +%s)
     if ! replay_flash; then
         # A fast failure after an EEPROM probe is the applet taking its
