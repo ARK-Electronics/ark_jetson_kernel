@@ -78,30 +78,6 @@ if [ ! -f "$L4T_DIR/kernel/Image" ]; then
     exit 1
 fi
 
-# ── Verify flash prerequisites ───────────────────────────────────────────────
-# setup.sh installs these (NVIDIA's l4t_flash_prerequisites.sh list). NVIDIA's
-# tooling only pre-checks a few of them; any other missing tool (e.g. binutils'
-# `strings`) fails mid-flash, so fail loud here instead.
-FLASH_PREREQS=(abootimg binfmt-support binutils cpio cpp
-    device-tree-compiler dosfstools file gdisk
-    iproute2 iputils-ping lbzip2 libxml2-utils lz4
-    netcat-openbsd nfs-kernel-server openssl
-    parted python-is-python3 python3-yaml qemu-user-static rsync sshpass
-    udev usbutils uuid-runtime whois xmlstarlet xxd zstd zlib1g)
-
-missing=()
-for pkg in "${FLASH_PREREQS[@]}"; do
-    if ! dpkg -s "$pkg" &>/dev/null; then
-        missing+=("$pkg")
-    fi
-done
-
-if [ ${#missing[@]} -gt 0 ]; then
-    echo "ERROR: missing flash prerequisites: ${missing[*]}" >&2
-    echo "       Run ./setup.sh (safe to re-run; downloads are cached)." >&2
-    exit 1
-fi
-
 # ── Resolve product default device-tree overlay(s) to bake into the image ────
 # Some products ship a default camera (e.g. PAB = quad IMX219). We hand its dtbo
 # to tegraflash via ADDITIONAL_DTB_OVERLAY, which appends it to OVERLAY_DTB_FILE so
