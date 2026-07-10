@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./flash.sh <TARGET> [--sdcard] [--usb] [--no-super]
+# Usage: ./flash.sh <TARGET> [--sdcard] [--usb]
 #
 # TARGET: PAB | JAJ | PAB_V3
 #
@@ -26,12 +26,9 @@ while [[ $# -gt 0 ]]; do
         --usb)
             STORAGE_DEV="sda"
             shift ;;
-        --no-super)
-            FLASH_TARGET="jetson-orin-nano-devkit"
-            shift ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--no-super]" >&2
+            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
             exit 1 ;;
     esac
 done
@@ -51,7 +48,7 @@ if [ -z "$TARGET" ]; then
         esac
     else
         echo "ERROR: target required (PAB | JAJ | PAB_V3) when running non-interactively." >&2
-        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--no-super]" >&2
+        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
         exit 1
     fi
 fi

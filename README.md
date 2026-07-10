@@ -51,11 +51,10 @@ Connect to the USB port, then power on with the Force Recovery button held.
 ```
 ./flash.sh PAB
 ```
-By default `flash.sh` targets NVMe on an Orin Super module. Other layouts:
+By default `flash.sh` targets NVMe. Other storage layouts:
 ```
 ./flash.sh PAB --sdcard     # SD card (NVIDIA dev kit modules)
 ./flash.sh PAB --usb        # USB thumb drive
-./flash.sh PAB --no-super   # non-super module variant
 ```
 
 When flashing completes, SSH in over Micro USB or WiFi:
