@@ -105,6 +105,23 @@ if [ -d "$SCRIPT_DIR/staging" ]; then
     done
 fi
 
+# Flash prerequisites must land on the HOST: flash.sh runs natively (it needs
+# the USB port), while everything past the re-exec below may run inside the
+# ephemeral build container, where apt installs vanish with it. NVIDIA's
+# l4t_flash_prerequisites.sh list (+ its >= 20.04 additions lz4 and
+# python-is-python3); NVIDIA's flash tooling only pre-checks a few of these —
+# the rest fail mid-flash.
+if [ -z "$IN_BUILD_CONTAINER" ]; then
+    echo "Installing flash prerequisites"
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq abootimg binfmt-support binutils cpio cpp \
+        device-tree-compiler dosfstools file gdisk \
+        iproute2 iputils-ping lbzip2 libxml2-utils lz4 \
+        netcat-openbsd nfs-kernel-server openssl \
+        parted python-is-python3 python3-yaml qemu-user-static rsync sshpass \
+        udev usbutils uuid-runtime whois xmlstarlet xxd zstd zlib1g
+fi
+
 if needs_container; then
     run_in_container "$0" "$@"
 fi
