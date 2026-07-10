@@ -105,6 +105,16 @@ if [ -d "$SCRIPT_DIR/staging" ]; then
     done
 fi
 
+# Must install on the HOST, i.e. before the container re-exec below — apt
+# installs after it land in the ephemeral build container. flash.sh runs
+# natively (it needs the USB port), and NVIDIA's initrd-flash tooling uses
+# `strings` (binutils) with no upfront check: on a stock desktop install it
+# fails mid-flash with a raw command-not-found.
+if [ -z "$IN_BUILD_CONTAINER" ]; then
+    echo "Installing flash prerequisites"
+    sudo apt-get install -y -qq binutils
+fi
+
 if needs_container; then
     run_in_container "$0" "$@"
 fi
