@@ -278,18 +278,16 @@ jetson_devnum() {
     lsusb -d "0955:${JETSON_USB_PID}" 2>/dev/null | head -1 | awk '{print $2 "-" $4}' | tr -d ':'
 }
 
-# After the EEPROM probe's "reboot recovery", the MB2 applet resets the chip
-# asynchronously: until the reset actually happens the device still answers RCM
-# queries (the applet replies to UID reads), but an rcmboot download stalls at
-# "Sending mb1" — the failure seen on the production line. The one reliable,
-# non-invasive signal that the chip is back in download-ready BootROM recovery
-# is its USB re-enumeration, so wait for the device number to change instead of
-# poking it with more RCM sessions. The baseline ($1) must be sampled right
-# after the probe returns: the probe already re-enumerated the chip once
-# (BootROM → applet), so a pre-probe baseline is satisfied by that first
-# transition while the reset is still pending — the exact stall this wait
-# exists to prevent. The applet's enumeration outlives the probe by seconds,
-# so a post-probe sample reliably lands on it.
+# The EEPROM probe ends with "reboot recovery", but the MB2 applet only acks
+# it and can idle in that state indefinitely: it keeps answering RCM queries,
+# and the pending reset actually fires when the next download attempt pokes
+# it — the applet dies mid-download into BootROM recovery with nothing
+# written. A passive pre-flash wait therefore hangs on such modules, so the
+# replay flashes straight at the module, treats a fast first failure as that
+# poke, and uses this wait to bridge the crash to the re-enumeration before
+# retrying. $1 is the devnum the poked attempt talked to — the applet's,
+# sampled right after the probe returns (the probe's own BootROM → applet
+# transition makes any earlier sample stale).
 wait_for_module_reset() {
     local prev="$1" elapsed=0 now
     echo "Waiting for the module to reset back into recovery mode..."
@@ -301,7 +299,7 @@ wait_for_module_reset() {
             return 0
         fi
         if [ "$elapsed" -ge 300 ]; then
-            echo "ERROR: module did not reset within ${elapsed}s of the EEPROM probe." >&2
+            echo "ERROR: module did not come back into recovery mode within ${elapsed}s." >&2
             echo "Power-cycle the Jetson into recovery mode and rerun (or use --full)." >&2
             exit 1
         fi
@@ -562,13 +560,12 @@ elif [ -f "$GEN_MARKER" ] && [ -f tools/kernel_flash/initrdflashparam.txt ] && [
             echo "ERROR: EEPROM probe failed. Power-cycle the Jetson into recovery mode and retry." >&2
             exit 1
         fi
-        # Baseline for wait_for_module_reset: the applet's enumeration. Sample
-        # it immediately, before the applet's pending reset can land.
+        # The applet's enumeration — the reset-wait baseline for the replay's
+        # retry path (see wait_for_module_reset).
         POST_PROBE_DEVNUM=$(jetson_devnum)
         MODULE_KEY=$(module_key) || { echo "ERROR: cannot parse module EEPROM dump." >&2; exit 1; }
         if [ "$MODULE_KEY" = "$CACHED_KEY" ]; then
-            echo "Module matches the existing images. Flashing without regenerating once it resets."
-            wait_for_module_reset "$POST_PROBE_DEVNUM"
+            echo "Module matches the existing images. Flashing without regenerating (~5 min faster)."
             REPLAY=1
         else
             # No reset wait needed here: the full flash starts with NVIDIA's
@@ -583,17 +580,36 @@ fi
 if [ "$REPLAY" = "1" ]; then
     # Same invocation as the full flash plus --flash-only: the flasher replays
     # the recorded images instead of regenerating them.
-    if ! sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
-        --flash-only \
-        --external-device "$STORAGE_DEV" \
-        -p "-c ./$QSPI_CFG" \
-        -c "./$EXTERNAL_CFG" \
-        --showlogs --network usb0 \
-        "$FLASH_TARGET" "$STORAGE_DEV"; then
+    replay_flash() {
+        sudo ./tools/kernel_flash/l4t_initrd_flash.sh \
+            --flash-only \
+            --external-device "$STORAGE_DEV" \
+            -p "-c ./$QSPI_CFG" \
+            -c "./$EXTERNAL_CFG" \
+            --showlogs --network usb0 \
+            "$FLASH_TARGET" "$STORAGE_DEV"
+    }
+    replay_failed() {
         echo "" >&2
         echo "ERROR: flashing from existing images failed." >&2
         echo "Power-cycle the Jetson into recovery mode and rerun (add --full to regenerate the images from scratch)." >&2
         exit 1
+    }
+    replay_started=$(date +%s)
+    if ! replay_flash; then
+        # A fast failure after an EEPROM probe is the applet taking its
+        # deferred reset mid-download (see wait_for_module_reset): nothing was
+        # written and the module lands in BootROM recovery, so wait for it and
+        # flash again. Anything else — no probe ran (nothing can be holding a
+        # reset), or the flash died past the download phase — is a real
+        # failure.
+        replay_elapsed=$(( $(date +%s) - replay_started ))
+        if [ -z "${POST_PROBE_DEVNUM+x}" ] || [ "$replay_elapsed" -ge 60 ]; then
+            replay_failed
+        fi
+        echo "That failure was the module taking the EEPROM probe's deferred reset; retrying."
+        wait_for_module_reset "$POST_PROBE_DEVNUM"
+        replay_flash || replay_failed
     fi
 else
     # Drop the marker (and any stale EEPROM dump) before generating, so an
