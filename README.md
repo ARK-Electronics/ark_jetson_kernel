@@ -94,6 +94,7 @@ See [docs/cameras.md](docs/cameras.md) for supported sensors, overlay names, and
 - [docs/i2c.md](docs/i2c.md) — I2C bus map and scanning
 - [docs/servo_expander.md](docs/servo_expander.md) — PWM / servo output via the ARK Servo Expander (PCA9685) over I2C
 - [docs/10gbe_ethernet.md](docs/10gbe_ethernet.md) — Auvidea M20E 10GbE adapter
+- [docs/share_wifi.md](docs/share_wifi.md) — share the host PC's WiFi with the Jetson over USB
 - [docs/performance.md](docs/performance.md) — clock speeds and Super Mode
 - [docs/kernel_development.md](docs/kernel_development.md) — manual kernel builds and device tree changes
 - [docs/build_host.md](docs/build_host.md) — why the build pins to Ubuntu 22.04
