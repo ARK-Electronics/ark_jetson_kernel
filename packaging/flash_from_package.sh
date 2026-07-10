@@ -273,9 +273,12 @@ variant_name() {
 }
 
 # Bus/device number of the connected Jetson's current USB enumeration
-# (e.g. "003-012"). Changes when the chip resets and re-enumerates.
+# (e.g. "003-012"). Changes when the chip resets and re-enumerates; empty
+# while the chip is off the bus mid-reset. lsusb exits nonzero in that
+# window, which must not escape the pipeline: under set -e/pipefail it would
+# abort the script exactly in the state this function exists to observe.
 jetson_devnum() {
-    lsusb -d "0955:${JETSON_USB_PID}" 2>/dev/null | head -1 | awk '{print $2 "-" $4}' | tr -d ':'
+    { lsusb -d "0955:${JETSON_USB_PID}" 2>/dev/null || true; } | head -1 | awk '{print $2 "-" $4}' | tr -d ':'
 }
 
 # The EEPROM probe ends with "reboot recovery", but the MB2 applet only acks
@@ -295,7 +298,8 @@ wait_for_module_reset() {
         now=$(jetson_devnum)
         if [ -n "$now" ] && [ "$now" != "$prev" ]; then
             echo "Module re-enumerated after ${elapsed}s."
-            sleep 2
+            # Let the fresh BootROM settle before an RCM session opens on it.
+            sleep 5
             return 0
         fi
         if [ "$elapsed" -ge 300 ]; then
