@@ -11,7 +11,7 @@
  * (stock-enabled mttcan@c310000, module pins 143/145) routed through an on-board
  * TCAN1057A to the Pixhawk Payload Bus connector, UART0 moved from the M.2 Key E
  * Bluetooth pins to an external JST-GH, and the KSZ8795 ethernet switch replaced
- * by a Microchip LAN9646.
+ * by a Microchip LAN96455S.
  */
 
 #include <dt-bindings/pinctrl/pinctrl-tegra.h>
@@ -62,7 +62,9 @@
 	/delete-property/ hdcp_enabled;
 };
 
-/* SPI1 pin group for the LAN9646 management interface. */
+/* SPI1 pin group for the LAN96455S management interface.
+ * Module connector labels these pins SPI0; the SoC controller is SPI1
+ * (spi@3210000, pinmux spi1_*_pz3..pz6). */
 &{/bus@0/pinmux@2430000} {
 	spi1_default: spi1-default {
 		spi1-pins {
@@ -76,18 +78,19 @@
 	};
 };
 
-/* SPI1: LAN9646 ethernet switch management interface on CS0 (strapped for SPI
- * client mode). The R36 5.15 kernel has no LAN9646 driver (DSA support landed
- * upstream in 6.13), so nothing binds; the switch boots strap-configured and
- * forwards autonomously. The node reserves CS0 and documents the wiring so a
- * future BSP kernel picks it up. */
+/* SPI1: LAN96455S-I/8MW ethernet switch management interface on CS0.
+ * Strapped for SPI client (MGMT_MODE) and ROM boot; nRESET is module pin 211
+ * (GPIO09 / AUD_MCLK / PAC.06), held high by MB1 BCT. The R36 5.15 kernel has
+ * no LAN9645x DSA driver (upstream series targets 6.x), so nothing binds; the
+ * switch boots strap-configured and forwards autonomously. This node reserves
+ * CS0 and documents the wiring for a future BSP kernel. */
 &{/bus@0/spi@3210000} {
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&spi1_default>;
 
 	ethernet-switch@0 {
-		compatible = "microchip,lan9646";
+		compatible = "microchip,lan96455s";
 		reg = <0x0>;
 		spi-max-frequency = <50000000>;
 		reset-gpios = <&gpio TEGRA234_MAIN_GPIO(AC, 6) GPIO_ACTIVE_LOW>;
