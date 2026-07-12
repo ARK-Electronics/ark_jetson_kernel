@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * ARK PAB_CAN carrier device-tree delta.
+ *
+ * build.sh appends an #include of this file to the stock
+ * tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi, so it is layered last over the
+ * pristine BSP tree. Only ARK's delta lives here; everything else tracks the BSP.
+ * Per-SKU model strings are stamped separately from products/PAB_CAN/dtb_models.env.
+ *
+ * The carrier is the PAB_V3 with the IO MCU removed, the Jetson CAN controller
+ * (stock-enabled mttcan@c310000, module pins 143/145) routed through an on-board
+ * TCAN1057A to the Pixhawk Payload Bus connector, UART0 moved from the M.2 Key E
+ * Bluetooth pins to an external JST-GH, and the KSZ8795 ethernet switch replaced
+ * by a Microchip LAN9646.
+ */
+
+#include <dt-bindings/pinctrl/pinctrl-tegra.h>
+
+/* HDMI display: re-assigns display@13800000's nvidia,dcb-image with the HDMI blob. */
+#include "tegra234-dcb-p3737-0000-p3701-0000-hdmi.dtsi"
+
+/ {
+	aliases {
+		serial3 = &uartb;
+	};
+};
+
+/* UARTB is wired on the carrier but undefined by the stock SoC dtsi. Declared as an
+ * hsuart (not the tegra20-uart/8250 base) so it enumerates as /dev/ttyTHS*, like the
+ * other Tegra UARTs. Stays PIO — stock's gpcdma RX-DMA corrupts the hsuart RX stream
+ * at high baud (see UART-A below). */
+&{/bus@0} {
+	uartb: serial@3110000 {
+		compatible = "nvidia,tegra194-hsuart";
+		reg = <0x0 0x03110000 0x0 0x10000>;
+		interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&bpmp TEGRA234_CLK_UARTB>;
+		resets = <&bpmp TEGRA234_RESET_UARTB>;
+		reset-names = "serial";
+		status = "okay";
+	};
+};
+
+/* UART-A (ttyTHS1) inherits gpcdma RX/TX DMA from stock R36.5.0, and that DMA path
+ * corrupts the hsuart RX stream at 3 Mbaud. Force PIO, like UART-B. */
+&{/bus@0/serial@3100000} {
+	/delete-property/ dmas;
+	/delete-property/ dma-names;
+};
+
+/* HD-Audio is used on the carrier. */
+&{/bus@0/hda@3510000} {
+	status = "okay";
+};
+
+/* Hotplug detect line is active-low on the PAB_CAN carrier. Also drop the stock
+ * hdcp_enabled: it's inert on L4T (no HDCP) and triggers the JP6.2.2 DpAuxchCtrl DCE-RPC
+ * regression on the DP->HDMI path. Native HDMI here shouldn't hit it, but keep HDCP off
+ * across all carriers for consistency. */
+&{/display@13800000} {
+	os_gpio_hotplug_a = <&gpio TEGRA234_MAIN_GPIO(M, 0) GPIO_ACTIVE_LOW>;
+	/delete-property/ hdcp_enabled;
+};
+
+/* SPI1 pin group for the LAN9646 management interface. */
+&{/bus@0/pinmux@2430000} {
+	spi1_default: spi1-default {
+		spi1-pins {
+			nvidia,pins = "spi1_sck_pz3", "spi1_miso_pz4",
+				      "spi1_mosi_pz5", "spi1_cs0_pz6";
+			nvidia,function = "spi1";
+			nvidia,pull = <TEGRA_PIN_PULL_NONE>;
+			nvidia,tristate = <TEGRA_PIN_DISABLE>;
+			nvidia,enable-input = <TEGRA_PIN_ENABLE>;
+		};
+	};
+};
+
+/* SPI1: LAN9646 ethernet switch management interface on CS0 (strapped for SPI
+ * client mode). The R36 5.15 kernel has no LAN9646 driver (DSA support landed
+ * upstream in 6.13), so nothing binds; the switch boots strap-configured and
+ * forwards autonomously. The node reserves CS0 and documents the wiring so a
+ * future BSP kernel picks it up. */
+&{/bus@0/spi@3210000} {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi1_default>;
+
+	ethernet-switch@0 {
+		compatible = "microchip,lan9646";
+		reg = <0x0>;
+		spi-max-frequency = <50000000>;
+		reset-gpios = <&gpio TEGRA234_MAIN_GPIO(AC, 6) GPIO_ACTIVE_LOW>;
+		controller-data {
+			nvidia,enable-hw-based-cs;
+			nvidia,rx-clk-tap-delay = <0x10>;
+			nvidia,tx-clk-tap-delay = <0x0>;
+		};
+	};
+};
+
+/* Carrier USB port mapping: only usb3-0 (USB-C) is brought out. Stock wires
+ * usb3-1 for the devkit's second SS port; drop the port and disable its lane. */
+&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-1} {
+	status = "disabled";
+};
+
+&{/bus@0/padctl@3520000/ports} {
+	/delete-node/ usb3-1;
+	usb3-0 { nvidia,usb2-companion = <0>; };
+};
+
+&{/bus@0/usb@3550000} {
+	phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>;
+	phy-names = "usb2-0", "usb3-0";
+};
+
+&{/bus@0/usb@3610000} {
+	phys = <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-0}>,
+	       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-1}>,
+	       <&{/bus@0/padctl@3520000/pads/usb2/lanes/usb2-2}>,
+	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>;
+	phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0";
+};

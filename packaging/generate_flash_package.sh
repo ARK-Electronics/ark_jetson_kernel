@@ -23,17 +23,17 @@ TARGET=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        PAB|JAJ|PAB_V3) TARGET="$1"; shift ;;
+        PAB|JAJ|PAB_V3|PAB_CAN) TARGET="$1"; shift ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3>" >&2
+            echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3 | PAB_CAN>" >&2
             exit 1 ;;
     esac
 done
 
 if [ -z "$TARGET" ]; then
-    echo "ERROR: target required (PAB | JAJ | PAB_V3)." >&2
-    echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3>" >&2
+    echo "ERROR: target required (PAB | JAJ | PAB_V3 | PAB_CAN)." >&2
+    echo "Usage: ./generate_flash_package.sh <PAB | JAJ | PAB_V3 | PAB_CAN>" >&2
     exit 1
 fi
 
