@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Rootfs provisioning — runs during staging when build.sh is given --provision.
-# Env: ROOTFS_DIR (the staged rootfs), TARGET (PAB|JAJ|PAB_V3).
+# Env: ROOTFS_DIR (the staged rootfs), TARGET (PAB|JAJ|PAB_V3|PAB_CAN).
 #
 # /proc, /sys, /dev are bind-mounted and DNS is set up; /run is not, so ARK-OS's
 # postinst sees no running systemd and defers its runtime steps to first boot. The

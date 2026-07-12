@@ -28,7 +28,7 @@ Each product carries only the files it actually changes:
 
 - `bootloader/.../tegra234-mb*-bct-*-p3767-*.{dtsi,dts}` — the MB1/MB2 BCT pinmux, GPIO, pad-voltage and misc config for the carrier (ARK's Pinmux spreadsheet output). These are bootloader inputs, compiled separately from the kernel DTBs, so they stay as full files.
 - `source/hardware/nvidia/t23x/nv-public/nv-platform/ark-<target>-overrides.dtsi` — the **one fragment** holding every kernel-DTB change for the carrier (UARTB, USB topology, HDA, display, etc.), expressed as overrides (`&{/path} { ... }`) over the stock tree.
-- `source/.../nv-platform/tegra234-dcb-p3737-0000-p3701-0000-hdmi.dtsi` (JAJ, PAB_V3 only) — the HDMI display-control block the fragment `#include`s.
+- `source/.../nv-platform/tegra234-dcb-p3737-0000-p3701-0000-hdmi.dtsi` (JAJ, PAB_V3, PAB_CAN only) — the HDMI display-control block the fragment `#include`s.
 
 Model strings are **not** files — they live in `products/<target>/dtb_models.env`.
 

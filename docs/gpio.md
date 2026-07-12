@@ -1,6 +1,6 @@
 # GPIO on ARK Jetson Carriers
 
-Using GPIO pins on ARK JAJ / PAB / PAB_V3 carriers running JetPack 6 (L4T r36.x).
+Using GPIO pins on ARK JAJ / PAB / PAB_V3 / PAB_CAN carriers running JetPack 6 (L4T r36.x).
 
 ## TL;DR
 
@@ -25,7 +25,7 @@ I2S0 connector pins on **PAB** and **JAJ**, exposed as GPIO by default (configur
 
 `PAC.06` is on the AON GPIO controller, which retains state through SC7 suspend; main GPIO does not.
 
-On **PAB_V3**, `PAC.06` is reserved for the KSZ8795 ethernet switch reset and is driven HIGH by BCT — do not use as general GPIO.
+On **PAB_V3** and **PAB_CAN**, `PAC.06` is reserved for the ethernet switch reset (KSZ8795 on PAB_V3, LAN9646 on PAB_CAN) and is driven HIGH by BCT — do not use as general GPIO.
 
 ## Verify the lines
 
@@ -37,7 +37,7 @@ sudo gpioinfo | grep -E '"P(H\.07|I\.0[0-2]|AC\.06)"'
 
 All five show as `unused` **inputs** at idle — the four outputs held high by their pull-ups, DIN floating. Your app claims a line and sets its direction when it needs to drive or read.
 
-> **PAB** and **JAJ** wire this connector and ship it GPIO-by-default. **PAB_V3** does not route the I2S0 signals to a connector, so it has no connector GPIO here (and `PAC.06`/MCLK is its KSZ8795 ethernet reset — see above). The `ark_i2s_gpio` jetson-io overlay has been removed from all three.
+> **PAB** and **JAJ** wire this connector and ship it GPIO-by-default. **PAB_V3** and **PAB_CAN** do not route the I2S0 signals to a connector, so they have no connector GPIO here (and `PAC.06`/MCLK is their ethernet switch reset — see above). The `ark_i2s_gpio` jetson-io overlay has been removed from all carriers.
 
 ## Drive and read
 

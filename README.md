@@ -18,6 +18,7 @@ Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an AR
 | `PAB` | ARK Jetson PAB Carrier |
 | `JAJ` | ARK Just a Jetson Carrier |
 | `PAB_V3` | ARK Jetson PAB V3 Carrier |
+| `PAB_CAN` | ARK PAB CAN Jetson Carrier |
 
 ## Build & Flash
 
@@ -31,7 +32,7 @@ Download the BSP, root filesystem, and kernel source tarballs (one time):
 ```
 ./build.sh PAB --clean --provision
 ```
-- Targets are `PAB`, `JAJ`, `PAB_V3`, or `all`.
+- Targets are `PAB`, `JAJ`, `PAB_V3`, `PAB_CAN`, or `all`.
 - `--clean` wipes `staging/{TARGET}/` and re-stages from scratch.
 - `--provision` preinstalls [ARK-OS](https://github.com/ARK-Electronics/ARK-OS) and tooling into the image. Omit it for a bare image. To bake in your own packages, edit [`provision.sh`](provision.sh).
 
@@ -68,7 +69,7 @@ ssh jetson@jetson.local
 
 ## Cameras
 
-Every carrier ships with an IMX219 overlay already selected, so cameras work out of the box: the quad overlay on **PAB**, the dual overlay on **JAJ** and **PAB_V3**. To use a different camera, select an overlay with NVIDIA's `jetson-io` tool. List what's available:
+Every carrier ships with an IMX219 overlay already selected, so cameras work out of the box: the quad overlay on **PAB**, the dual overlay on **JAJ**, **PAB_V3**, and **PAB_CAN**. To use a different camera, select an overlay with NVIDIA's `jetson-io` tool. List what's available:
 ```
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
 ```
