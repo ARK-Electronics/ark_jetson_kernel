@@ -18,7 +18,7 @@ Tested and working in 2-lane mode.
 
 - **PAB**: Tested on all 4 CSI ports (quad overlay)
 - **JAJ / PAB_V3**: Tested on both CSI ports (dual overlay)
-- **PAB_CAN**: same dev-kit CSI wiring as PAB_V3 (dual overlay); not yet bench-tested
+- **PAB_CAN**: same dev-kit CSI wiring as PAB_V3 (dual overlay)
 
 ### Overlays
 
