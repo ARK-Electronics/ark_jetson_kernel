@@ -7,3 +7,6 @@
 tegra234-p3767-camera-p3768-imx219-dual.dtbo
 tegra234-p3767-camera-p3768-imx477-dual.dtbo
 tegra234-p3767-camera-p3768-imx708-dual.dtbo
+# e-con e-CAM81_CUONX (AR0821, YUV): dual = both ports 2-lane; 4lane = CAM1 only for 4K30.
+tegra234-p3767-camera-p3768-ar0821-dual.dtbo
+tegra234-p3767-camera-p3768-ar0821-4lane.dtbo
