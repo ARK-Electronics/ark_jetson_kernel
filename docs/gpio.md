@@ -25,7 +25,7 @@ I2S0 connector pins on **PAB** and **JAJ**, exposed as GPIO by default (configur
 
 `PAC.06` is on the AON GPIO controller, which retains state through SC7 suspend; main GPIO does not.
 
-On **PAB_V3** and **PAB_CAN**, `PAC.06` is reserved for the ethernet switch reset (KSZ8795 on PAB_V3, LAN96455S on PAB_CAN) and is driven HIGH by BCT — do not use as general GPIO.
+On **PAB_V3**, `PAC.06` is reserved for the KSZ8795 ethernet switch reset and is driven HIGH by BCT — do not use as general GPIO. On **PAB_CAN**, `PAC.06` is SWITCH_RSTn for the LAN96455S (module pin 211 / GPIO09): active-low nRESET with a board pull-up to 1.8V. BCT leaves the pad as a hi-Z input so the pull-up deasserts reset; do not drive the SoC pad high into the 1.8V net, and do not use it as general GPIO.
 
 ## Verify the lines
 
