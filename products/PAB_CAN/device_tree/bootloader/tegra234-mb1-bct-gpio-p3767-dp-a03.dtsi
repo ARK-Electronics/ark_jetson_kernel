@@ -39,9 +39,8 @@
 
 		gpio_main_default: default {
 			/* PAC.06 / GPIO09 = SWITCH_RSTn (LAN96455S nRESET, active-low).
-			 * Board pull-up to 1.8V deasserts reset when the pad is hi-Z.
-			 * Keep as input — do not drive high (3.3V into 1.8V net) or low
-			 * (would hold the switch in reset). */
+			 * Drive HIGH from MB1 so the switch is out of reset for unmanaged
+			 * ROM boot. Low = reset, high = run. Validated on bring-up. */
 			gpio-input = <
 				TEGRA234_MAIN_GPIO(B, 0)
 				TEGRA234_MAIN_GPIO(Y, 0)
@@ -65,7 +64,6 @@
 				TEGRA234_MAIN_GPIO(G, 0)
 				TEGRA234_MAIN_GPIO(G, 7)
 				TEGRA234_MAIN_GPIO(L, 2)
-				TEGRA234_MAIN_GPIO(AC, 6)
 				>;
 			gpio-output-low = <
 				TEGRA234_MAIN_GPIO(H, 0)
@@ -82,6 +80,7 @@
 			gpio-output-high = <
 				TEGRA234_MAIN_GPIO(Q, 3)
 				TEGRA234_MAIN_GPIO(G, 6)
+				TEGRA234_MAIN_GPIO(AC, 6)
 				TEGRA234_MAIN_GPIO(A, 0)
 				>;
 		};
