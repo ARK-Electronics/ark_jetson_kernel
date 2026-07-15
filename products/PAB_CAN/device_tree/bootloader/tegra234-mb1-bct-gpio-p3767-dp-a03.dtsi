@@ -39,8 +39,10 @@
 
 		gpio_main_default: default {
 			/* PAC.06 / GPIO09 = SWITCH_RSTn (LAN96455S nRESET, active-low).
-			 * Drive HIGH from MB1 so the switch is out of reset for unmanaged
-			 * ROM boot. Low = reset, high = run. Validated on bring-up. */
+			 * Hold LOW through MB1 so nRESET stays asserted while rails/clocks
+			 * come up. Kernel gpio-hog then drives HIGH (run), producing the
+			 * rising edge the chip needs to latch straps and start ROM boot.
+			 * Low = reset, high = run. */
 			gpio-input = <
 				TEGRA234_MAIN_GPIO(B, 0)
 				TEGRA234_MAIN_GPIO(Y, 0)
@@ -74,13 +76,13 @@
 				TEGRA234_MAIN_GPIO(I, 2)
 				TEGRA234_MAIN_GPIO(I, 5)
 				TEGRA234_MAIN_GPIO(AC, 0)
+				TEGRA234_MAIN_GPIO(AC, 6)
 				TEGRA234_MAIN_GPIO(K, 4)
 				TEGRA234_MAIN_GPIO(K, 5)
 				>;
 			gpio-output-high = <
 				TEGRA234_MAIN_GPIO(Q, 3)
 				TEGRA234_MAIN_GPIO(G, 6)
-				TEGRA234_MAIN_GPIO(AC, 6)
 				TEGRA234_MAIN_GPIO(A, 0)
 				>;
 		};
