@@ -82,9 +82,9 @@
  * Strapped for SPI client (MGMT_MODE=3) and ROM boot (BOOT_MODE=3).
  *
  * SWITCH_RSTn is module pin 211 (GPIO09 / AUD_MCLK / PAC.06), active-low
- * nRESET: low = reset, high = run. MB1 BCT drives PAC.06 high from power-on
- * so unmanaged ROM boot runs; a gpio-hog keeps it high for the life of Linux
- * (unused pads can otherwise be reconfigured). Board also has a 1.8V pull-up.
+ * nRESET: low = reset, high = run. MB1 BCT holds PAC.06 LOW through early
+ * boot; a gpio-hog then drives HIGH so the rising edge latches straps and
+ * starts unmanaged ROM boot. Leave the hog high for the life of Linux.
  *
  * Override stock spi@0 (tegra-spidev) so CS0 is not double-registered. R36
  * 5.15 has no LAN9645x DSA driver, so nothing binds; the node reserves CS0. */
@@ -106,7 +106,8 @@
 	};
 };
 
-/* Keep LAN96455S nRESET deasserted (high = run) for the life of the kernel. */
+/* Release SWITCH_RSTn after rails are up: BCT held it low; hog drives high
+ * (rising edge → strap latch + ROM boot) and keeps run for the kernel life. */
 &{/bus@0/gpio@2200000} {
 	lan96455s_reset_hog {
 		gpio-hog;
