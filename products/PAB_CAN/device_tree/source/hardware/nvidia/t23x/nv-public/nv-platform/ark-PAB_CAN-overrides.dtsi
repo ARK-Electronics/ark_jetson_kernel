@@ -82,13 +82,12 @@
  * Strapped for SPI client (MGMT_MODE=3) and ROM boot (BOOT_MODE=3).
  *
  * SWITCH_RSTn is module pin 211 (GPIO09 / AUD_MCLK / PAC.06), active-low
- * nRESET into the switch, board pull-up to 1.8V. Idle/hi-Z deasserts reset
- * (ROM boot runs); drive low only to assert reset. Do not SoC-drive the pad
- * high into the 1.8V net — leave PAC.06 as an unused input (BCT: gpio-input).
+ * nRESET: low = reset, high = run. MB1 BCT drives PAC.06 high from power-on
+ * so unmanaged ROM boot runs; a gpio-hog keeps it high for the life of Linux
+ * (unused pads can otherwise be reconfigured). Board also has a 1.8V pull-up.
  *
- * Override stock spi@0 (tegra-spidev) so CS0 is not double-registered with a
- * sibling ethernet-switch@0 node ("chipselect 0 already in use"). R36 5.15
- * has no LAN9645x DSA driver, so nothing binds; the node reserves CS0. */
+ * Override stock spi@0 (tegra-spidev) so CS0 is not double-registered. R36
+ * 5.15 has no LAN9645x DSA driver, so nothing binds; the node reserves CS0. */
 &{/bus@0/spi@3210000} {
 	status = "okay";
 	pinctrl-names = "default";
@@ -98,13 +97,22 @@
 		compatible = "microchip,lan96455s";
 		reg = <0x0>;
 		spi-max-frequency = <50000000>;
-		/* reset-gpios omitted until a driver owns PAC.06; 1.8V pull-up
-		 * holds nRESET deasserted while the SoC pad stays idle/input. */
+		/* reset-gpios owned by the hog below until a DSA driver lands. */
 		controller-data {
 			nvidia,enable-hw-based-cs;
 			nvidia,rx-clk-tap-delay = <0x10>;
 			nvidia,tx-clk-tap-delay = <0x0>;
 		};
+	};
+};
+
+/* Keep LAN96455S nRESET deasserted (high = run) for the life of the kernel. */
+&{/bus@0/gpio@2200000} {
+	lan96455s_reset_hog {
+		gpio-hog;
+		gpios = <TEGRA234_MAIN_GPIO(AC, 6) 0>;
+		output-high;
+		line-name = "lan96455s-reset-n";
 	};
 };
 
