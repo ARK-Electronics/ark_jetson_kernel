@@ -1,0 +1,495 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2022-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2023, e-con Systems. All rights reserved.
+
+/dts-v1/;
+/plugin/;
+
+#define CAM0_PWDN	TEGRA234_MAIN_GPIO(H, 6)
+#define CAM1_PWDN	TEGRA234_MAIN_GPIO(AC, 0)
+#define CAM_I2C_MUX	TEGRA234_AON_GPIO(CC, 3)
+
+#include <dt-bindings/tegra234-p3767-0000-common.h>
+
+/*
+ * e-con e-CAM81_CUONX (AR0821 + on-module ISP/MCU, UYVY out) on both CSI
+ * ports, 2 lanes each. Sensor/expander nodes and mode tables come from e-con's
+ * L4T 35.4.1 release; the CSI wiring (CAM0 = serial_a/port-index 0 with
+ * lane_polarity 6, CAM1 = serial_c/port-index 2) instead follows the
+ * flash-validated ARK IMX708/IMX219 dual overlays — e-con's devkit DT put
+ * CAM0 on serial_b, which contradicts the wiring proven to stream on JAJ.
+ */
+/ {
+	overlay-name = "Camera e-CAM81 Dual";
+	jetson-header-name = "Jetson 22pin CSI Connector";
+	compatible = JETSON_COMPATIBLE_P3768;
+
+	fragment-camera@0 {
+		target-path = "/";
+		__overlay__ {
+			tegra-capture-vi {
+				num-channels = <2>;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@0 {
+						reg = <0>;
+						ar0821_vi_in0: endpoint {
+							port-index = <0>;
+							bus-width = <2>;
+							remote-endpoint = <&ar0821_csi_out0>;
+						};
+					};
+					port@1 {
+						reg = <1>;
+						ar0821_vi_in1: endpoint {
+							port-index = <2>;
+							bus-width = <2>;
+							remote-endpoint = <&ar0821_csi_out1>;
+						};
+					};
+				};
+			};
+			tegra-camera-platform {
+				compatible = "nvidia, tegra-camera-platform";
+				num_csi_lanes = <4>;
+				max_lane_speed = <1500000>;
+				min_bits_per_pixel = <16>;
+				vi_peak_byte_per_pixel = <2>;
+				vi_bw_margin_pct = <25>;
+				max_pixel_rate = <240000>;
+				isp_peak_byte_per_pixel = <5>;
+				isp_bw_margin_pct = <25>;
+				modules {
+					module0 {
+						badge = "ark_ar0821_front_AR0821";
+						position = "front";
+						orientation = "1";
+						drivernode0 {
+							pcl_id = "v4l2_sensor";
+							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/cam_i2cmux/i2c@0/ecam_ar0821_a@42";
+						};
+					};
+					module1 {
+						badge = "ark_ar0821_rear_AR0821";
+						position = "rear";
+						orientation = "1";
+						drivernode0 {
+							pcl_id = "v4l2_sensor";
+							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/cam_i2cmux/i2c@1/ecam_ar0821_c@42";
+						};
+					};
+				};
+			};
+			bus@0 {
+				host1x@13e00000 {
+					nvcsi@15a00000 {
+						num-channels = <2>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						status = "okay";
+						channel@0 {
+							reg = <0>;
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									ar0821_csi_in0: endpoint@0 {
+										port-index = <0>;
+										bus-width = <2>;
+										remote-endpoint = <&ar0821_out0>;
+									};
+								};
+								port@1 {
+									reg = <1>;
+									ar0821_csi_out0: endpoint@1 {
+										remote-endpoint = <&ar0821_vi_in0>;
+									};
+								};
+							};
+						};
+						channel@1 {
+							reg = <1>;
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									ar0821_csi_in1: endpoint@2 {
+										port-index = <2>;
+										bus-width = <2>;
+										remote-endpoint = <&ar0821_out1>;
+									};
+								};
+								port@1 {
+									reg = <1>;
+									ar0821_csi_out1: endpoint@3 {
+										remote-endpoint = <&ar0821_vi_in1>;
+									};
+								};
+							};
+						};
+					};
+				};
+				cam_i2cmux {
+					status = "okay";
+					compatible = "i2c-mux-gpio";
+					#address-cells = <1>;
+					#size-cells = <0>;
+					i2c-parent = <&cam_i2c>;
+					mux-gpios = <&gpio_aon CAM_I2C_MUX GPIO_ACTIVE_HIGH>;
+					i2c@0 {
+						status = "okay";
+						reg = <0>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+						/* Disable the baked-default IMX219 dual on the shared camera i2c-mux so only the AR0821 is active. */
+						rbpcv2_imx219_a@10 {
+							status = "disabled";
+						};
+
+						/* GPIO expander on the e-con ACC-RB-WTB-ADP adapter board. The PCA6408A is
+						 * register-compatible with the TCA6408 the stock pca953x driver matches.
+						 * Pins 0 (MCU BOOT0) and 1 (CAM_RESET) are driven by the ar0821 driver and
+						 * must stay out of the hog; the rest (incl. pin 4 = TRIGGER) idle low, pin 7
+						 * high, matching e-con's power-on defaults. */
+						pca6408_a: pca6408@20 {
+							compatible = "ti,tca6408";
+							gpio-controller;
+							#gpio-cells = <2>;
+							reg = <0x20>;
+							status = "okay";
+							pca6408-outlow {
+								gpio-hog;
+								gpios = <2 0 3 0 4 0 5 0 6 0 7 1>;
+								output-low;
+							};
+						};
+
+						ecam_ar0821_a@42 {
+							status = "okay";
+							compatible = "nvidia,ar0821";
+							reg = <0x42>;
+							devnode = "video0";
+							physical_w = "3.680";
+							physical_h = "2.760";
+							sensor_model = "ar0821";
+							camera_mipi_lanes = <2>;
+							camera-mipi-clk = <1200>;
+							disable-framesync;
+							reset-gpios = <&pca6408_a 1 GPIO_ACTIVE_HIGH>;
+							pwdn-gpios = <&pca6408_a 0 GPIO_ACTIVE_HIGH>;
+
+							mode0 { /* AR0821_MODE_1280x720 */
+								mclk_khz = "24000";
+								num_lanes = "2";
+								tegra_sinterface = "serial_a";
+								lane_polarity = "6";
+								phy_mode = "DPHY";
+								discontinuous_clk = "no";
+								dpcm_enable = "false";
+								cil_settletime = "0";
+								dynamic_pixel_bit_depth = "16";
+								csi_pixel_bit_depth = "16";
+								mode_type = "yuv";
+								active_w = "1280";
+								active_h = "720";
+								pixel_phase = "uyvy";
+								readout_orientation = "90";
+								line_length = "1280";
+								inherent_gain = "1";
+								mclk_multiplier = "9.33";
+								pix_clk_hz = "150000000";
+
+								min_gain_val = "16";
+								max_gain_val = "170"; /* 10.66x */
+								step_gain_val = "1";
+								default_gain = "16"; /* 1.00x */
+								min_hdr_ratio = "1";
+								max_hdr_ratio = "1";
+								min_framerate = "2000000"; /* 2.0 fps */
+								max_framerate = "120000000";
+								step_framerate = "1";
+								default_framerate = "120000000";
+								min_exp_time = "13"; /* us */
+								max_exp_time = "683709"; /* us */
+
+								embedded_metadata_height = "0";
+							};
+							mode1 { /* AR0821_MODE_1920x1080 */
+								mclk_khz = "24000";
+								num_lanes = "2";
+								tegra_sinterface = "serial_a";
+								lane_polarity = "6";
+								phy_mode = "DPHY";
+								discontinuous_clk = "no";
+								dpcm_enable = "false";
+								cil_settletime = "0";
+								dynamic_pixel_bit_depth = "16";
+								csi_pixel_bit_depth = "16";
+								active_w = "1920";
+								active_h = "1080";
+								pixel_phase = "uyvy";
+								mode_type = "yuv";
+								readout_orientation = "90";
+								line_length = "1920";
+								inherent_gain = "1";
+								mclk_multiplier = "9.33";
+								pix_clk_hz = "150000000";
+
+								min_gain_val = "16";
+								max_gain_val = "170";
+								step_gain_val = "1";
+								default_gain = "16";
+
+								min_hdr_ratio = "1";
+								max_hdr_ratio = "1";
+								min_framerate = "2000000"; /* 2.0 fps */
+								max_framerate = "120000000";
+								step_framerate = "1";
+								default_framerate = "7000000";
+
+								min_exp_time = "13";
+								max_exp_time = "683709";
+								step_exp_time = "1";
+								default_exp_time = "2495";
+
+								embedded_metadata_height = "0";
+							};
+							mode2 { /* AR0821_MODE_3840x2160 */
+								mclk_khz = "24000";
+								num_lanes = "2";
+								tegra_sinterface = "serial_a";
+								lane_polarity = "6";
+								phy_mode = "DPHY";
+								discontinuous_clk = "no";
+								dpcm_enable = "false";
+								cil_settletime = "0";
+								csi_pixel_bit_depth = "16";
+								active_w = "3840";
+								active_h = "2160";
+								pixel_phase = "uyvy";
+								mode_type = "yuv";
+								readout_orientation = "90";
+								line_length = "3840";
+								inherent_gain = "1";
+								mclk_multiplier = "9.33";
+								pix_clk_hz = "150000000";
+
+								gain_factor = "16";
+								framerate_factor = "1000000";
+								exposure_factor = "1000000";
+
+								min_gain_val = "16";
+								max_gain_val = "170"; /* 10.66x */
+								step_gain_val = "1";
+								default_gain = "16";
+								min_hdr_ratio = "1";
+								max_hdr_ratio = "1";
+								min_framerate = "2000000"; /* 2.0 fps */
+								max_framerate = "12000000"; /* 12.0 fps */
+								default_framerate = "12000000";
+								step_framerate = "1";
+								min_exp_time = "13"; /* us */
+								max_exp_time = "683709"; /* us */
+								step_exp_time = "1";
+								default_exp_time = "2495";
+								embedded_metadata_height = "0";
+							};
+
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									ar0821_out0: endpoint {
+										status = "okay";
+										port-index = <0>;
+										bus-width = <2>;
+										remote-endpoint = <&ar0821_csi_in0>;
+									};
+								};
+							};
+						};
+					};
+					i2c@1 {
+						status = "okay";
+						reg = <1>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+
+						rbpcv2_imx219_c@10 {
+							status = "disabled";
+						};
+
+						pca6408_b: pca6408@20 {
+							compatible = "ti,tca6408";
+							gpio-controller;
+							#gpio-cells = <2>;
+							reg = <0x20>;
+							status = "okay";
+							pca6408-outlow {
+								gpio-hog;
+								gpios = <2 0 3 0 4 0 5 0 6 0 7 1>;
+								output-low;
+							};
+						};
+
+						ecam_ar0821_c@42 {
+							status = "okay";
+							compatible = "nvidia,ar0821";
+							reg = <0x42>;
+							devnode = "video1";
+							physical_w = "3.680";
+							physical_h = "2.760";
+							sensor_model = "ar0821";
+							camera_mipi_lanes = <2>;
+							camera-mipi-clk = <1200>;
+							disable-framesync;
+							reset-gpios = <&pca6408_b 1 GPIO_ACTIVE_HIGH>;
+							pwdn-gpios = <&pca6408_b 0 GPIO_ACTIVE_HIGH>;
+
+							mode0 { /* AR0821_MODE_1280x720 */
+								mclk_khz = "24000";
+								num_lanes = "2";
+								tegra_sinterface = "serial_c";
+								phy_mode = "DPHY";
+								discontinuous_clk = "no";
+								dpcm_enable = "false";
+								cil_settletime = "0";
+								dynamic_pixel_bit_depth = "16";
+								csi_pixel_bit_depth = "16";
+								mode_type = "yuv";
+								active_w = "1280";
+								active_h = "720";
+								pixel_phase = "uyvy";
+								readout_orientation = "90";
+								line_length = "1280";
+								inherent_gain = "1";
+								mclk_multiplier = "9.33";
+								pix_clk_hz = "150000000";
+
+								min_gain_val = "16";
+								max_gain_val = "170"; /* 10.66x */
+								step_gain_val = "1";
+								default_gain = "16"; /* 1.00x */
+								min_hdr_ratio = "1";
+								max_hdr_ratio = "1";
+								min_framerate = "2000000"; /* 2.0 fps */
+								max_framerate = "120000000";
+								step_framerate = "1";
+								default_framerate = "120000000";
+								min_exp_time = "13"; /* us */
+								max_exp_time = "683709"; /* us */
+
+								embedded_metadata_height = "0";
+							};
+							mode1 { /* AR0821_MODE_1920x1080 */
+								mclk_khz = "24000";
+								num_lanes = "2";
+								tegra_sinterface = "serial_c";
+								phy_mode = "DPHY";
+								discontinuous_clk = "no";
+								dpcm_enable = "false";
+								cil_settletime = "0";
+								dynamic_pixel_bit_depth = "16";
+								csi_pixel_bit_depth = "16";
+								active_w = "1920";
+								active_h = "1080";
+								pixel_phase = "uyvy";
+								mode_type = "yuv";
+								readout_orientation = "90";
+								line_length = "1920";
+								inherent_gain = "1";
+								mclk_multiplier = "9.33";
+								pix_clk_hz = "150000000";
+
+								min_gain_val = "16";
+								max_gain_val = "170";
+								step_gain_val = "1";
+								default_gain = "16";
+
+								min_hdr_ratio = "1";
+								max_hdr_ratio = "1";
+								min_framerate = "2000000"; /* 2.0 fps */
+								max_framerate = "120000000";
+								step_framerate = "1";
+								default_framerate = "7000000";
+
+								min_exp_time = "13";
+								max_exp_time = "683709";
+								step_exp_time = "1";
+								default_exp_time = "2495";
+
+								embedded_metadata_height = "0";
+							};
+							mode2 { /* AR0821_MODE_3840x2160 */
+								mclk_khz = "24000";
+								num_lanes = "2";
+								tegra_sinterface = "serial_c";
+								phy_mode = "DPHY";
+								discontinuous_clk = "no";
+								dpcm_enable = "false";
+								cil_settletime = "0";
+								csi_pixel_bit_depth = "16";
+								active_w = "3840";
+								active_h = "2160";
+								pixel_phase = "uyvy";
+								mode_type = "yuv";
+								readout_orientation = "90";
+								line_length = "3840";
+								inherent_gain = "1";
+								mclk_multiplier = "9.33";
+								pix_clk_hz = "150000000";
+
+								gain_factor = "16";
+								framerate_factor = "1000000";
+								exposure_factor = "1000000";
+
+								min_gain_val = "16";
+								max_gain_val = "170"; /* 10.66x */
+								step_gain_val = "1";
+								default_gain = "16";
+								min_hdr_ratio = "1";
+								max_hdr_ratio = "1";
+								min_framerate = "2000000"; /* 2.0 fps */
+								max_framerate = "12000000"; /* 12.0 fps */
+								default_framerate = "12000000";
+								step_framerate = "1";
+								min_exp_time = "13"; /* us */
+								max_exp_time = "683709"; /* us */
+								step_exp_time = "1";
+								default_exp_time = "2495";
+								embedded_metadata_height = "0";
+							};
+
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									ar0821_out1: endpoint {
+										status = "okay";
+										port-index = <2>;
+										bus-width = <2>;
+										remote-endpoint = <&ar0821_csi_in1>;
+									};
+								};
+							};
+						};
+					};
+				};
+				gpio@2200000 {
+					camera-control-output-low {
+						gpio-hog;
+						output-low;
+						gpios = <CAM0_PWDN 0 CAM1_PWDN 0>;
+						label = "cam0-pwdn", "cam1-pwdn";
+					};
+				};
+			};
+		};
+	};
+};

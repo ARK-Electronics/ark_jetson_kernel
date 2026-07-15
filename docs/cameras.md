@@ -9,8 +9,9 @@ This document covers tested camera sensors, available device tree overlays, and 
 | IMX219 | 2     | 3280x2464  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 | IMX477 | 2     | 4056x3040  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 | IMX708 | 2     | 4608x2592  | dual (JAJ/PAB_V3), quad (PAB) | Working |
+| AR0821 (e-con e-CAM81_CUONX) | 2 or 4 | 3840x2160 | dual + 4lane (JAJ only) | Ported, pending hardware validation |
 
-Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports).
+Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports). The e-CAM81 is the exception so far: JAJ-only, with a dual (2-lane) and a CAM1-only 4-lane overlay.
 
 ## IMX219 (Sony, 8MP)
 
@@ -55,6 +56,17 @@ Driver is RidgeRun's `nv_imx708`, vendored under `kernel_overlay/`. One 10-bit m
 |---------|----------|-------|
 | Dual    | `tegra234-p3767-camera-p3768-imx708-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
 | Quad    | `tegra234-p3767-camera-p3768-imx708-quad.dtbo` | All 4 ports (PAB) |
+
+## e-CAM81_CUONX (e-con Systems, 8MP AR0821)
+
+YUV camera with on-module ISP + MCU — streams UYVY through `v4l2src`/`nvv4l2camerasrc`, **not** `nvarguscamerasrc`, and exposes its image controls (HDR modes, exposure, WB, trigger, ...) as MCU-backed V4L2 controls. Driver is e-con's `ar0821_module`, vendored and ported under `kernel_overlay/`.
+
+| Overlay | Filename | Ports |
+|---------|----------|-------|
+| Dual    | `tegra234-p3767-camera-p3768-ar0821-dual.dtbo` | CAM0 + CAM1, 2-lane (4K ~16fps) |
+| 4-lane  | `tegra234-p3767-camera-p3768-ar0821-4lane.dtbo` | CAM1 only, 4-lane (4K30) |
+
+Full hookup, control, and pipeline documentation: [docs/cameras/econ-cam81/README.md](cameras/econ-cam81/README.md).
 
 ## Installing a Camera Overlay
 

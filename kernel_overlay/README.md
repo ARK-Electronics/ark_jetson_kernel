@@ -17,6 +17,13 @@ anything added here survives `--clean` and BSP bumps, unlike a hand-edit of
   Arducam Camera Module 3), from RidgeRun's open-access driver. Registered in the
   OOT media Makefile by `build.sh`; the matching device-tree overlays live under
   `products/*/device_tree/`.
+- `nvidia-oot/drivers/media/i2c/ar0821_module.c`, `ar0821.h`, `mcu_firmware.h`,
+  `ar0821_dev.txt` — e-con Systems e-CAM81_CUONX camera driver (AR0821 behind an
+  on-module ISP/MCU, UYVY out; `ar0821_dev.txt` is the embedded MCU firmware the
+  driver flashes over I2C on version mismatch). Vendored from e-con's L4T 35.4.1
+  release and ported to the r36 kernel/OOT APIs; the header of `ar0821_module.c`
+  lists the delta. Registered in the OOT media Makefile by `build.sh`; overlays
+  live in `products/JAJ/overlay/`. Usage: `docs/cameras/econ-cam81/README.md`.
 
 ## Adding a driver
 

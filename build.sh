@@ -355,6 +355,17 @@ if [ -d "$SCRIPT_DIR/kernel_overlay" ]; then
         fi
         sed -i '/^obj-m += nv_imx477.o/a obj-m += nv_imx708.o' "$OOT_I2C_MAKEFILE"
     fi
+
+    # Register the e-CAM81 (AR0821) driver the same way, anchored on the line above.
+    if ! grep -q 'ar0821_module.o' "$OOT_I2C_MAKEFILE"; then
+        if ! grep -q '^obj-m += nv_imx708.o' "$OOT_I2C_MAKEFILE"; then
+            echo "ERROR: anchor 'obj-m += nv_imx708.o' not found in" >&2
+            echo "       $OOT_I2C_MAKEFILE — OOT Makefile layout changed;" >&2
+            echo "       refusing to build without the AR0821 driver registered." >&2
+            exit 1
+        fi
+        sed -i '/^obj-m += nv_imx708.o/a obj-m += ar0821_module.o' "$OOT_I2C_MAKEFILE"
+    fi
 fi
 
 # ── Stage ARK device-tree overlays ───────────────────────────────────────────
