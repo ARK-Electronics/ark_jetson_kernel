@@ -11,7 +11,7 @@
 set -e
 
 if [ $# -lt 2 ]; then
-    echo "Usage: ./publish_release.sh <PAB | JAJ | PAB_V3> <version>"
+    echo "Usage: ./publish_release.sh <PAB | JAJ | PAB_V3 | PAB_CAN> <version>"
     echo "  e.g. ./publish_release.sh PAB 6.2.1.1"
     echo ""
     echo "Creates and pushes a tag — CI handles the rest."
@@ -24,9 +24,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 case "$TARGET" in
-    PAB|JAJ|PAB_V3) ;;
+    PAB|JAJ|PAB_V3|PAB_CAN) ;;
     *)
-        echo "ERROR: Invalid target '$TARGET'. Must be PAB, JAJ, or PAB_V3."
+        echo "ERROR: Invalid target '$TARGET'. Must be PAB, JAJ, PAB_V3, or PAB_CAN."
         exit 1
         ;;
 esac

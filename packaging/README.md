@@ -9,6 +9,7 @@ This document covers how flash packages are generated, released, and consumed. E
 | PAB | ARK Jetson PAB Carrier | `pab-` |
 | JAJ | ARK Just a Jetson Carrier | `jaj-` |
 | PAB_V3 | ARK Jetson PAB V3 Carrier | `pab-v3-` |
+| PAB_CAN | ARK PAB CAN Jetson Carrier | `pab-can-` |
 
 Each carrier has its own device tree. A flash package built for one carrier will not work on another.
 

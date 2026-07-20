@@ -18,7 +18,7 @@
 #
 # Usage:
 #   ./flash_from_package.sh <tag>             # specific release (e.g. pab-6.2.1.1); auto-detects a draft of that tag
-#   ./flash_from_package.sh <product>         # latest published release for a product (pab, jaj, pab-v3)
+#   ./flash_from_package.sh <product>         # latest published release for a product (pab, jaj, pab-v3, pab-can)
 #   ./flash_from_package.sh <product> --draft # latest DRAFT release for a product (needs gh read access)
 #   ./flash_from_package.sh <tag> --full      # regenerate images even if cached ones match
 #   ./flash_from_package.sh --clean           # remove all cached data
@@ -36,6 +36,7 @@ usage() {
     echo "  $(basename "$0") pab             Flash the latest PAB release"
     echo "  $(basename "$0") jaj             Flash the latest JAJ release"
     echo "  $(basename "$0") pab-v3          Flash the latest PAB_V3 release"
+    echo "  $(basename "$0") pab-can         Flash the latest PAB_CAN release"
     echo "  $(basename "$0") pab-v3 --draft  Flash the latest PAB_V3 DRAFT (needs gh read access)"
     echo "  $(basename "$0") pab --full      Regenerate flash images even if cached ones match"
     echo "  $(basename "$0") --clean         Remove all cached data"
@@ -46,7 +47,7 @@ usage() {
 
 is_product_name() {
     case "$1" in
-        pab|jaj|pab-v3) return 0 ;;
+        pab|jaj|pab-v3|pab-can) return 0 ;;
         *) return 1 ;;
     esac
 }

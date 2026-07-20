@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./build.sh <PAB|JAJ|PAB_V3|all> [--clean] [--provision]
+# Usage: ./build.sh <PAB|JAJ|PAB_V3|PAB_CAN|all> [--clean] [--provision]
 #   --clean      wipe staging/{TARGET}/ and re-stage from downloads before building
 #   --provision  install ARK-OS into the rootfs (staging only: first build or --clean)
 #
@@ -21,13 +21,13 @@ TARGET=""
 
 for arg in "$@"; do
     case "$arg" in
-        PAB|JAJ|PAB_V3) TARGET="$arg" ;;
+        PAB|JAJ|PAB_V3|PAB_CAN) TARGET="$arg" ;;
         all)            TARGET="all" ;;
         --clean)        CLEAN=1 ;;
         --provision)    PROVISION=1 ;;
         *)
             echo "Invalid argument: $arg" >&2
-            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--clean] [--provision]" >&2
+            echo "Usage: $0 <PAB | JAJ | PAB_V3 | PAB_CAN | all> [--clean] [--provision]" >&2
             exit 1
             ;;
     esac
@@ -40,18 +40,20 @@ if [ -z "$TARGET" ]; then
         echo "1) PAB"
         echo "2) JAJ"
         echo "3) PAB_V3"
-        echo "4) all"
-        read -p "Enter your choice (1-4): " choice
+        echo "4) PAB_CAN"
+        echo "5) all"
+        read -p "Enter your choice (1-5): " choice
         case $choice in
-            1|PAB)    TARGET="PAB" ;;
-            2|JAJ)    TARGET="JAJ" ;;
-            3|PAB_V3) TARGET="PAB_V3" ;;
-            4|all)    TARGET="all" ;;
+            1|PAB)     TARGET="PAB" ;;
+            2|JAJ)     TARGET="JAJ" ;;
+            3|PAB_V3)  TARGET="PAB_V3" ;;
+            4|PAB_CAN) TARGET="PAB_CAN" ;;
+            5|all)     TARGET="all" ;;
             *) echo "Invalid choice. Exiting."; exit 1 ;;
         esac
     else
-        echo "ERROR: target required (PAB | JAJ | PAB_V3 | all) when running non-interactively." >&2
-        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--clean] [--provision]" >&2
+        echo "ERROR: target required (PAB | JAJ | PAB_V3 | PAB_CAN | all) when running non-interactively." >&2
+        echo "Usage: $0 <PAB | JAJ | PAB_V3 | PAB_CAN | all> [--clean] [--provision]" >&2
         exit 1
     fi
 fi
@@ -96,7 +98,7 @@ sudo -v
 
 if [ "$TARGET" = "all" ]; then
     trap 'echo ""; echo "Aborted."; exit 130' INT
-    for t in PAB JAJ PAB_V3; do
+    for t in PAB JAJ PAB_V3 PAB_CAN; do
         echo ""
         echo "========================================="
         echo "  Building $t"

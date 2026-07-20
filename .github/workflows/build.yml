@@ -7,6 +7,7 @@ on:
       - 'pab-[0-9]*'
       - 'jaj-[0-9]*'
       - 'pab-v3-[0-9]*'
+      - 'pab-can-[0-9]*'
   pull_request:
 
 concurrency:
@@ -42,8 +43,9 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           case "$TAG" in
-            pab-v3-*) PRODUCT="pab-v3"; VERSION="${TAG#pab-v3-}"; TARGET="PAB_V3" ;;
-            pab-*)    PRODUCT="pab";    VERSION="${TAG#pab-}";    TARGET="PAB" ;;
+            pab-v3-*)  PRODUCT="pab-v3";  VERSION="${TAG#pab-v3-}";  TARGET="PAB_V3" ;;
+            pab-can-*) PRODUCT="pab-can"; VERSION="${TAG#pab-can-}"; TARGET="PAB_CAN" ;;
+            pab-*)     PRODUCT="pab";     VERSION="${TAG#pab-}";     TARGET="PAB" ;;
             jaj-*)    PRODUCT="jaj";    VERSION="${TAG#jaj-}";    TARGET="JAJ" ;;
             *) echo "::error::Unrecognized tag format: $TAG"; exit 1 ;;
           esac

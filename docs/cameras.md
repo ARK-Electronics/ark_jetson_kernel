@@ -6,11 +6,11 @@ This document covers tested camera sensors, available device tree overlays, and 
 
 | Sensor | Lanes | Resolution | Overlays | Status |
 |--------|-------|------------|----------|--------|
-| IMX219 | 2     | 3280x2464  | dual (JAJ/PAB_V3), quad (PAB) | Working |
-| IMX477 | 2     | 4056x3040  | dual (JAJ/PAB_V3), quad (PAB) | Working |
-| IMX708 | 2     | 4608x2592  | dual (JAJ/PAB_V3), quad (PAB) | Working |
+| IMX219 | 2     | 3280x2464  | dual (JAJ/PAB_V3/PAB_CAN), quad (PAB) | Working |
+| IMX477 | 2     | 4056x3040  | dual (JAJ/PAB_V3/PAB_CAN), quad (PAB) | Working |
+| IMX708 | 2     | 4608x2592  | dual (JAJ/PAB_V3/PAB_CAN), quad (PAB) | Working |
 
-Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports).
+Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 / PAB_CAN (two CSI ports), quad on PAB (four CSI ports).
 
 ## IMX219 (Sony, 8MP)
 
@@ -18,12 +18,13 @@ Tested and working in 2-lane mode.
 
 - **PAB**: Tested on all 4 CSI ports (quad overlay)
 - **JAJ / PAB_V3**: Tested on both CSI ports (dual overlay)
+- **PAB_CAN**: same dev-kit CSI wiring as PAB_V3 (dual overlay)
 
 ### Overlays
 
 | Overlay | Filename | Ports |
 |---------|----------|-------|
-| Dual    | `tegra234-p3767-camera-p3768-imx219-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3 default) |
+| Dual    | `tegra234-p3767-camera-p3768-imx219-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3/PAB_CAN default) |
 | Quad    | `tegra234-p3767-camera-p3768-imx219-quad.dtbo` | All 4 ports (PAB default) |
 
 ## IMX477 (Sony Starvis, 12.3MP)
@@ -34,7 +35,7 @@ Tested and working in 2-lane mode on all carrier boards.
 
 | Overlay | Filename | Ports |
 |---------|----------|-------|
-| Dual    | `tegra234-p3767-camera-p3768-imx477-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
+| Dual    | `tegra234-p3767-camera-p3768-imx477-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3/PAB_CAN) |
 | Quad    | `tegra234-p3767-camera-p3768-imx477-quad.dtbo` | All 4 ports (PAB) |
 
 The quad overlay is new and not yet hardware-validated: it pairs the port wiring of the IMX219 quad (the PAB default) with the sensor modes of the retired single overlay.
@@ -53,7 +54,7 @@ Driver is RidgeRun's `nv_imx708`, vendored under `kernel_overlay/`. One 10-bit m
 
 | Overlay | Filename | Ports |
 |---------|----------|-------|
-| Dual    | `tegra234-p3767-camera-p3768-imx708-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
+| Dual    | `tegra234-p3767-camera-p3768-imx708-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3/PAB_CAN) |
 | Quad    | `tegra234-p3767-camera-p3768-imx708-quad.dtbo` | All 4 ports (PAB) |
 
 ## Installing a Camera Overlay
@@ -66,7 +67,7 @@ The overlays ARK ships live under `products/<TARGET>/overlay/` (the `.dts`/`.dts
 
 Build the overlay DTBs (from host):
 ```
-./build.sh PAB   # or JAJ, PAB_V3
+./build.sh PAB   # or JAJ, PAB_V3, PAB_CAN
 ```
 
 Copy the overlay to the Jetson:
