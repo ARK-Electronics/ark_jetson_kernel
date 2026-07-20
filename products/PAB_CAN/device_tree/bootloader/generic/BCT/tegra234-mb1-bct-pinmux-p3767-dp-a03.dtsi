@@ -955,7 +955,8 @@
 				nvidia,lpdr = <TEGRA_PIN_DISABLE>;
 			};
 
-			/* SWITCH_RSTn (GPIO09): driven output, held high by MB1 GPIO BCT. */
+			/* SWITCH_RSTn (GPIO09): driven output. MB1 GPIO BCT holds it low
+			 * (reset); the kernel gpio-hog then drives it high (run). */
 			soc_gpio59_pac6 {
 				nvidia,pins = "soc_gpio59_pac6";
 				nvidia,function = "rsvd2";
