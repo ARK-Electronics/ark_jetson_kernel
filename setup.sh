@@ -4,8 +4,8 @@
 #   --force, -y   Skip confirmation prompts (intended for CI / scripted runs).
 #
 # Downloads the NVIDIA L4T BSP, sample root filesystem, public kernel sources,
-# and the bootlin cross-toolchain into a local cache (downloads/).  Does NOT
-# extract or configure anything — that happens per-product in build.sh.
+# and the cross-toolchain into a local cache (downloads/).  Does NOT extract or
+# configure anything — that happens per-product in build.sh.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export ARK_JETSON_KERNEL_DIR="$SCRIPT_DIR"
@@ -182,17 +182,23 @@ download_with_retry "$PUBLIC_SOURCES_URL" "$DOWNLOADS_DIR" "$PUBLIC_SOURCES_FILE
 echo "Installing build prerequisites"
 sudo apt-get install -y -qq make build-essential bc flex bison libssl-dev
 
-# Toolchain
+# Toolchain (Crosstool-NG x-tools for JP7 / L4T R39)
 mkdir -p "$HOME/l4t-gcc"
 TOOLCHAIN_FILENAME=$(basename "$TOOLCHAIN_URL")
-TOOLCHAIN_DIRNAME=${TOOLCHAIN_FILENAME%.tar.bz2}
+# Marker: the gcc binary under the extracted tree (handles both .tbz2 and .tar.bz2 names).
+TOOLCHAIN_GCC="$HOME/l4t-gcc/${TOOLCHAIN_CROSS_PREFIX}gcc"
 
-if [ ! -d "$HOME/l4t-gcc/$TOOLCHAIN_DIRNAME" ]; then
+if [ ! -x "$TOOLCHAIN_GCC" ]; then
     download_with_retry "$TOOLCHAIN_URL" "$HOME/l4t-gcc"
-    echo "Extracting bootlin toolchain"
+    echo "Extracting cross-toolchain"
     tar xf "$HOME/l4t-gcc/$TOOLCHAIN_FILENAME" -C "$HOME/l4t-gcc/"
+    if [ ! -x "$TOOLCHAIN_GCC" ]; then
+        echo "ERROR: toolchain extract did not produce $TOOLCHAIN_GCC" >&2
+        echo "       Check TOOLCHAIN_URL / TOOLCHAIN_CROSS_PREFIX in versions.env." >&2
+        exit 1
+    fi
 else
-    echo "Bootlin toolchain already extracted, skipping."
+    echo "Cross-toolchain already extracted, skipping."
 fi
 
 END_TIME=$(date +%s)

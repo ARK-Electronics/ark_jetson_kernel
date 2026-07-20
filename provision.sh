@@ -22,14 +22,17 @@ ARK_OS_PKG="ark-os-jetson-jammy"
 ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 
-# Camera userspace stack — pinned below the BSP; see versions.env and
-# docs/argus_relaunch_regression.md. gstreamer ships from the `common` pool, the
-# other three from the SoC pool.
+# Camera userspace stack — see versions.env and docs/argus_relaunch_regression.md.
+# gstreamer ships from the `common` pool; the other three from the SoC pool
+# (`t234` on R36, `som` on R39+).
 NV_CAMERA_PKGS=(nvidia-l4t-gstreamer nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils)
 nv_camera_deb() { echo "${1}_${NV_CAMERA_STACK_VERSION}_arm64.deb"; }
 nv_camera_url() {
     local pool="t234"
     [ "$1" = "nvidia-l4t-gstreamer" ] && pool="common"
+    if [ "$1" != "nvidia-l4t-gstreamer" ] && [ "${EXPECTED_BSP_RELEASE}" = "R39" ]; then
+        pool="som"
+    fi
     echo "https://repo.download.nvidia.com/jetson/${pool}/pool/main/n/${1}/$(nv_camera_deb "$1")"
 }
 

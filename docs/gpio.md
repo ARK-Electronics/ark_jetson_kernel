@@ -1,6 +1,6 @@
 # GPIO on ARK Jetson Carriers
 
-Using GPIO pins on ARK JAJ / PAB / PAB_V3 carriers running JetPack 6 (L4T r36.x).
+Using GPIO pins on ARK JAJ / PAB / PAB_V3 carriers running JetPack 7 (L4T r39.x).
 
 ## TL;DR
 
@@ -9,7 +9,7 @@ Using GPIO pins on ARK JAJ / PAB / PAB_V3 carriers running JetPack 6 (L4T r36.x)
 - At idle the SoC drives nothing, so an accidental short to GND just pulls ~5.5 mA through the 604Ω resistor — it can't damage the pad. (Once your app drives a line, normal output rules apply, including short exposure.)
 - Hi-z idle also means **no** standing current — the ~73 mW the old driven-low default burned into the pull-ups is gone; the ~5.5 mA/pin only flows while your app actively drives a line low.
 - Drive / read the lines from userspace with `libgpiod` (`gpioset` / `gpioget`) or `Jetson.GPIO`; requesting a line as output enables the driver, requesting it as input reads the pulled level.
-- While your app holds the line, the kernel guarantees its value. **On release (clean exit, crash, kill), the pin retains its last-written value** until the next reboot, when MB1 BCT re-asserts the hi-z input (pulled high). JP6.2.2 (L4T r36.5) ships NVIDIA's pinctrl-tegra SFSEL fix upstream, so the pad keeps its last-written value on release; on stock JP6.0–6.2.1 the pad was flipped to SFIO mode on release, effectively floating the pin.
+- While your app holds the line, the kernel guarantees its value. **On release (clean exit, crash, kill), the pin retains its last-written value** until the next reboot, when MB1 BCT re-asserts the hi-z input (pulled high). NVIDIA's pinctrl-tegra SFSEL fix has been upstream since JP6.2.2 (L4T r36.5) and is present in JetPack 7, so the pad keeps its last-written value on release.
 
 ## Pin map
 
@@ -165,7 +165,7 @@ Note: BCT is the only layer that controls pad state from the moment of power-on.
 
 ## References
 
-- [NVIDIA Jetson Linux — Pinmux and GPIO Configuration](https://docs.nvidia.com/jetson/archives/r36.5/DeveloperGuide/SD/Bootloader/PinmuxGpioConfig.html)
+- [NVIDIA Jetson Linux — Pinmux and GPIO Configuration](https://docs.nvidia.com/jetson/archives/r39.2/DeveloperGuide/SD/Bootloader/PinmuxGpioConfig.html)
 - [Linux kernel GPIO chardev API (v2)](https://docs.kernel.org/userspace-api/gpio/chardev.html)
 - [libgpiod docs](https://libgpiod.readthedocs.io/en/stable/)
 - NVIDIA forum thread on the SFSEL/PADCTL regression: <https://forums.developer.nvidia.com/t/40hdr-spi1-gpio-padctl-register-bit-10-effect-by-gpiod-tools-in-jp6/301171>
