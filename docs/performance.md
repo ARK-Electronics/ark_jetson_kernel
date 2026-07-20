@@ -21,7 +21,7 @@ sudo jetson_clocks --restore
 
 ## Super Mode
 
-After flashing or updating to JetPack 6.2, enable MAXN SUPER mode.
+After flashing, enable MAXN SUPER mode (default flash target is already the Super config).
 
 Orin Nano modules:
 ```

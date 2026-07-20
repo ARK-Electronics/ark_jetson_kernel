@@ -1,6 +1,6 @@
 # Flashing the QSPI Bootloader
 
-You can flash just the QSPI bootloader and install a pre-flashed NVMe afterwards ([NVIDIA docs](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/FlashingSupport.html#examples)). Upgrading from JetPack 5 to JetPack 6 also requires reflashing the QSPI bootloader.
+You can flash just the QSPI bootloader and install a pre-flashed NVMe afterwards ([NVIDIA docs](https://docs.nvidia.com/jetson/archives/r39.2/DeveloperGuide/SD/FlashingSupport.html#examples)). Major JetPack upgrades (e.g. 5→6 or 6→7) also require reflashing the QSPI bootloader.
 
 ```
 cd staging/PAB/Linux_for_Tegra/

@@ -4,12 +4,13 @@ Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an AR
 
 | Component | Version |
 | --- | --- |
-| JetPack | 6.2.2 |
-| L4T (BSP) | R36.5.0 |
-| Kernel | Linux 5.15 |
+| JetPack | 7.2 |
+| L4T (BSP) | R39.2.0 |
+| Kernel | Linux 6.8 |
+| Device OS | Ubuntu 24.04 |
 | Host OS | Ubuntu 22.04 |
 
-> **Building on a non-22.04 host?** `setup.sh` and `build.sh` auto-containerize themselves in a 22.04 docker image (docker is auto-installed via apt if missing). See [docs/build_host.md](docs/build_host.md) for why we pin to 22.04.
+> **Building on a non-22.04 host?** `setup.sh` and `build.sh` auto-containerize themselves in a 22.04 docker image (docker is auto-installed via apt if missing). See [docs/build_host.md](docs/build_host.md).
 
 ## Products
 
