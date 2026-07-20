@@ -6,10 +6,11 @@
 
 The steps below build and install the kernel, modules, and DTBs by hand. Adjust the `PAB` path for your target.
 
-Set up the cross-compile environment:
+Set up the cross-compile environment (paths match JetPack 7.2 / L4T R39.2):
 ```
-export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS=$PWD/staging/PAB/Linux_for_Tegra/source/kernel/kernel-jammy-src
+export CROSS_COMPILE=$HOME/l4t-gcc/x-tools/aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-
+export KERNEL_HEADERS=$PWD/staging/PAB/Linux_for_Tegra/source/kernel/kernel-noble
+export kernel_name=noble
 export INSTALL_MOD_PATH=$PWD/staging/PAB/Linux_for_Tegra/rootfs/
 cd staging/PAB/Linux_for_Tegra/source
 make -C kernel && make modules && make dtbs
@@ -21,7 +22,7 @@ sudo -E make modules_install
 ```
 Copy the kernel image into `../kernel/`, where `flash.sh` reads it:
 ```
-cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../kernel/
+cp kernel/kernel-noble/arch/arm64/boot/Image ../kernel/
 ```
 
 `build.sh` does two more things a from-scratch flash needs, which the steps above leave out: it copies the per-module DTBs and camera `.dtbo` overlays from `kernel-devicetree/generic-dts/dtbs/` into both `rootfs/boot/` and `kernel/dtb/`, and it repoints the `lib/modules/<release>/{build,source}` symlinks at the on-target headers package (so DKMS and on-target module builds resolve their headers). Replicate those by hand, or just run `./build.sh <TARGET>`.
@@ -30,7 +31,7 @@ cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../kernel/
 
 To change the device tree you must build from source. ARK carries only its **delta** under `products/{TARGET}/device_tree/` — the BCT pinmux/gpio files and a single `ark-{TARGET}-overrides.dtsi` fragment — which `build.sh` layers onto the stock NVIDIA tree every build; model strings live in `products/{TARGET}/dtb_models.env`. Edit those and re-run `./build.sh <TARGET>`. See [docs/device-tree.md](device-tree.md) for the layout and how to add an override.
 
-The base DTB is selected by module and RAM ([NVIDIA porting guide](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/HR/JetsonModuleAdaptationAndBringUp/JetsonOrinNxNanoSeries.html#porting-the-linux-kernel-device-tree)):
+The base DTB is selected by module and RAM ([NVIDIA porting guide](https://docs.nvidia.com/jetson/archives/r39.2/DeveloperGuide/HR/JetsonModuleAdaptationAndBringUp/JetsonOrinNxNanoSeries.html#porting-the-linux-kernel-device-tree)):
 
 | Module | DTB |
 | --- | --- |

@@ -157,8 +157,10 @@ if [ ! -d "$PRODUCT_DIR" ]; then
     exit 1
 fi
 
-export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
+export CROSS_COMPILE="$HOME/l4t-gcc/${TOOLCHAIN_CROSS_PREFIX}"
+export KERNEL_HEADERS="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}"
+# OOT modules (nvidia-oot) select kernel-noble vs kernel-jammy via this.
+export kernel_name="${KERNEL_NAME}"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
 
 # ── Stage target (first build only) ────────────────────────────────────────
@@ -255,7 +257,7 @@ if [ ! -d "$L4T_DIR" ]; then
     cp "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay/Makefile" \
        "$STAGING_DIR/.overlay-makefile.stock"
 
-    DEFCONFIG="$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/configs/defconfig"
+    DEFCONFIG="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/configs/defconfig"
     echo "Applying shared defconfig fragment..."
     cat "$SCRIPT_DIR/defconfig.fragment" >> "$DEFCONFIG"
 
@@ -441,7 +443,7 @@ echo "========================================="
 
 cd "$SOURCE_DIR"
 
-# The bootlin toolchain defaults to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
+# Some toolchains default to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
 # startfiles and fails — its LAST line is a collect2 error, which NVIDIA's nv_compiler.h
 # recipe bakes into the module's /proc version banner via `tail -1`. Repoint it at
 # `--version | head -1`, which never links. Fail loud if the BSP moved the recipe; drop the
@@ -503,14 +505,32 @@ fi
 echo "Built kernel release: $JETSON_KERNEL_VERSION"
 
 MODULES_PATH="$INSTALL_MOD_PATH/lib/modules/$JETSON_KERNEL_VERSION"
-HEADERS_TARGET="/usr/src/linux-headers-${JETSON_KERNEL_VERSION}-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
 
 if [ ! -d "$MODULES_PATH" ]; then
     echo "ERROR: module path $MODULES_PATH not found after modules_install" >&2
     echo "       (kernel release '$JETSON_KERNEL_VERSION' does not match the installed modules)." >&2
     exit 1
 fi
-echo "Fixing kernel module symlinks in rootfs..."
+
+# Headers tree path changes with the distro (ubuntu22.04/jammy vs ubuntu24.04/noble).
+# Resolve it from the rootfs that apply_binaries installed rather than hardcoding.
+HEADERS_HOST=$(find "$INSTALL_MOD_PATH/usr/src" -type d \
+    -path "*/linux-headers-${JETSON_KERNEL_VERSION}*/**/kernel-source" 2>/dev/null | head -1)
+if [ -z "$HEADERS_HOST" ]; then
+    # Fallback: top-level headers dir (some layouts skip the 3rdparty nest).
+    HEADERS_HOST=$(find "$INSTALL_MOD_PATH/usr/src" -maxdepth 1 -type d \
+        -name "linux-headers-${JETSON_KERNEL_VERSION}*" 2>/dev/null | head -1)
+fi
+if [ -z "$HEADERS_HOST" ]; then
+    echo "ERROR: no linux-headers-${JETSON_KERNEL_VERSION}* under rootfs/usr/src/" >&2
+    echo "       after apply_binaries — cannot fix modules build/source symlinks." >&2
+    ls -la "$INSTALL_MOD_PATH/usr/src/" 2>/dev/null || true
+    exit 1
+fi
+# Symlink target as seen on the device (absolute under /).
+HEADERS_TARGET="${HEADERS_HOST#"$INSTALL_MOD_PATH"}"
+
+echo "Fixing kernel module symlinks in rootfs (headers -> $HEADERS_TARGET)..."
 sudo rm -f "$MODULES_PATH/build" "$MODULES_PATH/source"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
@@ -518,7 +538,7 @@ sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
 # ── Install build outputs ───────────────────────────────────────────────────
 
 echo "Installing kernel Image..."
-cp "$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
+cp "$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
 
 DTBS_SOURCE="$SOURCE_DIR/kernel-devicetree/generic-dts/dtbs"
 
