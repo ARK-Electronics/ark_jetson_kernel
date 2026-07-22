@@ -22,9 +22,16 @@ ARK_OS_PKG="ark-os-jetson-jammy"
 ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 
-NV_GSTREAMER_PKG="nvidia-l4t-gstreamer"
-NV_GSTREAMER_DEB="${NV_GSTREAMER_PKG}_${NV_GSTREAMER_VERSION}_arm64.deb"
-NV_GSTREAMER_URL="https://repo.download.nvidia.com/jetson/common/pool/main/n/${NV_GSTREAMER_PKG}/${NV_GSTREAMER_DEB}"
+# Camera userspace stack — pinned below the BSP; see versions.env and
+# docs/argus_relaunch_regression.md. gstreamer ships from the `common` pool, the
+# other three from the SoC pool.
+NV_CAMERA_PKGS=(nvidia-l4t-gstreamer nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils)
+nv_camera_deb() { echo "${1}_${NV_CAMERA_STACK_VERSION}_arm64.deb"; }
+nv_camera_url() {
+    local pool="t234"
+    [ "$1" = "nvidia-l4t-gstreamer" ] && pool="common"
+    echo "https://repo.download.nvidia.com/jetson/${pool}/pool/main/n/${1}/$(nv_camera_deb "$1")"
+}
 
 # Prefer a deb already in downloads/ over downloading
 DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
@@ -118,14 +125,47 @@ fi
 sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/dev/null 2>&1' \
     || { echo "ERROR: installed ark-os ships no bundled MAVSDK under /usr/lib/ark-os/mavsdk." >&2; exit 1; }
 
-### Install Tegra GStreamer plugins (CSI camera pipelines)
-# nvarguscamerasrc/nvvidconv/nvv4l2* aren't in the BSP set apply_binaries installs; they
-# ship in nvidia-l4t-gstreamer (repo `common` pool). Its nvidia-l4t-* deps are all already
-# provided by the BSP, so it installs as a local deb with no NVIDIA repo — leaving the
-# disabled <SOC> apt source untouched.
-echo "Installing ${NV_GSTREAMER_PKG} (camera GStreamer plugins)..."
-fetch_deb "$NV_GSTREAMER_DEB" "$NV_GSTREAMER_URL"
-sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$NV_GSTREAMER_DEB"
+### Install the pinned camera userspace stack (Argus + GStreamer plugins)
+# apply_binaries installs the BSP-stamp camera/multimedia debs; replace them (and add
+# nvidia-l4t-gstreamer, which the BSP set lacks) with the pinned known-good set. The
+# pinned debs' deps assume their own release, so repack each with the out-of-set bounds
+# relaxed (nvidia-l4t-core upper cap, exact-stamp cuda/nvsci) and the in-set exact deps
+# retargeted to the +ark1 version — a clean apt install instead of dpkg --force-depends,
+# so on-device apt stays consistent. Hold the set so an on-device upgrade can't drag it
+# back to the regressed BSP stamp.
+relax_l4t_deps() {
+    local in="$1" out="$2" work
+    work=$(mktemp -d)
+    dpkg-deb -R "$in" "$work"
+    sed -i \
+        -e "s/nvidia-l4t-core (<< [0-9.]*-0)/nvidia-l4t-core (<< 37.0-0)/" \
+        -e "s/nvidia-l4t-cuda (= [^)]*)/nvidia-l4t-cuda/" \
+        -e "s/nvidia-l4t-nvsci (= [^)]*)/nvidia-l4t-nvsci/" \
+        -e "s/(= ${NV_CAMERA_STACK_VERSION})/(= ${NV_CAMERA_STACK_VERSION}+ark1)/g" \
+        -e "s/^Version: .*/&+ark1/" \
+        "$work/DEBIAN/control"
+    dpkg-deb -b --root-owner-group "$work" "$out" >/dev/null
+    rm -rf "$work"
+}
+echo "Installing the pinned camera userspace stack (${NV_CAMERA_STACK_VERSION}+ark1)..."
+NV_CAMERA_TMP_DEBS=()
+for pkg in "${NV_CAMERA_PKGS[@]}"; do
+    deb=$(nv_camera_deb "$pkg")
+    fetch_deb "$deb" "$(nv_camera_url "$pkg")"
+    relax_l4t_deps "$DOWNLOADS_DIR/$deb" "/tmp/ark1_$deb"
+    sudo mv "/tmp/ark1_$deb" "$ROOTFS_DIR/tmp/ark1_$deb"
+    sudo rm -f "$ROOTFS_DIR/tmp/$deb"
+    NV_CAMERA_TMP_DEBS+=("/tmp/ark1_$deb")
+done
+# One transaction: the set inter-depends by exact version.
+sudo chroot "$ROOTFS_DIR" apt-get install -y --allow-downgrades --allow-change-held-packages \
+    "${NV_CAMERA_TMP_DEBS[@]}"
+sudo chroot "$ROOTFS_DIR" apt-mark hold "${NV_CAMERA_PKGS[@]}"
+for pkg in "${NV_CAMERA_PKGS[@]}"; do
+    v=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Version}' "$pkg")
+    [ "$v" = "${NV_CAMERA_STACK_VERSION}+ark1" ] || {
+        echo "ERROR: $pkg is '$v', expected ${NV_CAMERA_STACK_VERSION}+ark1." >&2; exit 1; }
+done
 # Assert the plugin actually loads and registers nvarguscamerasrc — file existence
 # alone misses unresolvable libraries. Inspect the plugin *file*, not the element:
 # element instantiation (e.g. --exists) dials nvargus-daemon/EGL, absent in a chroot.
@@ -133,8 +173,9 @@ sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$NV_GSTREAMER_DEB"
 sudo chroot "$ROOTFS_DIR" env GST_REGISTRY=/tmp/provision-gst-registry.bin \
     gst-inspect-1.0 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so \
     | grep -qw nvarguscamerasrc \
-    || { echo "ERROR: nvarguscamerasrc missing or failed to load after installing ${NV_GSTREAMER_PKG}." >&2; exit 1; }
-sudo rm -f "$ROOTFS_DIR/tmp/provision-gst-registry.bin" "$ROOTFS_DIR/tmp/$NV_GSTREAMER_DEB"
+    || { echo "ERROR: nvarguscamerasrc missing or failed to load after installing the camera stack." >&2; exit 1; }
+sudo rm -f "$ROOTFS_DIR/tmp/provision-gst-registry.bin"
+for pkg in "${NV_CAMERA_PKGS[@]}"; do sudo rm -f "$ROOTFS_DIR/tmp/ark1_$(nv_camera_deb "$pkg")"; done
 
 ### Install pip
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
