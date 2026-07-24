@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Rootfs provisioning — runs during staging when build.sh is given --provision.
+# Rootfs provisioning — runs during staging on a full build (skipped by build.sh --no-provision).
 # Env: ROOTFS_DIR (the staged rootfs), TARGET (PAB|JAJ|PAB_V3).
 #
 # /proc, /sys, /dev are bind-mounted and DNS is set up; /run is not, so ARK-OS's

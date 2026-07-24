@@ -104,7 +104,7 @@ v4l2-ctl --set-fmt-video=width=3840,height=2160,pixelformat=RG10 --stream-mmap -
 
 ### GStreamer
 
-Images built with `--provision` already ship the Tegra GStreamer plugins (`nvarguscamerasrc`, `nvvidconv`, `nvv4l2*`) via `nvidia-l4t-gstreamer`. Install `nvidia-jetpack` only if you also need the full CUDA/TensorRT compute stack.
+A provisioned image (the build default) already ships the Tegra GStreamer plugins (`nvarguscamerasrc`, `nvvidconv`, `nvv4l2*`) via `nvidia-l4t-gstreamer`. Install `nvidia-jetpack` only if you also need the full CUDA/TensorRT compute stack.
 
 UDP h.264 stream (replace IP/port):
 ```
@@ -131,4 +131,4 @@ gst-launch-1.0 nvarguscamerasrc sensor-id=1 ...
 
 ## Known Issues
 
-**JetPack 6.2.2 / R36.5.0 Argus regression** (bench-reproduced on PAB_V3/Orin NX with dual IMX219): every `nvarguscamerasrc` teardown errors (`CANCELLED` / `Argus Correctable Error Status`), and roughly 1 in 60–120 camera relaunches fails outright — no frames, then a nvargus-daemon segfault and a ~40 s video outage. Introduced by NVIDIA in the L4T 36.4.7 userspace refresh, still present in 36.5.0; the kernel/device tree/RCE firmware are not involved, and NVIDIA's forum workaround (keeping the camera RTCPU powered) does **not** prevent it on Orin NX. Fix shipped in this repo: `--provision` pins the camera userspace stack (gstreamer/camera/multimedia debs) to the last good release via `NV_CAMERA_STACK_VERSION` in `versions.env`. Full evidence, repro protocol, and bench data: [argus_relaunch_regression.md](argus_relaunch_regression.md) (issue [#107](https://github.com/ARK-Electronics/ark_jetson_kernel/issues/107)).
+**JetPack 6.2.2 / R36.5.0 Argus regression** (bench-reproduced on PAB_V3/Orin NX with dual IMX219): every `nvarguscamerasrc` teardown errors (`CANCELLED` / `Argus Correctable Error Status`), and roughly 1 in 60–120 camera relaunches fails outright — no frames, then a nvargus-daemon segfault and a ~40 s video outage. Introduced by NVIDIA in the L4T 36.4.7 userspace refresh, still present in 36.5.0; the kernel/device tree/RCE firmware are not involved, and NVIDIA's forum workaround (keeping the camera RTCPU powered) does **not** prevent it on Orin NX. Fix shipped in this repo: provisioning (the build default) pins the camera userspace stack (gstreamer/camera/multimedia debs) to the last good release via `NV_CAMERA_STACK_VERSION` in `versions.env`. Full evidence, repro protocol, and bench data: [argus_relaunch_regression.md](argus_relaunch_regression.md) (issue [#107](https://github.com/ARK-Electronics/ark_jetson_kernel/issues/107)).

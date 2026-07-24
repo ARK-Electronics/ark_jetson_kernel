@@ -29,11 +29,12 @@ Download the BSP, root filesystem, and kernel source tarballs (one time):
 
 ### 2. Build
 ```
-./build.sh PAB --clean --provision
+./build.sh PAB
 ```
 - Targets are `PAB`, `JAJ`, `PAB_V3`, or `all`.
-- `--clean` wipes `staging/{TARGET}/` and re-stages from scratch.
-- `--provision` preinstalls [ARK-OS](https://github.com/ARK-Electronics/ARK-OS) and tooling into the image. Omit it for a bare image. To bake in your own packages, edit [`provision.sh`](provision.sh).
+- By default a build re-stages `staging/{TARGET}/` from scratch and provisions the image — it preinstalls [ARK-OS](https://github.com/ARK-Electronics/ARK-OS) and tooling. To bake in your own packages, edit [`provision.sh`](provision.sh).
+- `--fast` reuses the existing staged tree and just recompiles the kernel/device tree, for quick iteration after a full build.
+- `--no-provision` builds a bare image (no ARK-OS). `--clean` and `--provision` are still accepted but are the default now.
 
 ### 3. Add WiFi (optional)
 Bake a WiFi profile into the image before flashing:

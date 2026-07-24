@@ -127,15 +127,17 @@ jobs:
         run: ccache -z
 
       - name: Build kernel
-        # Tag builds provision with the pinned ARK-OS deb; provision.sh falls back
+        # Provisioning (ARK-OS + the pinned camera stack) is the build default now;
+        # tag builds keep --provision explicit for clarity. provision.sh falls back
         # loudly to the newest published (pre)release if the pin isn't published. The
-        # draft release ships a flashable, provisioned image; promoting it to
-        # published is a GitHub toggle with no rebuild. PR/main builds only compile-check.
+        # draft release ships a flashable, provisioned image; promoting it to published
+        # is a GitHub toggle with no rebuild. PR/main builds only compile-check, so
+        # --no-provision skips the ~6 min provision and its NVIDIA/GitHub network deps.
         run: |
           if [ -n "${{ steps.tag.outputs.target }}" ]; then
             ./build.sh ${{ steps.tag.outputs.target }} --provision
           else
-            ./build.sh PAB
+            ./build.sh PAB --no-provision
           fi
 
       - name: ccache stats

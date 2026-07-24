@@ -1,11 +1,16 @@
 #!/bin/bash
 
-# Usage: ./build.sh <PAB|JAJ|PAB_V3|all> [--clean] [--provision]
-#   --clean      wipe staging/{TARGET}/ and re-stage from downloads before building
-#   --provision  install ARK-OS into the rootfs (staging only: first build or --clean)
+# Usage: ./build.sh <PAB|JAJ|PAB_V3|all> [--fast] [--no-provision]
+#   (default)             wipe staging/{TARGET}/, re-stage, provision, then build
+#   --fast                reuse the existing staged tree — recompile the kernel/DT
+#                         only, no re-stage and no re-provision (needs a prior build)
+#   --no-provision        re-stage and build a bare image, skipping provisioning
+#   --clean, --provision  accepted but redundant now — they are the default
 #
-# First build per target stages the L4T tree under its own staging/{TARGET}/;
-# later builds just recompile. Products share no mutable state.
+# A full build (the default) stages the L4T tree under its own staging/{TARGET}/,
+# provisions the rootfs (ARK-OS + the pinned camera stack), then compiles the
+# kernel. --fast skips straight to the compile against an existing tree. Products
+# share no mutable state.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export ARK_JETSON_KERNEL_DIR="$SCRIPT_DIR"
@@ -15,23 +20,30 @@ source "$SCRIPT_DIR/scripts/check_bsp.sh"
 
 # ── Argument parsing ────────────────────────────────────────────────────────
 
-CLEAN=0
-PROVISION=0
+CLEAN=1
+PROVISION=1
+FAST=0
 TARGET=""
 
 for arg in "$@"; do
     case "$arg" in
         PAB|JAJ|PAB_V3) TARGET="$arg" ;;
         all)            TARGET="all" ;;
-        --clean)        CLEAN=1 ;;
-        --provision)    PROVISION=1 ;;
+        --fast)         FAST=1 ;;
+        --no-provision) PROVISION=0 ;;
+        --clean)        CLEAN=1 ;;      # the default now; still accepted so old commands work
+        --provision)    PROVISION=1 ;;  # the default now; still accepted so old commands work
         *)
             echo "Invalid argument: $arg" >&2
-            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--clean] [--provision]" >&2
+            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision]" >&2
             exit 1
             ;;
     esac
 done
+
+# --fast reuses the staged tree as-is: no wipe, no (re)provision. It wins over the
+# clean/provision defaults regardless of the order flags were given in.
+[ "$FAST" -eq 1 ] && { CLEAN=0; PROVISION=0; }
 
 if [ -z "$TARGET" ]; then
     if [ -t 0 ]; then
@@ -51,7 +63,7 @@ if [ -z "$TARGET" ]; then
         esac
     else
         echo "ERROR: target required (PAB | JAJ | PAB_V3 | all) when running non-interactively." >&2
-        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--clean] [--provision]" >&2
+        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision]" >&2
         exit 1
     fi
 fi
@@ -102,8 +114,8 @@ if [ "$TARGET" = "all" ]; then
         echo "  Building $t"
         echo "========================================="
         ARGS=("$t")
-        [ "$CLEAN" -eq 1 ] && ARGS+=("--clean")
-        [ "$PROVISION" -eq 1 ] && ARGS+=("--provision")
+        [ "$FAST" -eq 1 ] && ARGS+=("--fast")
+        [ "$FAST" -eq 0 ] && [ "$PROVISION" -eq 0 ] && ARGS+=("--no-provision")
         "$0" "${ARGS[@]}" || exit $?
     done
     exit 0
@@ -115,8 +127,8 @@ export TARGET
 # doesn't re-prompt.
 if needs_container; then
     CONTAINER_ARGS=("$TARGET")
-    [ "$CLEAN" -eq 1 ] && CONTAINER_ARGS+=("--clean")
-    [ "$PROVISION" -eq 1 ] && CONTAINER_ARGS+=("--provision")
+    [ "$FAST" -eq 1 ] && CONTAINER_ARGS+=("--fast")
+    [ "$FAST" -eq 0 ] && [ "$PROVISION" -eq 0 ] && CONTAINER_ARGS+=("--no-provision")
     run_in_container "$0" "${CONTAINER_ARGS[@]}"
 fi
 
@@ -161,7 +173,16 @@ export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-
 export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
 
-# ── Stage target (first build only) ────────────────────────────────────────
+# --fast reuses an existing staged tree; there's nothing to reuse if it's absent.
+# Fail loud rather than silently staging a bare, unprovisioned tree.
+if [ "$FAST" -eq 1 ] && [ ! -d "$L4T_DIR" ]; then
+    echo "ERROR: --fast needs an existing staged tree, but $L4T_DIR is missing." >&2
+    echo "       Run './build.sh $TARGET' first (stages + provisions), then use" >&2
+    echo "       --fast for quick kernel/device-tree rebuilds." >&2
+    exit 1
+fi
+
+# ── Stage target (skipped by --fast) ────────────────────────────────────────
 
 if [ ! -d "$L4T_DIR" ]; then
     echo "========================================="
@@ -196,7 +217,7 @@ if [ ! -d "$L4T_DIR" ]; then
     if [ "$PROVISION" -eq 1 ]; then
         PROVISION_SCRIPT="$SCRIPT_DIR/provision.sh"
         if [ ! -f "$PROVISION_SCRIPT" ]; then
-            echo "ERROR: --provision specified but provision.sh not found." >&2
+            echo "ERROR: provisioning requested but provision.sh not found." >&2
             exit 1
         fi
 
@@ -267,10 +288,7 @@ if [ ! -d "$L4T_DIR" ]; then
     echo "Staging complete for $TARGET."
     echo ""
 else
-    if [ "$PROVISION" -eq 1 ]; then
-        echo "WARNING: --provision has no effect — staging/$TARGET/ already exists." >&2
-        echo "         Use --clean --provision to re-stage with provisioning." >&2
-    fi
+    echo "Reusing existing staged tree for $TARGET (--fast): skipping re-stage and provisioning."
 fi
 
 # ── BSP version check ──────────────────────────────────────────────────────
