@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Generates a self-contained flash package (.tar.gz) from a built (and ideally
-# --provision'd) staging tree. The package IS the staged Linux_for_Tegra tree
+# Generates a self-contained flash package (.tar.gz) from a built, provisioned
+# staging tree. The package IS the staged Linux_for_Tegra tree
 # (minus the kernel build sources); flash_from_package.sh flashes it with
 # NVIDIA's initrd flasher, which reads the connected module's EEPROM at flash
 # time and selects the matching bootloader + SDRAM config. One package therefore
@@ -11,7 +11,7 @@
 # BOARDSKU and could only flash that one module: NVIDIA massflash requires every
 # unit be identical hardware (tools/kernel_flash/README_initrd_flash.txt).
 #
-# Prerequisites: run setup.sh and build.sh <TARGET> --provision first.
+# Prerequisites: run setup.sh and build.sh <TARGET> first.
 #
 # Usage: ./generate_flash_package.sh <TARGET>
 
