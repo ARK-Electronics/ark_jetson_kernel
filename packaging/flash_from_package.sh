@@ -21,6 +21,7 @@
 #   ./flash_from_package.sh <product>         # latest published release for a product (pab, jaj, pab-v3)
 #   ./flash_from_package.sh <product> --draft # latest DRAFT release for a product (needs gh read access)
 #   ./flash_from_package.sh <tag> --full      # regenerate images even if cached ones match
+#   ./flash_from_package.sh <tag> --prepare   # download+extract only; leave the flash for a later run
 #   ./flash_from_package.sh --clean           # remove all cached data
 
 set -euo pipefail
@@ -38,6 +39,7 @@ usage() {
     echo "  $(basename "$0") pab-v3          Flash the latest PAB_V3 release"
     echo "  $(basename "$0") pab-v3 --draft  Flash the latest PAB_V3 DRAFT (needs gh read access)"
     echo "  $(basename "$0") pab --full      Regenerate flash images even if cached ones match"
+    echo "  $(basename "$0") pab --prepare   Download and extract only (no device, no flash)"
     echo "  $(basename "$0") --clean         Remove all cached data"
     echo ""
     echo "Note: PAB Rev3 is not the same as PAB_V3. PAB_V3 is a separate product."
@@ -55,12 +57,14 @@ is_product_name() {
 
 FORCE_FULL=0
 WANT_DRAFT=0
+PREPARE_ONLY=0
 args=()
 for arg in "$@"; do
     case "$arg" in
-        --full)  FORCE_FULL=1 ;;
-        --draft) WANT_DRAFT=1 ;;
-        *)       args+=("$arg") ;;
+        --full)    FORCE_FULL=1 ;;
+        --draft)   WANT_DRAFT=1 ;;
+        --prepare) PREPARE_ONLY=1 ;;
+        *)         args+=("$arg") ;;
     esac
 done
 set -- "${args[@]}"
@@ -508,6 +512,19 @@ if [ -n "$BUILD_INFO" ]; then
     echo "========================================="
     sudo cat "$BUILD_INFO"
     echo "========================================="
+fi
+
+# --prepare: stop after the package is on disk. Used by the manufacturing bench so
+# a multi-GB cold-cache download has its own long timeout, separate from the flash.
+if [ "$PREPARE_ONLY" = 1 ]; then
+    echo ""
+    echo "========================================="
+    echo "  Package ready"
+    echo "========================================="
+    echo "Release: $RELEASE_TAG"
+    echo "Cached at: $CACHE_DIR"
+    echo "Rerun without --prepare to flash a Jetson in recovery mode."
+    exit 0
 fi
 
 # --- Wait for Jetson and flash ---

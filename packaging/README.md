@@ -95,6 +95,12 @@ Or flash the latest release for a product:
 ./flash_from_package.sh pab
 ```
 
+Download and extract only (no device) — useful to warm the cache ahead of a flash, or so a manufacturing bench can time the multi-GB fetch separately from the flash itself:
+
+```
+./flash_from_package.sh pab --prepare
+```
+
 The script downloads the package, extracts it, waits for a Jetson in recovery mode, and flashes. No build tools or kernel source needed — just a Debian/Ubuntu host with USB.
 
 Each version is cached in `~/.ark-jetson-cache/<tag>/` so re-running after a failure or switching between versions doesn't re-download.
