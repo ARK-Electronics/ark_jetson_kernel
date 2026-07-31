@@ -13,11 +13,27 @@ Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an AR
 
 ## Products
 
-| Target | Carrier Board |
-| --- | --- |
-| `PAB` | ARK Jetson PAB Carrier |
-| `JAJ` | ARK Just a Jetson Carrier |
-| `PAB_V3` | ARK Jetson PAB V3 Carrier |
+| Target | Carrier Board | Docs |
+| --- | --- | --- |
+| `PAB` | ARK Jetson PAB Carrier | [docs](https://docs.arkelectron.com/products/flight-controller/jetson-pabs/ark-jetson-pab-carrier) |
+| `JAJ` | ARK Just a Jetson Carrier | [docs](https://docs.arkelectron.com/products/embedded-computers/ark-just-a-jetson) |
+| `PAB_V3` | ARK Jetson PAB V3 Carrier | [docs](https://docs.arkelectron.com/products/flight-controller/jetson-pabs/ark-jetson-pab-carrier-v3) |
+
+> **Note:** PAB Rev3 is a hardware revision of the PAB and uses `PAB`. PAB_V3 is a separate product.
+
+## Flash a Prebuilt Image
+
+Just want the stock image? Each [release](https://github.com/ARK-Electronics/ark_jetson_kernel/releases) ships a ready-to-flash package per carrier — the same image bundles ship with. On a Debian/Ubuntu host, with the Jetson connected over USB and booted into recovery (hold the Force Recovery button while powering on):
+
+```
+curl -LO https://raw.githubusercontent.com/ARK-Electronics/ark_jetson_kernel/main/packaging/flash_from_package.sh
+chmod +x flash_from_package.sh
+./flash_from_package.sh pab        # or jaj / pab-v3, or a specific tag like pab-6.2.2.4
+```
+
+No build tools or kernel source needed. Flashes the QSPI bootloader and the rootfs to NVMe; one package covers every Orin Nano/NX module variant. See [packaging/README.md](packaging/README.md) for details.
+
+To customize the image instead, build from source:
 
 ## Build & Flash
 
