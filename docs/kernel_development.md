@@ -39,7 +39,8 @@ The base DTB is selected by module and RAM ([NVIDIA porting guide](https://docs.
 | Orin Nano 8GB | `tegra234-p3768-0000+p3767-0003-nv.dtb` |
 | Orin Nano 4GB | `tegra234-p3768-0000+p3767-0004-nv.dtb` |
 
-Changing the base DTB requires a reflash. **Overlays do not** — a rebuilt `.dtbo` can be copied to the target's `/boot` and selected with `jetson-io`, no reflash needed. ARK overlay sources live under `products/{TARGET}/overlay/`; `build.sh` layers them onto the BSP's stock overlay tree and builds exactly the set listed in that dir's `dtbo.list`, compiling to `kernel-devicetree/generic-dts/dtbs/*.dtbo`. See [cameras.md](cameras.md#installing-a-camera-overlay) for the build → copy → `jetson-io` loop.
+Changing the base DTB requires a reflash. **Overlays do not** — a rebuilt `.dtbo` can be copied to the target's `/boot` and selected with `jetson-io`, no reflash needed. ARK overlay sources live under `products/{TARGET}/overlay/`; `build.sh` layers them onto the BSP's stock overlay tree and builds exactly the set listed in that dir's `dtbo.list`, compiling to `kernel-devicetree/generic-dts/dtbs/*.dtbo`. See [camera_overlays.md](camera_overlays.md) for the build → copy → `jetson-io` loop and for authoring custom camera overlays.
+
 
 ## Out-of-tree kernel modules
 

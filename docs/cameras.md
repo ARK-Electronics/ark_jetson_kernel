@@ -1,6 +1,6 @@
 # Camera Support
 
-This document covers tested camera sensors, available device tree overlays, and test commands.
+Tested camera sensors, overlay names as they appear to jetson-io, verification commands, and known issues. To build, install, or write a camera device-tree overlay, see [camera_overlays.md](camera_overlays.md).
 
 ## Tested Cameras
 
@@ -10,7 +10,7 @@ This document covers tested camera sensors, available device tree overlays, and 
 | IMX477 | 2     | 4056x3040  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 | IMX708 | 2     | 4608x2592  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 
-Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports).
+Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports). The image already includes every overlay for that product; switch with `jetson-io` (details in [camera_overlays.md](camera_overlays.md)). Each carrier also bakes an IMX219 overlay at flash time so cameras work on first boot without a jetson-io step (quad on PAB, dual on JAJ and PAB_V3).
 
 ## IMX219 (Sony, 8MP)
 
@@ -56,36 +56,15 @@ Driver is RidgeRun's `nv_imx708`, vendored under `kernel_overlay/`. One 10-bit m
 | Dual    | `tegra234-p3767-camera-p3768-imx708-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
 | Quad    | `tegra234-p3767-camera-p3768-imx708-quad.dtbo` | All 4 ports (PAB) |
 
-## Installing a Camera Overlay
+## Selecting an overlay (runtime)
 
-A full flash already includes every overlay — `build.sh` copies them into the image's `/boot`, so after flashing you can skip straight to `jetson-io` below. The build-and-copy steps here are for **iterating on an overlay without reflashing**: rebuild the `.dtbo`, drop it on the running target, and re-select it.
-
-Each carrier ships with an IMX219 overlay baked into the image at flash time, so cameras work on the first boot with no `jetson-io` step: the quad overlay on PAB, the dual overlay on JAJ and PAB_V3. `flash.sh` reads `products/<TARGET>/default_overlays` and hands each dtbo to `tegraflash` as `ADDITIONAL_DTB_OVERLAY`, which merges it into the base DTB on top of whichever Orin Nano/NX SKU the flasher detects — so one image still covers every SKU. The bootloader hands that merged DTB to the kernel; an `extlinux` `OVERLAYS` line would instead be applied to the symbol-stripped UEFI DTB and silently fail to resolve, which is why the default is baked at flash time rather than pre-selected in `extlinux.conf`. A later `jetson-io` choice still supersedes it cleanly — `jetson-io` boots its own `FDT`'d entry off the clean `/boot/dtb` kernel DTB, so selecting another camera doesn't collide. To change the shipped default, edit `products/<TARGET>/default_overlays` and re-flash.
-
-The overlays ARK ships live under `products/<TARGET>/overlay/` (the `.dts`/`.dtsi` sources) and are enumerated in `products/<TARGET>/overlay/dtbo.list` (the explicit built set); `build.sh` layers them onto the BSP's stock overlay tree at build time. Add or drop a camera overlay by editing those two — not a BSP source mirror.
-
-Build the overlay DTBs (from host):
 ```
-./build.sh PAB   # or JAJ, PAB_V3
-```
-
-Copy the overlay to the Jetson:
-```
-DTB_PATH="staging/PAB/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs"
-scp $DTB_PATH/<overlay>.dtbo jetson@192.168.55.1:~
-```
-
-On the Jetson, install and activate:
-```
-sudo mv <overlay>.dtbo /boot
+sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera IMX477 Quad"
 sudo reboot
 ```
 
-List available overlays:
-```
-sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
-```
+Use the `overlay-name` string from the list (header number for the 22pin CSI connector is typically 2). Build, custom overlays, flash-time defaults, and troubleshooting: [camera_overlays.md](camera_overlays.md).
 
 ## Test Commands
 
