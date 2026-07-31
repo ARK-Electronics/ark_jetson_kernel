@@ -382,7 +382,7 @@ fi
 # in overlay/dtbo.list. The stock overlay Makefile is re-derived from the
 # stage-time snapshot each build, so this is idempotent and a BSP layout change
 # fails loud. Non-camera stock overlays (audio/csi/hdr/AGX) keep building from the
-# BSP untouched. See docs/cameras.md and products/<target>/overlay/dtbo.list.
+# BSP untouched. See docs/camera_overlays.md and products/<target>/overlay/dtbo.list.
 
 OVERLAY_SRC_DIR="$PRODUCT_DIR/overlay"
 if [ -d "$OVERLAY_SRC_DIR" ]; then

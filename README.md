@@ -87,11 +87,13 @@ Apply one and reboot:
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera IMX477 Quad"
 sudo reboot
 ```
-See [docs/cameras.md](docs/cameras.md) for supported sensors, overlay names, and how to verify and stream a camera.
+See [docs/cameras.md](docs/cameras.md) for supported sensors and how to verify and stream a camera, and [docs/camera_overlays.md](docs/camera_overlays.md) to build, install, or write a custom camera overlay.
 
 ## More documentation
-- [docs/cameras.md](docs/cameras.md) — supported sensors, overlays, and streaming
+- [docs/cameras.md](docs/cameras.md) — supported sensors, streaming, and known issues
+- [docs/camera_overlays.md](docs/camera_overlays.md) — build, install, and author camera device-tree overlays
 - [docs/gpio.md](docs/gpio.md) — 40-pin / I2S header GPIO and boot-time pad defaults
+
 - [docs/i2c.md](docs/i2c.md) — I2C bus map and scanning
 - [docs/servo_expander.md](docs/servo_expander.md) — PWM / servo output via the ARK Servo Expander (PCA9685) over I2C
 - [docs/10gbe_ethernet.md](docs/10gbe_ethernet.md) — Auvidea M20E 10GbE adapter
