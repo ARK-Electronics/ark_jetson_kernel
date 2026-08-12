@@ -66,8 +66,6 @@ Two results worth calling out:
 - **MAXN_SUPER beats 40W mode**, by about 2W. Mode 4 caps the CPU at 1498 MHz; MAXN_SUPER lets it run to 1984 MHz. Both run the GPU at 1173 MHz.
 - **25W mode lands at 17W**, nowhere near its label, because its 408 MHz GPU cap binds long before power does.
 
-Full procedure: [docs/power_validation.md](power_validation.md).
-
 ## Common questions
 
 **Why didn't it reach 40W?**
@@ -83,9 +81,6 @@ That figure comes from NVIDIA forum posts, not from a datasheet — the Orin NX 
 
 **Which power input should I use?**
 The XT60 accepts a wide input and feeds an 8A buck, so it has the most headroom. The Molex Clik-Mate 5V input is rated 6A, which caps total board draw around 30W — enough for the module but with little left over. Both merge through ideal-diode ORing onto the same 5V rail, which the module shares with the carrier's 3.3V, 1.8V and two 1.5A 5V peripheral rails.
-
-**Do I need to strap MODULE_ID (pin 217)?**
-No. It is not a Tegra pin and no software reads it. It is a strap the *module* drives to tell the carrier what it is: grounded on legacy 5V-only modules, floating on 5-20V ones. A carrier only needs to pull it up if it can supply more than 5V. ARK carriers are fixed 5V, so it goes to a test point and nothing else.
 
 **How hot is too hot?**
 Our soak plateaued at 91C junction temperature with the stock fan in open air and never throttled. If yours throttles, that is thermal, not electrical — check airflow and fan operation before suspecting the power path.
