@@ -270,6 +270,10 @@ if [ ! -d "$L4T_DIR" ]; then
     tar xf kernel_src.tbz2
     tar xf kernel_oot_modules_src.tbz2
     tar xf nvidia_kernel_display_driver_source.tbz2
+    # R39+ ships a second display tree (unifiedgpudisp). Absent on R36.
+    if [ -f nvidia_unified_gpu_display_driver_source.tbz2 ]; then
+        tar xf nvidia_unified_gpu_display_driver_source.tbz2
+    fi
     popd > /dev/null
 
     # Snapshot the pristine stock overlay Makefile so the per-build ARK overlay step
@@ -485,9 +489,11 @@ if command -v ccache >/dev/null 2>&1; then
     KERNEL_MAKE_ARGS+=("CC=ccache ${CROSS_COMPILE}gcc")
 fi
 
-make -C kernel "${KERNEL_MAKE_ARGS[@]}" \
-    && make modules CC="${CROSS_COMPILE}gcc" \
-    && make dtbs CC="${CROSS_COMPILE}gcc"
+# Separate commands so set -e actually stops on a mid-chain failure.
+# (`cmd1 && cmd2 && cmd3` does not trip set -e when cmd2 fails.)
+make -C kernel "${KERNEL_MAKE_ARGS[@]}"
+make modules CC="${CROSS_COMPILE}gcc"
+make dtbs CC="${CROSS_COMPILE}gcc"
 
 # Sanity-check the display-driver build: nv_compiler.h must read as a real compiler version
 # (probe fixed above) and the three display .kos must be non-empty — catches a broken or
@@ -558,7 +564,17 @@ sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
 echo "Installing kernel Image..."
 cp "$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
 
-DTBS_SOURCE="$SOURCE_DIR/kernel-devicetree/generic-dts/dtbs"
+# R36 wrote dtbs under kernel-devicetree/generic-dts/dtbs. R39 `make dtbs`
+# writes them under build/nvidia-public/devicetree/generic-dtbs instead.
+DTBS_SOURCE="$SOURCE_DIR/build/nvidia-public/devicetree/generic-dtbs"
+if [ ! -d "$DTBS_SOURCE" ]; then
+    DTBS_SOURCE="$SOURCE_DIR/kernel-devicetree/generic-dts/dtbs"
+fi
+if [ ! -d "$DTBS_SOURCE" ]; then
+    echo "ERROR: no compiled DTB output dir (looked for R39 generic-dtbs and" >&2
+    echo "       R36 kernel-devicetree/generic-dts/dtbs). Did 'make dtbs' run?" >&2
+    exit 1
+fi
 
 echo "Installing DTBs..."
 for variant in 0000 0001 0003 0004 0005; do
@@ -599,6 +615,21 @@ for dir in "$L4T_DIR/rootfs/boot" "$L4T_DIR/kernel/dtb"; do
         fi
     done
 done
+
+# flash.sh bakes products/<target>/default_overlays from kernel/dtb/. Fail here
+# rather than at flash time if 'make dtbs' did not produce them.
+if [ -f "$DEFAULT_OVERLAYS_FILE" ]; then
+    while IFS= read -r name; do
+        name="${name%%#*}"
+        name="$(echo "$name" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$name" ] && continue
+        if [ ! -f "$L4T_DIR/kernel/dtb/$name" ]; then
+            echo "ERROR: default overlay '$name' was not built into kernel/dtb/" >&2
+            echo "       (DTBS_SOURCE=$DTBS_SOURCE). Check 'make dtbs' and overlay/dtbo.list." >&2
+            exit 1
+        fi
+    done < "$DEFAULT_OVERLAYS_FILE"
+fi
 
 # ── Record build metadata ───────────────────────────────────────────────────
 
