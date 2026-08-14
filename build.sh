@@ -169,8 +169,10 @@ if [ ! -d "$PRODUCT_DIR" ]; then
     exit 1
 fi
 
-export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
+export CROSS_COMPILE="$HOME/l4t-gcc/${TOOLCHAIN_CROSS_PREFIX}"
+export KERNEL_HEADERS="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}"
+# OOT modules (nvidia-oot) select kernel-noble vs kernel-jammy via this.
+export kernel_name="${KERNEL_NAME}"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
 
 # --fast reuses an existing staged tree; there's nothing to reuse if it's absent.
@@ -268,6 +270,10 @@ if [ ! -d "$L4T_DIR" ]; then
     tar xf kernel_src.tbz2
     tar xf kernel_oot_modules_src.tbz2
     tar xf nvidia_kernel_display_driver_source.tbz2
+    # R39+ ships a second display tree (unifiedgpudisp). Absent on R36.
+    if [ -f nvidia_unified_gpu_display_driver_source.tbz2 ]; then
+        tar xf nvidia_unified_gpu_display_driver_source.tbz2
+    fi
     popd > /dev/null
 
     # Snapshot the pristine stock overlay Makefile so the per-build ARK overlay step
@@ -276,7 +282,7 @@ if [ ! -d "$L4T_DIR" ]; then
     cp "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay/Makefile" \
        "$STAGING_DIR/.overlay-makefile.stock"
 
-    DEFCONFIG="$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/configs/defconfig"
+    DEFCONFIG="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/configs/defconfig"
     echo "Applying shared defconfig fragment..."
     cat "$SCRIPT_DIR/defconfig.fragment" >> "$DEFCONFIG"
 
@@ -459,7 +465,7 @@ echo "========================================="
 
 cd "$SOURCE_DIR"
 
-# The bootlin toolchain defaults to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
+# Some toolchains default to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
 # startfiles and fails — its LAST line is a collect2 error, which NVIDIA's nv_compiler.h
 # recipe bakes into the module's /proc version banner via `tail -1`. Repoint it at
 # `--version | head -1`, which never links. Fail loud if the BSP moved the recipe; drop the
@@ -483,9 +489,11 @@ if command -v ccache >/dev/null 2>&1; then
     KERNEL_MAKE_ARGS+=("CC=ccache ${CROSS_COMPILE}gcc")
 fi
 
-make -C kernel "${KERNEL_MAKE_ARGS[@]}" \
-    && make modules CC="${CROSS_COMPILE}gcc" \
-    && make dtbs CC="${CROSS_COMPILE}gcc"
+# Separate commands so set -e actually stops on a mid-chain failure.
+# (`cmd1 && cmd2 && cmd3` does not trip set -e when cmd2 fails.)
+make -C kernel "${KERNEL_MAKE_ARGS[@]}"
+make modules CC="${CROSS_COMPILE}gcc"
+make dtbs CC="${CROSS_COMPILE}gcc"
 
 # Sanity-check the display-driver build: nv_compiler.h must read as a real compiler version
 # (probe fixed above) and the three display .kos must be non-empty — catches a broken or
@@ -521,14 +529,32 @@ fi
 echo "Built kernel release: $JETSON_KERNEL_VERSION"
 
 MODULES_PATH="$INSTALL_MOD_PATH/lib/modules/$JETSON_KERNEL_VERSION"
-HEADERS_TARGET="/usr/src/linux-headers-${JETSON_KERNEL_VERSION}-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
 
 if [ ! -d "$MODULES_PATH" ]; then
     echo "ERROR: module path $MODULES_PATH not found after modules_install" >&2
     echo "       (kernel release '$JETSON_KERNEL_VERSION' does not match the installed modules)." >&2
     exit 1
 fi
-echo "Fixing kernel module symlinks in rootfs..."
+
+# Headers tree path changes with the distro (ubuntu22.04/jammy vs ubuntu24.04/noble).
+# Resolve it from the rootfs that apply_binaries installed rather than hardcoding.
+HEADERS_HOST=$(find "$INSTALL_MOD_PATH/usr/src" -type d \
+    -path "*/linux-headers-${JETSON_KERNEL_VERSION}*/**/kernel-source" 2>/dev/null | head -1)
+if [ -z "$HEADERS_HOST" ]; then
+    # Fallback: top-level headers dir (some layouts skip the 3rdparty nest).
+    HEADERS_HOST=$(find "$INSTALL_MOD_PATH/usr/src" -maxdepth 1 -type d \
+        -name "linux-headers-${JETSON_KERNEL_VERSION}*" 2>/dev/null | head -1)
+fi
+if [ -z "$HEADERS_HOST" ]; then
+    echo "ERROR: no linux-headers-${JETSON_KERNEL_VERSION}* under rootfs/usr/src/" >&2
+    echo "       after apply_binaries — cannot fix modules build/source symlinks." >&2
+    ls -la "$INSTALL_MOD_PATH/usr/src/" 2>/dev/null || true
+    exit 1
+fi
+# Symlink target as seen on the device (absolute under /).
+HEADERS_TARGET="${HEADERS_HOST#"$INSTALL_MOD_PATH"}"
+
+echo "Fixing kernel module symlinks in rootfs (headers -> $HEADERS_TARGET)..."
 sudo rm -f "$MODULES_PATH/build" "$MODULES_PATH/source"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
@@ -536,9 +562,19 @@ sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
 # ── Install build outputs ───────────────────────────────────────────────────
 
 echo "Installing kernel Image..."
-cp "$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
+cp "$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
 
-DTBS_SOURCE="$SOURCE_DIR/kernel-devicetree/generic-dts/dtbs"
+# R36 wrote dtbs under kernel-devicetree/generic-dts/dtbs. R39 `make dtbs`
+# writes them under build/nvidia-public/devicetree/generic-dtbs instead.
+DTBS_SOURCE="$SOURCE_DIR/build/nvidia-public/devicetree/generic-dtbs"
+if [ ! -d "$DTBS_SOURCE" ]; then
+    DTBS_SOURCE="$SOURCE_DIR/kernel-devicetree/generic-dts/dtbs"
+fi
+if [ ! -d "$DTBS_SOURCE" ]; then
+    echo "ERROR: no compiled DTB output dir (looked for R39 generic-dtbs and" >&2
+    echo "       R36 kernel-devicetree/generic-dts/dtbs). Did 'make dtbs' run?" >&2
+    exit 1
+fi
 
 echo "Installing DTBs..."
 for variant in 0000 0001 0003 0004 0005; do
@@ -579,6 +615,21 @@ for dir in "$L4T_DIR/rootfs/boot" "$L4T_DIR/kernel/dtb"; do
         fi
     done
 done
+
+# flash.sh bakes products/<target>/default_overlays from kernel/dtb/. Fail here
+# rather than at flash time if 'make dtbs' did not produce them.
+if [ -f "$DEFAULT_OVERLAYS_FILE" ]; then
+    while IFS= read -r name; do
+        name="${name%%#*}"
+        name="$(echo "$name" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$name" ] && continue
+        if [ ! -f "$L4T_DIR/kernel/dtb/$name" ]; then
+            echo "ERROR: default overlay '$name' was not built into kernel/dtb/" >&2
+            echo "       (DTBS_SOURCE=$DTBS_SOURCE). Check 'make dtbs' and overlay/dtbo.list." >&2
+            exit 1
+        fi
+    done < "$DEFAULT_OVERLAYS_FILE"
+fi
 
 # ── Record build metadata ───────────────────────────────────────────────────
 
