@@ -21,6 +21,7 @@
 
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
+#include <linux/gpio/consumer.h>
 #include <media/tegra_v4l2_camera.h>
 #include <media/tegracam_core.h>
 #include <media/imx708.h>
@@ -304,7 +305,7 @@ static int imx708_power_on(struct camera_common_data *s_data)
 	}
 
 	if (pw->reset_gpio) {
-		if (gpio_cansleep(pw->reset_gpio))
+		if (gpiod_cansleep(gpio_to_desc(pw->reset_gpio)))
 			gpio_set_value_cansleep(pw->reset_gpio, 0);
 		else
 			gpio_set_value(pw->reset_gpio, 0);
@@ -337,7 +338,7 @@ static int imx708_power_on(struct camera_common_data *s_data)
 
 skip_power_seqn:
 	if (pw->reset_gpio) {
-		if (gpio_cansleep(pw->reset_gpio))
+		if (gpiod_cansleep(gpio_to_desc(pw->reset_gpio)))
 			gpio_set_value_cansleep(pw->reset_gpio, 1);
 		else
 			gpio_set_value(pw->reset_gpio, 1);
@@ -380,7 +381,7 @@ static int imx708_power_off(struct camera_common_data *s_data)
 		}
 	} else {
 		if (pw->reset_gpio) {
-			if (gpio_cansleep(pw->reset_gpio))
+			if (gpiod_cansleep(gpio_to_desc(pw->reset_gpio)))
 				gpio_set_value_cansleep(pw->reset_gpio, 0);
 			else
 				gpio_set_value(pw->reset_gpio, 0);
@@ -673,8 +674,12 @@ static const struct v4l2_subdev_internal_ops imx708_subdev_internal_ops = {
 	.open = imx708_open,
 };
 
+#if defined(NV_I2C_DRIVER_STRUCT_PROBE_WITHOUT_I2C_DEVICE_ID_ARG) /* Linux 6.3 */
+static int imx708_probe(struct i2c_client *client)
+#else
 static int imx708_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
+#endif
 {
 	struct device *dev = &client->dev;
 	struct tegracam_device *tc_dev = NULL;
@@ -738,14 +743,29 @@ register_error:
 }
 
 
+#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */
 static int imx708_remove(struct i2c_client *client)
+#else
+static void imx708_remove(struct i2c_client *client)
+#endif
 {
 	struct camera_common_data *s_data = to_camera_common_data(&client->dev);
-	struct imx708 *priv = (struct imx708 *)s_data->priv;
+	struct imx708 *priv;
+
+	if (!s_data) {
+		dev_err(&client->dev, "camera common data is NULL\n");
+#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */
+		return -EINVAL;
+#else
+		return;
+#endif
+	}
+	priv = (struct imx708 *)s_data->priv;
 	tegracam_v4l2subdev_unregister(priv->tc_dev);
 	tegracam_device_unregister(priv->tc_dev);
-
+#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */
 	return 0;
+#endif
 }
 
 static const struct i2c_device_id imx708_id[] = {
