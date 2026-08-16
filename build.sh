@@ -609,8 +609,9 @@ done
 # ~11.5 kB/s throttles the whole kernel. A PCIe AER correctable-error storm on a
 # marginal link does exactly that, starving systemd until RuntimeWatchdogSec resets
 # the board. quiet drops the console threshold to CONSOLE_LOGLEVEL_QUIET (4), which
-# suppresses the AER lines (KERN_WARNING) while keeping KERN_ERR and worse. jetson-io
-# copies the default entry's APPEND verbatim, so the entry it generates inherits this.
+# suppresses the AER lines (KERN_WARNING) while keeping KERN_ERR and worse. Only the
+# default entry is patched, but jetson-io copies its APPEND verbatim into the entry it
+# writes, so a camera-overlay switch stays quiet too.
 echo "Ensuring 'quiet' is on the extlinux kernel command line..."
 sudo python3 - "$L4T_DIR/rootfs/boot/extlinux/extlinux.conf" <<'PY'
 import re, sys
