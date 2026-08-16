@@ -214,6 +214,28 @@ if [ ! -d "$L4T_DIR" ]; then
     sudo "$L4T_DIR/tools/l4t_create_default_user.sh" \
         -u jetson -p jetson -n jetson -a --accept-license
 
+    # nvfb.sh generates the SSH host keys on first boot by re-running openssh-server's
+    # postinst. If ssh-keygen dies partway (power cut, reboot, /etc full while
+    # nvresizefs is still growing the rootfs) it leaves a zero-length key behind, and
+    # postinst's create_key() guards on existence rather than size — so every retry
+    # skips that file, the reconfigure finally exits 0, nvfb drops its once-only
+    # nvfirstboot guard, and sshd can never start again. Clearing truncated keys first
+    # lets nvfb's own retry loop do what it was written to do.
+    echo "Patching nvfb.sh so an interrupted SSH host key generation can be retried..."
+    sudo python3 - "$L4T_DIR/rootfs/etc/systemd/nvfb.sh" <<'PY'
+import sys
+path = sys.argv[1]
+src = open(path).read()
+anchor = '\twhile [ "${status-1}" -ne 0 ]; do\n'
+if src.count(anchor) != 1:
+    sys.exit("ERROR: nvfb.sh has no single openssh reconfigure loop to patch; "
+             "re-check how this BSP generates SSH host keys before shipping.")
+fix = ("\t# A zero-length key from an interrupted run would otherwise be skipped\n"
+       "\t# forever by create_key(), leaving sshd permanently unable to start.\n"
+       "\tfind /etc/ssh -maxdepth 1 -name 'ssh_host_*_key' -empty -print -delete\n")
+open(path, 'w').write(src.replace(anchor, fix + anchor))
+PY
+
     if [ "$PROVISION" -eq 1 ]; then
         PROVISION_SCRIPT="$SCRIPT_DIR/provision.sh"
         if [ ! -f "$PROVISION_SCRIPT" ]; then
