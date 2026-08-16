@@ -612,20 +612,42 @@ done
 # suppresses the AER lines (KERN_WARNING) while keeping KERN_ERR and worse. Only the
 # default entry is patched, but jetson-io copies its APPEND verbatim into the entry it
 # writes, so a camera-overlay switch stays quiet too.
-echo "Ensuring 'quiet' is on the extlinux kernel command line..."
-sudo python3 - "$L4T_DIR/rootfs/boot/extlinux/extlinux.conf" <<'PY'
+#
+# log_buf_len covers what quiet does not: a suppressed message still enters the ring
+# buffer, and the 256K default wrapped inside a minute of boot on that bench, so dmesg
+# no longer reached back to the lines the fixture tests read.
+echo "Ensuring 'quiet log_buf_len=4M' is on the extlinux kernel command line..."
+sudo python3 - "$L4T_DIR/rootfs/boot/extlinux/extlinux.conf" quiet log_buf_len=4M <<'PY'
 import re, sys
-path = sys.argv[1]
+path, tokens = sys.argv[1], sys.argv[2:]
 lines = open(path).read().splitlines(keepends=True)
 appends = [i for i, line in enumerate(lines) if re.match(r'[ \t]*APPEND ', line)]
 if len(appends) != 1:
     sys.exit("ERROR: expected exactly one active APPEND line in extlinux.conf, got %d; "
              "re-check the BSP's boot configuration before shipping." % len(appends))
 i = appends[0]
-if not re.search(r'(?:^|\s)quiet(?:\s|$)', lines[i].rstrip('\n')):
-    lines[i] = lines[i].rstrip('\n') + ' quiet\n'
+append = lines[i].rstrip('\n')
+for token in tokens:
+    key = token.split('=')[0]
+    if not re.search(r'(?:^|\s)%s(?:=|\s|$)' % re.escape(key), append):
+        append += ' ' + token
+if append + '\n' != lines[i]:
+    lines[i] = append + '\n'
     open(path, 'w').writelines(lines)
 PY
+
+# quiet only holds until systemd-sysctl runs. nvidia-l4t-configs ships
+# /etc/sysctl.d/30-nv-console-messages.conf with kernel.printk = 6 6 1 7, which puts the
+# console threshold back to 6 a few seconds into userspace and the whole KERN_WARNING
+# flood back on the wire: measured on a JAJ fixture, quiet alone still gave a 1.77 MB
+# boot console. Win on sort order rather than editing their conffile. The value is stock
+# Ubuntu's, from the 10-console-messages.conf that 30- overrode.
+echo "Installing the console loglevel sysctl drop-in..."
+sudo tee "$L4T_DIR/rootfs/etc/sysctl.d/99-ark-console-quiet.conf" >/dev/null <<'EOF'
+# Console threshold 4: warnings and anything less severe stay off the 115200 console that
+# the kernel blocks on. KERN_ERR and worse still print; dmesg still records everything.
+kernel.printk = 4 4 1 7
+EOF
 
 # ── Record build metadata ───────────────────────────────────────────────────
 
