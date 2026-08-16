@@ -602,6 +602,32 @@ for dir in "$L4T_DIR/rootfs/boot" "$L4T_DIR/kernel/dtb"; do
     done
 done
 
+# ── Quiet the serial console ────────────────────────────────────────────────
+
+# The BSP boots a verbose console (CONFIG_CONSOLE_LOGLEVEL_DEFAULT=7) on a 115200
+# UART, and printk to a serial console is synchronous: a driver logging faster than
+# ~11.5 kB/s throttles the whole kernel. A PCIe AER correctable-error storm on a
+# marginal link does exactly that, starving systemd until RuntimeWatchdogSec resets
+# the board. quiet drops the console threshold to CONSOLE_LOGLEVEL_QUIET (4), which
+# suppresses the AER lines (KERN_WARNING) while keeping KERN_ERR and worse — unlike
+# loglevel=1, which would hide real failures too. The ring buffer is untouched, so
+# dmesg still has everything. jetson-io copies the default entry's APPEND verbatim,
+# so the entry it generates inherits this.
+echo "Ensuring 'quiet' is on the extlinux kernel command line..."
+sudo python3 - "$L4T_DIR/rootfs/boot/extlinux/extlinux.conf" <<'PY'
+import re, sys
+path = sys.argv[1]
+lines = open(path).read().splitlines(keepends=True)
+appends = [i for i, line in enumerate(lines) if re.match(r'[ \t]*APPEND ', line)]
+if len(appends) != 1:
+    sys.exit("ERROR: expected exactly one active APPEND line in extlinux.conf, got %d; "
+             "re-check the BSP's boot configuration before shipping." % len(appends))
+i = appends[0]
+if not re.search(r'(?:^|\s)quiet(?:\s|$)', lines[i].rstrip('\n')):
+    lines[i] = lines[i].rstrip('\n') + ' quiet\n'
+    open(path, 'w').writelines(lines)
+PY
+
 # ── Record build metadata ───────────────────────────────────────────────────
 
 BUILD_COMMIT=$ARK_BUILD_COMMIT
