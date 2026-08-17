@@ -88,3 +88,10 @@
 	phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0",
 		    "usb3-1", "usb3-2";
 };
+
+/* C7 is the 16-pin PCIe FFC header: one lane over unshielded flat flex, on a pinout
+ * Raspberry Pi rates at 5 GT/s and treats 8 GT/s as best-effort. Stock leaves the rate
+ * unpinned, so the link trains at 8 GT/s with no margin and floods correctable AER. */
+&{/bus@0/pcie@141e0000} {
+	max-link-speed = <2>;
+};
