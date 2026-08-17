@@ -14,11 +14,14 @@
 	};
 
 	/* VBUS for the single USB-A (J33) is a load switch (U20, active-high enable) gated by
-	 * soc_gpio39/PN.01. Stock DT left that pin a pulled-up input, so the port leaned on the
-	 * board's 100K pull-up (R144) alone and enumerated unreliably — the USBSS0 USB3 drive (and
-	 * its USB2 companion) would intermittently go missing. Model the switch as a regulator so
-	 * the kernel drives the enable high at boot. The other three USB-A ports are powered by the
-	 * onboard USB2 hub (uhubctl), not a SoC GPIO. */
+	 * soc_gpio39/PN.01, which the board also pulls up through R144 (100K to 1V8). Modelling it
+	 * as a regulator gives the kernel the pin; deliberately NOT boot-on, so reg-fixed-voltage
+	 * takes it low at probe and tegra186_utmi_phy_init raises it when xhci brings usb2-2 up.
+	 * VBUS then arrives with the host, as it does on the other three USB-A ports (the onboard
+	 * USB2 hub powers those only once it has enumerated). Asserted any earlier, a SuperSpeed
+	 * device on J33 finishes its Rx.Detect handshake before the host exists and parks: its USB2
+	 * companion still enumerates, the SS link never appears, and nothing short of a VBUS cycle
+	 * recovers it. The MB1 gpio BCT holds the same pin low through the bootloader. */
 	vdd_5v0_usbss0: regulator-usbss0-vbus {
 		compatible = "regulator-fixed";
 		regulator-name = "VDD_5V0_USBSS0";
@@ -26,7 +29,6 @@
 		regulator-max-microvolt = <5000000>;
 		gpio = <&gpio TEGRA234_MAIN_GPIO(N, 1) GPIO_ACTIVE_HIGH>;
 		enable-active-high;
-		regulator-boot-on;
 		vin-supply = <&vdd_5v0_sys>;
 	};
 };
