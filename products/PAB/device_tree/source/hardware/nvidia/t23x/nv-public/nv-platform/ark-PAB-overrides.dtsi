@@ -21,13 +21,16 @@
 	 * USB2 hub powers those only once it has enumerated). Asserted any earlier, a SuperSpeed
 	 * device on J33 finishes its Rx.Detect handshake before the host exists and parks: its USB2
 	 * companion still enumerates, the SS link never appears, and nothing short of a VBUS cycle
-	 * recovers it. The MB1 gpio BCT holds the same pin low through the bootloader. */
+	 * recovers it. The MB1 gpio BCT holds the same pin low through the bootloader.
+	 * Open drain: U20's FLG (open-drain fault flag) is wired to the same net so an over-current
+	 * pulls EN low; a push-pull high would fight it. gpio-tegra186 has no native open drain, so
+	 * gpiolib emulates it — "high" is Hi-Z and R144 does the pulling. */
 	vdd_5v0_usbss0: regulator-usbss0-vbus {
 		compatible = "regulator-fixed";
 		regulator-name = "VDD_5V0_USBSS0";
 		regulator-min-microvolt = <5000000>;
 		regulator-max-microvolt = <5000000>;
-		gpio = <&gpio TEGRA234_MAIN_GPIO(N, 1) GPIO_ACTIVE_HIGH>;
+		gpio = <&gpio TEGRA234_MAIN_GPIO(N, 1) (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 		enable-active-high;
 		vin-supply = <&vdd_5v0_sys>;
 	};
