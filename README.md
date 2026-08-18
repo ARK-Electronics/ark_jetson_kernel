@@ -74,8 +74,6 @@ By default `flash.sh` targets NVMe. Other storage layouts:
 ./flash.sh PAB --usb        # USB thumb drive
 ```
 
-Both flashers block until the board has finished its first boot: it generates the SSH host keys then, and cutting power mid-way can leave a unit whose sshd never starts. Leave the USB cable connected. `ARK_FIRST_BOOT_TIMEOUT` overrides the 480 s cap.
-
 When flashing completes, SSH in over Micro USB or WiFi:
 ```
 ssh jetson@jetson.local
