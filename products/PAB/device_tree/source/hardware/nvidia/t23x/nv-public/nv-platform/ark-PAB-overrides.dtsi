@@ -85,20 +85,24 @@
 	};
 };
 
-/* Recovery/OTG port carries a micro-USB connector (drop the stock typec link). */
+/* Recovery/OTG port: a mux hands usb2-0 to the FMU's USB, or to the micro-USB when that has VBUS.
+ * No ID pin — the "id" line is inverted VBUS-detect on PZ.01, so active-low reads host idle (FMU)
+ * and device with a recovery cable in. Drop the stock Type-C link. */
 &{/bus@0/padctl@3520000/ports/usb2-0} {
 	/delete-node/ port;
 	connector {
-		compatible = "usb-b-connector", "gpio-usb-b-connector";
+		compatible = "gpio-usb-b-connector", "usb-b-connector";
 		label = "micro-USB";
 		type = "micro";
-		id-gpio = <&gpio TEGRA234_MAIN_GPIO(Z, 1) GPIO_ACTIVE_LOW>;
+		id-gpios = <&gpio TEGRA234_MAIN_GPIO(Z, 1) GPIO_ACTIVE_LOW>;
 	};
 };
 
-/* Carrier USB-A port mapping. */
+/* USB-A mapping: usb2-2 + usb3-0 = J33; usb3-1/usb3-2 = J34 lower/upper, whose USB2 halves are
+ * downstream ports of the USB2 hub on usb2-1 — hence the shared companion (T234 uses it only for
+ * PORT_CAP and the OTG lookup). Leave usb3-3 unused: OTG usb2-0 has no SS companion and the padctl
+ * takes a free usb3 port as its device-mode fake. */
 &{/bus@0/padctl@3520000/ports} {
-	/* usb2-2 + usb3-0 are the single USB-A (J33); point its VBUS at the GPIO-gated switch above. */
 	usb2-2 { vbus-supply = <&vdd_5v0_usbss0>; };
 	usb3-0 { nvidia,usb2-companion = <2>; };
 	usb3-1 { nvidia,usb2-companion = <1>; };
