@@ -152,6 +152,69 @@ if command -v nmcli > /dev/null 2>&1 && systemctl is-active --quiet NetworkManag
     trap 'sudo rm -f "$NM_FLASH_GUARD"; sudo nmcli general reload' EXIT
 fi
 
+# ── Wait for the flashed image to finish its first boot ─────────────────────
+# The image ships no SSH host keys: /etc/systemd/nvfb.sh generates them on the
+# first boot, and nvfb.service is ordered Before=ssh.service, so an answering
+# port 22 proves the board is past the window where losing power strands it. A
+# key truncated by a power cut is skipped forever afterwards — openssh's
+# create_key() guards on existence, not size — and sshd then never starts.
+# The board serves 192.168.55.1 over the cable it was just flashed on.
+# Keep in sync with the copy in packaging/flash_from_package.sh.
+
+FIRST_BOOT_TIMEOUT="${ARK_FIRST_BOOT_TIMEOUT:-480}"
+JETSON_USB_ADDRESS="192.168.55.1"
+
+jetson_usb_interface() {
+    # Match the device-mode gadget on USB vendor: its interface name and MAC are
+    # per-board, the vendor id is not.
+    local net device
+    for net in /sys/class/net/*; do
+        device="$(readlink -f "$net/device" 2>/dev/null)" || continue
+        if [ "$(cat "$device/../idVendor" 2>/dev/null)" = "0955" ]; then
+            echo "${net##*/}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+wait_for_first_boot() {
+    local start elapsed announced interface addresses
+    start=$(date +%s)
+    announced=0
+    echo ""
+    echo "Waiting for the Jetson to finish its first boot — leave it powered and connected."
+    while :; do
+        elapsed=$(( $(date +%s) - start ))
+        [ "$elapsed" -lt "$FIRST_BOOT_TIMEOUT" ] || break
+        interface="$(jetson_usb_interface || true)"
+        if [ -n "$interface" ]; then
+            # The gadget's DHCP pool is the single address .100; take it directly
+            # rather than depend on a DHCP client running on this host NIC.
+            sudo ip link set "$interface" up 2>/dev/null || true
+            addresses="$(ip -4 -o addr show dev "$interface" 2>/dev/null || true)"
+            case "$addresses" in
+                *"inet 192.168.55."*) ;;
+                *) sudo ip addr add 192.168.55.100/24 dev "$interface" 2>/dev/null || true ;;
+            esac
+            if timeout 2 bash -c "exec 3<>/dev/tcp/$JETSON_USB_ADDRESS/22" 2>/dev/null; then
+                echo "First boot complete after ${elapsed}s — sshd is up on $JETSON_USB_ADDRESS. Safe to power off."
+                return 0
+            fi
+        fi
+        if [ $(( elapsed - announced )) -ge 30 ]; then
+            announced="$elapsed"
+            echo "  still booting (${elapsed}s)"
+        fi
+        sleep 5
+    done
+    echo "" >&2
+    echo "ERROR: no sshd on $JETSON_USB_ADDRESS:22 within ${FIRST_BOOT_TIMEOUT}s — the first boot did not finish." >&2
+    echo "       Keep it powered and cabled; check its console: systemctl status nvfb ssh" >&2
+    echo "       Removing power now can leave a unit whose sshd never starts." >&2
+    return 1
+}
+
 cd "$L4T_DIR"
 
 if [ -n "$ADDITIONAL_DTB_OVERLAY" ]; then
@@ -174,3 +237,11 @@ else
     sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY=$ADDITIONAL_DTB_OVERLAY} \
         ./flash.sh "$FLASH_TARGET" "$STORAGE_DEV"
 fi
+flash_status=$?
+
+if [ "$flash_status" -ne 0 ]; then
+    echo "ERROR: flashing failed (exit $flash_status)." >&2
+    exit "$flash_status"
+fi
+
+wait_for_first_boot || exit 1
