@@ -185,7 +185,6 @@ sudo apt-get install -y -qq make build-essential bc flex bison libssl-dev
 # Toolchain
 mkdir -p "$HOME/l4t-gcc"
 TOOLCHAIN_FILENAME=$(basename "$TOOLCHAIN_URL")
-TOOLCHAIN_DIRNAME=${TOOLCHAIN_FILENAME%.tar.bz2}
 
 if [ ! -d "$HOME/l4t-gcc/$TOOLCHAIN_DIRNAME" ]; then
     download_with_retry "$TOOLCHAIN_URL" "$HOME/l4t-gcc"
