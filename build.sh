@@ -169,7 +169,10 @@ if [ ! -d "$PRODUCT_DIR" ]; then
     exit 1
 fi
 
-export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
+THIS_MACHINE="$(uname -m)"
+if [[ "$THIS_MACHINE" != "aarch64" ]]; then
+    export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
+fi
 export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
 
@@ -202,7 +205,7 @@ if [ ! -d "$L4T_DIR" ]; then
 
     # qemu-aarch64 binfmt handler: lets the host run aarch64 binaries when we chroot
     # into the rootfs during provisioning.
-    if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+    if [[ "$THIS_MACHINE" != "aarch64" && ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]]; then
         echo "Registering qemu-aarch64 binfmt handler"
         sudo update-binfmts --enable qemu-aarch64
     fi
