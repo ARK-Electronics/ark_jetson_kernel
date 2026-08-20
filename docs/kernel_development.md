@@ -6,9 +6,10 @@
 
 The steps below build and install the kernel, modules, and DTBs by hand. Adjust the `PAB` path for your target.
 
-Set up the cross-compile environment:
+Set up the cross-compile environment (skip `CROSS_COMPILE` on an aarch64 host):
 ```
-export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
+source versions.env
+export CROSS_COMPILE=$HOME/l4t-gcc/$TOOLCHAIN_DIRNAME/bin/aarch64-buildroot-linux-gnu-
 export KERNEL_HEADERS=$PWD/staging/PAB/Linux_for_Tegra/source/kernel/kernel-jammy-src
 export INSTALL_MOD_PATH=$PWD/staging/PAB/Linux_for_Tegra/rootfs/
 cd staging/PAB/Linux_for_Tegra/source

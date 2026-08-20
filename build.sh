@@ -169,9 +169,15 @@ if [ ! -d "$PRODUCT_DIR" ]; then
     exit 1
 fi
 
+# Check the toolchain before staging: a missing one would otherwise surface as a
+# command-not-found from make, after the ~30 min stage + provision.
 THIS_MACHINE="$(uname -m)"
 if [[ "$THIS_MACHINE" != "aarch64" ]]; then
-    export CROSS_COMPILE=$HOME/l4t-gcc/aarch64--glibc--stable-2022.08-1/bin/aarch64-buildroot-linux-gnu-
+    export CROSS_COMPILE="$HOME/l4t-gcc/$TOOLCHAIN_DIRNAME/bin/aarch64-buildroot-linux-gnu-"
+    if [ ! -x "${CROSS_COMPILE}gcc" ]; then
+        echo "ERROR: cross toolchain not found at ${CROSS_COMPILE}gcc — run ./setup.sh" >&2
+        exit 1
+    fi
 fi
 export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
