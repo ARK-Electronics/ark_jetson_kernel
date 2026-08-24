@@ -359,6 +359,22 @@ if ! grep -q "$ARK_FRAGMENT" "$NV_COMMON"; then
     printf '\n#include "%s"\n' "$ARK_FRAGMENT" >> "$NV_COMMON"
 fi
 
+# ── C7's link rate belongs to the carrier, not the SKU overlay ───────────────
+# UEFI applies tegra234-p3768-0000+p3767-0000-dynamic.dtbo over the kernel DTB, and its
+# Orin Nano fragment pins max-link-speed on every PCIe controller. That silently beats
+# ark-<target>-overrides.dtsi, which only wins inside the DTB: JAJ's Gen2 cap on the FFC
+# header sat in the DTB on disk and was absent from /proc/device-tree, with nothing in
+# the build able to see it. Drop the overlay's write for C7 so the carrier fragment
+# decides that one rate; every other controller keeps NVIDIA's. Idempotent, and a no-op
+# where C7 is disabled anyway (PAB, PAB_V3). See docs/device-tree.md.
+SKU_HANDLING="$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay/tegra234-p3767-sku-handling.dtsi"
+sed -i "/pcie@141e0000 {/,/};/ s|max-link-speed = <0x3>;|/* C7 rate: see $ARK_FRAGMENT */|" "$SKU_HANDLING"
+if sed -n '/pcie@141e0000 {/,/};/p' "$SKU_HANDLING" | grep -q max-link-speed; then
+    echo "ERROR: the p3767 SKU overlay still pins C7's link rate — UEFI would overwrite" >&2
+    echo "       $ARK_FRAGMENT at boot. Update the sed above for the new BSP." >&2
+    exit 1
+fi
+
 # Stamp per-SKU model strings onto the stock DTS: the listed model goes on the SKU's
 # "-nv" DTB and "<model> Super" on its "-nv-super" DTB. Re-derived every build (drop
 # any prior ARK-MODEL block, re-append) so a model edit needs no re-stage.
