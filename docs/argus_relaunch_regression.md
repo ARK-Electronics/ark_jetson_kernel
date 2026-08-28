@@ -45,11 +45,17 @@ Conclusions the data forces:
 
 ## The fix (shipped in this repo)
 
-`--provision` now pins the camera userspace stack to `NV_CAMERA_STACK_VERSION` (versions.env, currently `36.4.4-20250616085344` = JetPack 6.2.1, the newest bench-clean release). Because the 36.4.x debs declare `nvidia-l4t-core (<< 36.5-0)` and exact-stamp deps on cuda/nvsci, provision.sh repacks them (`relax_l4t_deps`): core cap relaxed, out-of-set exact deps unversioned, in-set exact deps retargeted, version suffixed `+ark1` for traceability. They then install as one ordinary `apt-get install --allow-downgrades` transaction — dpkg/apt state stays consistent (`apt-get check` clean) — and are `apt-mark hold` so an on-device upgrade against NVIDIA's repo can't drag them back to the regressed stamp.
+`--provision` now pins the camera userspace stack to `NV_CAMERA_STACK_VERSION` (versions.env, currently `36.4.4-20250616085344` = JetPack 6.2.1, the newest bench-clean release). Because the 36.4.x debs declare `nvidia-l4t-core (<< 36.5-0)` and exact-stamp deps on cuda/nvsci, provision.sh repacks them (`relax_l4t_deps`): core cap relaxed, out-of-set exact deps unversioned, in-set exact deps retargeted, and the version restamped to `NV_CAMERA_PIN_VERSION` (`36.5.99-20250616085344+ark1`). They then install as one ordinary `apt-get install --allow-downgrades` transaction — dpkg/apt state stays consistent (`apt-get check` clean) — and are `apt-mark hold` so an on-device upgrade against NVIDIA's repo can't drag them back to the regressed stamp.
 
 Already-flashed 6.2.2.x devices can be fixed in place with the same four repacked debs: `sudo apt-get install -y --allow-downgrades ./ark1_*.deb && sudo apt-mark hold nvidia-l4t-gstreamer nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils && sudo systemctl restart nvargus-daemon`.
 
-On each BSP bump, rerun the repro below against the new stock stack; drop the pin (set `NV_CAMERA_STACK_VERSION` back to the BSP stamp) once NVIDIA ships a fixed userspace. Known tradeoff while pinned: the camera stack stops receiving NVIDIA's 36.5.x security/bug updates, and `nvidia-jetpack` metapackage installs that pull exact-version camera components may need the hold lifted.
+On each BSP bump, rerun the repro below against the new stock stack; drop the pin (set `NV_CAMERA_STACK_VERSION` back to the BSP stamp) once NVIDIA ships a fixed userspace. Known tradeoff while pinned: the camera stack stops receiving NVIDIA's 36.5.x security/bug updates.
+
+### Why the version is restamped, not just suffixed
+
+`nvidia-jetpack-runtime` declares `nvidia-l4t-gstreamer (>> 36.5-0), (<< 36.6-0)`, which no truthful 36.4.4 stamp can satisfy — `apt install nvidia-jetpack` failed outright with "you have requested an impossible situation". `36.5.99` sits inside that window and above NVIDIA's newest 36.5.x, so the metapackage resolves and apt still never wants to upgrade the set. Nothing else in that dependency tree is tighter: `nvidia-l4t-jetson-multimedia-api` asks only for `(>> 36.0) (<< 37.0)` on camera/multimedia/multimedia-utils, and the CUDA/TensorRT/VPI side doesn't depend on them at all.
+
+The contents are still `NV_CAMERA_STACK_VERSION`; the `+ark1` suffix and the real `20250616085344` build stamp in the debian revision are what say so. When the pin is dropped, both variables go back to the BSP stamp together.
 
 For Gremsy (#107): their custom IMX586 driver is not the cause — stock sensors reproduce it. They can apply the same pinned userspace on a 36.5.0-based release (best: current kernel + working cameras), or stay on `b2275f3` (R36.4.3) until NVIDIA fixes 36.5.x.
 
