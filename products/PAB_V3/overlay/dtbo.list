@@ -7,3 +7,6 @@
 tegra234-p3767-camera-p3768-imx219-dual.dtbo
 tegra234-p3767-camera-p3768-imx477-dual.dtbo
 tegra234-p3767-camera-p3768-imx708-dual.dtbo
+
+# Not a camera overlay: UEFI boot order (see the source file).
+ark_boot_order.dtbo
