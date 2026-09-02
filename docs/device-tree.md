@@ -62,6 +62,19 @@ A base-fragment value on one of those properties is reverted with nothing to sho
 
 To check a live board, compare `dtc -I fs -O dts /proc/device-tree` against `dtc -I dtb -O dts` of the DTB in `/boot/dtb/`.
 
+## UEFI variables
+
+`L4TConfiguration.dtbo` (BSP) and `ark_boot_order.dtbo` (`products/*/overlay/`) write `/firmware/uefi/variables/` into the kernel DTB, which is where UEFI reads them. Both ride `OVERLAY_DTB_FILE`; ARK's is appended via `ADDITIONAL_DTB_OVERLAY`, so it lands last and wins.
+
+| Variable | Stock | ARK |
+|----------|-------|-----|
+| `NewDeviceHierarchy` | `[01]` — new devices go to the top of the boot order | `[00]` — bottom |
+| `DefaultBootPriority` | `usb,nvme,emmc,sd,ufs` | `nvme,usb,emmc,sd,ufs` |
+
+UEFI auto-creates HTTPv6/HTTPv4/PXEv6/PXEv4 boot options as soon as a NIC enumerates. None of them appear in `DefaultBootPriority`, so under `NewDeviceHierarchy = 01` all four rank as new devices and sit ahead of the SSD — and are re-promoted after any manual reorder.
+
+`DefaultBootPriority` is `locked`: UEFI re-asserts it from the DTB every boot, so it is settable only at flash time. `NewDeviceHierarchy` is `runtime`/`non-volatile`, so a unit already in the field can be corrected without a reflash — Device Manager → NVIDIA Configuration → Boot Configuration → "Add new devices to top or bottom of boot order" → **Bottom**.
+
 ## Updating after a BSP bump
 
 Usually nothing: the fragment overrides specific nodes, so unrelated BSP changes are inherited automatically. After bumping `versions.env`, do a clean build (`./build.sh <target> --clean`). Only if `dtc` errors — e.g. a node the fragment references was renamed or removed upstream — adjust the affected line in the fragment. (This is exactly the failure the old full-tree copies hid: they pinned the whole tree to one BSP and quietly reverted everything else.)
