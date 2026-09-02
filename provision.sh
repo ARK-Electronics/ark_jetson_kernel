@@ -130,9 +130,14 @@ sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/
 # nvidia-l4t-gstreamer, which the BSP set lacks) with the pinned known-good set. The
 # pinned debs' deps assume their own release, so repack each with the out-of-set bounds
 # relaxed (nvidia-l4t-core upper cap, exact-stamp cuda/nvsci) and the in-set exact deps
-# retargeted to the +ark1 version — a clean apt install instead of dpkg --force-depends,
-# so on-device apt stays consistent. Hold the set so an on-device upgrade can't drag it
-# back to the regressed BSP stamp.
+# retargeted to NV_CAMERA_PIN_VERSION — a clean apt install instead of dpkg
+# --force-depends, so on-device apt stays consistent. Hold the set so an on-device
+# upgrade can't drag it back to the regressed BSP stamp.
+#
+# The restamp is also what keeps `apt install nvidia-jetpack` working: the metapackage
+# demands nvidia-l4t-gstreamer (>> 36.5-0) (<< 36.6-0), which a truthful 36.4.4 stamp
+# can never satisfy, so the whole install failed as an "impossible situation". Nothing
+# else in that dependency tree constrains the set any tighter than (>> 36.0, << 37.0).
 relax_l4t_deps() {
     local in="$1" out="$2" work
     work=$(mktemp -d)
@@ -141,13 +146,13 @@ relax_l4t_deps() {
         -e "s/nvidia-l4t-core (<< [0-9.]*-0)/nvidia-l4t-core (<< 37.0-0)/" \
         -e "s/nvidia-l4t-cuda (= [^)]*)/nvidia-l4t-cuda/" \
         -e "s/nvidia-l4t-nvsci (= [^)]*)/nvidia-l4t-nvsci/" \
-        -e "s/(= ${NV_CAMERA_STACK_VERSION})/(= ${NV_CAMERA_STACK_VERSION}+ark1)/g" \
-        -e "s/^Version: .*/&+ark1/" \
+        -e "s/(= ${NV_CAMERA_STACK_VERSION})/(= ${NV_CAMERA_PIN_VERSION})/g" \
+        -e "s/^Version: .*/Version: ${NV_CAMERA_PIN_VERSION}/" \
         "$work/DEBIAN/control"
     dpkg-deb -b --root-owner-group "$work" "$out" >/dev/null
     rm -rf "$work"
 }
-echo "Installing the pinned camera userspace stack (${NV_CAMERA_STACK_VERSION}+ark1)..."
+echo "Installing the pinned camera userspace stack (${NV_CAMERA_STACK_VERSION} as ${NV_CAMERA_PIN_VERSION})..."
 NV_CAMERA_TMP_DEBS=()
 for pkg in "${NV_CAMERA_PKGS[@]}"; do
     deb=$(nv_camera_deb "$pkg")
@@ -163,8 +168,8 @@ sudo chroot "$ROOTFS_DIR" apt-get install -y --allow-downgrades --allow-change-h
 sudo chroot "$ROOTFS_DIR" apt-mark hold "${NV_CAMERA_PKGS[@]}"
 for pkg in "${NV_CAMERA_PKGS[@]}"; do
     v=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Version}' "$pkg")
-    [ "$v" = "${NV_CAMERA_STACK_VERSION}+ark1" ] || {
-        echo "ERROR: $pkg is '$v', expected ${NV_CAMERA_STACK_VERSION}+ark1." >&2; exit 1; }
+    [ "$v" = "${NV_CAMERA_PIN_VERSION}" ] || {
+        echo "ERROR: $pkg is '$v', expected ${NV_CAMERA_PIN_VERSION}." >&2; exit 1; }
 done
 # Assert the plugin actually loads and registers nvarguscamerasrc — file existence
 # alone misses unresolvable libraries. Inspect the plugin *file*, not the element:
@@ -176,6 +181,34 @@ sudo chroot "$ROOTFS_DIR" env GST_REGISTRY=/tmp/provision-gst-registry.bin \
     || { echo "ERROR: nvarguscamerasrc missing or failed to load after installing the camera stack." >&2; exit 1; }
 sudo rm -f "$ROOTFS_DIR/tmp/provision-gst-registry.bin"
 for pkg in "${NV_CAMERA_PKGS[@]}"; do sudo rm -f "$ROOTFS_DIR/tmp/ark1_$(nv_camera_deb "$pkg")"; done
+
+### Hold the boot chain we build ourselves
+# /boot/Image and /boot/*.dtb* are ordinary package files owned by nvidia-l4t-kernel
+# and nvidia-l4t-kernel-dtbs, not conffiles, and the image ships NVIDIA's apt source
+# live — so one `apt upgrade` swaps the ARK defconfig and DTBs for stock. The DTB half
+# is the silent one: the board keeps running the ARK tree from the kernel-dtb
+# partition, so only jetson-io notices, dying on the resulting model mismatch.
+# nvidia-l4t-bootloader is in the set because its postinst rewrites the QSPI that
+# carries our MB1 BCT pinmux. The kernel packages hold as one group — vermagic ties
+# the OOT modules to the kernel, so a partial upgrade is worse than either.
+NV_BOOT_CHAIN_PKGS=(
+    nvidia-l4t-kernel
+    nvidia-l4t-kernel-dtbs
+    nvidia-l4t-kernel-headers
+    nvidia-l4t-kernel-oot-headers
+    nvidia-l4t-kernel-oot-modules
+    nvidia-l4t-display-kernel
+    nvidia-l4t-bootloader
+)
+echo "Holding the ARK-built boot chain against NVIDIA's apt repo..."
+sudo chroot "$ROOTFS_DIR" apt-mark hold "${NV_BOOT_CHAIN_PKGS[@]}"
+# apt-mark hold is a no-op on a package that is not installed, so assert the result
+# rather than the command.
+held=$(sudo chroot "$ROOTFS_DIR" apt-mark showhold)
+for pkg in "${NV_BOOT_CHAIN_PKGS[@]}" "${NV_CAMERA_PKGS[@]}"; do
+    printf '%s\n' "$held" | grep -qx "$pkg" || {
+        echo "ERROR: $pkg is not held; an apt upgrade would replace it." >&2; exit 1; }
+done
 
 ### Install pip
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
