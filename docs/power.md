@@ -69,15 +69,19 @@ Two results worth calling out:
 ## Common questions
 
 **Why didn't it reach 40W?**
-Because our load only drove the CPU and GPU. The DLA, PVA, and the video encoder and decoder were all idle, and they are a large share of the budget. Published results that reach 32-33W drive those too. Treat 29W as a floor for what the board sustains, not as the module's ceiling.
+Because our load only drove the CPU and GPU. The DLA, PVA, and the video encoder and decoder were all idle, and they are a large share of the budget. Published all-engine results still top out around 32-33W; 40W is a TDP envelope, not a typical draw. Treat 29W as a floor for what the board sustains, not as the module's ceiling.
 
 **Is 5V enough?**
 For everything we tested, yes. The rail measured 5.168V idle and 5.016V at 6A — roughly 29 milliohms of source impedance and 270mV of margin above the module's 4.75V minimum. The rail was never the limiting factor.
 
-There is one caveat, and it matters if you are designing to the spec sheet. NVIDIA's design guide states that **MAXN_SUPER at 40W requires a minimum of 8.0V on VDD_IN**. We ran MAXN_SUPER on 5V without issue, but we peaked at 30W — we never entered the regime that rule governs. Reaching a true 40W on a 5V rail would mean roughly 7.7A through VDD_IN, which we did not test and which the design guide advises against. Our data shows MAXN_SUPER is usable at 5V; it does not show the 8V requirement is unnecessary.
+The 8.0V floor is 40W / 5A, not a Super-mode enable voltage. Super-mode clocks run at 5V; 8V is the current-budget constraint for drawing 40W without exceeding the 5A Imax. We ran MAXN_SUPER on 5V without issue, but we peaked at 30W / 6A. A 40W 5V design would pull ~8A, past both the 5A datasheet Imax and the module's 7.8A INA3221 over-current ceiling.
 
-**I read that VDD_IN is limited to about 5A.**
-That figure comes from NVIDIA forum posts, not from a datasheet — the Orin NX datasheet publishes no maximum VDD_IN current at all, and the design guide defers to a datasheet spec that does not exist. We measured 6.05A sustained for 45 minutes with no alarm and no ill effect. Note that not failing for 45 minutes is not the same as being within a long-term derating limit, so treat this as an observation rather than permission to design past it.
+**I read that VDD_IN is limited to 5A.**
+Yes. DS-10712-001 Table 5-2 lists IDDMAX = 5A as an absolute maximum rating. The design guide (DG-10931) points at that datasheet number for "supply tolerance and maximum current." Table 5-1 (recommended operating) specifies voltage only; there is no recommended operating current.
+
+We still measured 6.05A sustained for 45 minutes with no alarm and no ill effect. Absolute-max ratings are stress limits, not a hardware clamp — NVIDIA's wording is that they "do not set minimum and maximum operating conditions that will be tolerated over extended periods of time." Nothing on the module cuts off at 5A. The INA3221 `curr1_crit` / `curr1_max` wired to SoC throttle is 7784 mA in every power mode, so NVIDIA's own software allows ~7.8A before it throttles.
+
+5A × 5V = 25W, which was the Orin NX 16GB TDP before Super mode. Super mode raised the TDP budget to 40W and the INA OC with it; the datasheet kept IDDMAX at 5A and added the 8V floor instead of raising Imax. Exceeding 5A without failing for 45 minutes is an observation, not permission to design past it. A 5V carrier that stays in spec is a ~25W module.
 
 **Which power input should I use?**
 The XT60 accepts a wide input and feeds an 8A buck, so it has the most headroom. The Molex Clik-Mate 5V input is rated 6A, which caps total board draw around 30W — enough for the module but with little left over. Both merge through ideal-diode ORing onto the same 5V rail, which the module shares with the carrier's 3.3V, 1.8V and two 1.5A 5V peripheral rails.
