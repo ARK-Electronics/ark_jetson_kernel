@@ -9,6 +9,7 @@ This document covers how flash packages are generated, released, and consumed. E
 | PAB | ARK Jetson PAB Carrier | `pab-` |
 | JAJ | ARK Just a Jetson Carrier | `jaj-` |
 | PAB_V3 | ARK Jetson PAB V3 Carrier | `pab-v3-` |
+| PAB_CAN | ARK PAB CAN Jetson Carrier | `pab-can-` |
 
 Each carrier has its own device tree. A flash package built for one carrier will not work on another.
 
@@ -52,7 +53,8 @@ When a change affects all carriers, push a tag for each:
 git tag -a pab-6.2.1.1 -m "pab-6.2.1.1"
 git tag -a jaj-6.2.1.1 -m "jaj-6.2.1.1"
 git tag -a pab-v3-6.2.1.1 -m "pab-v3-6.2.1.1"
-git push origin pab-6.2.1.1 jaj-6.2.1.1 pab-v3-6.2.1.1
+git tag -a pab-can-6.2.1.1 -m "pab-can-6.2.1.1"
+git push origin pab-6.2.1.1 jaj-6.2.1.1 pab-v3-6.2.1.1 pab-can-6.2.1.1
 ```
 
 ## Generating a Flash Package (local)

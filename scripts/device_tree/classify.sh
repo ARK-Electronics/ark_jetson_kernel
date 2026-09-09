@@ -5,7 +5,7 @@
 # one BSP and revert everything the BSP later changes, which is exactly what the device-tree
 # overlay refactor removed. Run this after a BSP bump (or in CI) to catch re-introduced copies.
 #
-# Usage: scripts/device_tree/classify.sh [PAB|JAJ|PAB_V3|all]   (default: all)
+# Usage: scripts/device_tree/classify.sh [PAB|JAJ|PAB_V3|PAB_CAN|all]   (default: all)
 # Needs the BSP source tarball in downloads/ (run ./setup.sh first). Exits non-zero on a DUPLICATE.
 set -euo pipefail
 
@@ -17,9 +17,9 @@ source "$REPO/versions.env"
 
 TARGET="${1:-all}"
 case "$TARGET" in
-    PAB|JAJ|PAB_V3) TARGETS=("$TARGET") ;;
-    all) TARGETS=(PAB JAJ PAB_V3) ;;
-    *) echo "usage: $0 [PAB|JAJ|PAB_V3|all]" >&2; exit 1 ;;
+    PAB|JAJ|PAB_V3|PAB_CAN) TARGETS=("$TARGET") ;;
+    all) TARGETS=(PAB JAJ PAB_V3 PAB_CAN) ;;
+    *) echo "usage: $0 [PAB|JAJ|PAB_V3|PAB_CAN|all]" >&2; exit 1 ;;
 esac
 
 PUB="$REPO/downloads/$PUBLIC_SOURCES_FILE"

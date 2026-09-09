@@ -8,7 +8,7 @@ NVIDIA's `jetson-io` (`config-by-hardware.py`) does **not** list every `.dtbo` u
 
 | Property | Role |
 |----------|------|
-| `jetson-header-name` | Must **exactly** match a header name jetson-io knows on this image. On Orin Nano/NX carriers (PAB, JAJ, PAB_V3) that string is `Jetson 22pin CSI Connector`. A mismatch is **silent**: the file is ignored and does not appear in `-l`. |
+| `jetson-header-name` | Must **exactly** match a header name jetson-io knows on this image. On Orin Nano/NX carriers (PAB, JAJ, PAB_V3, PAB_CAN) that string is `Jetson 22pin CSI Connector`. A mismatch is **silent**: the file is ignored and does not appear in `-l`. |
 | `overlay-name` | Human-readable label shown by `-l` and passed to `-n`. Must be unique among overlays for that header. |
 | `compatible` | Board/SKU match. ARK camera overlays use `JETSON_COMPATIBLE_P3768` (expanded at compile time to the Orin Nano/NX + p3768 set, including Super variants). |
 
@@ -45,6 +45,7 @@ Use these as templates for custom work. Dual vs quad is carrier wiring, not sens
 | **PAB** | 4 CSI (quad) | TCA9546 (`nxp,pca9546`) | `products/PAB/overlay/tegra234-p3767-camera-p3768-imx219-quad.dts` (+ `tegra234-camera-quad-imx219.dtsi`) |
 | **JAJ** | 2 CSI (dual) | `i2c-mux-gpio` | `products/JAJ/overlay/tegra234-p3767-camera-p3768-imx219-dual.dts` |
 | **PAB_V3** | 2 CSI (dual) | `i2c-mux-gpio` | `products/PAB_V3/overlay/tegra234-p3767-camera-p3768-imx219-dual.dts` |
+| **PAB_CAN** | 2 CSI (dual) | `i2c-mux-gpio` | `products/PAB_CAN/overlay/tegra234-p3767-camera-p3768-imx219-dual.dts` |
 
 Shipped set per product is listed in that product's `overlay/dtbo.list` (IMX219 / IMX477 / IMX708 dual or quad as appropriate). Sensor modes and platform nodes often live in a sibling `.dtsi` included by the thin `.dts` that only sets jetson-io metadata and enable/reset GPIOs.
 
@@ -83,7 +84,7 @@ If the sensor needs an out-of-tree driver, that is separate from the overlay (se
 From the host (same product you target on hardware):
 
 ```
-./build.sh PAB   # or JAJ, PAB_V3
+./build.sh PAB   # or JAJ, PAB_V3, PAB_CAN
 ```
 
 Built dtbos land under:
@@ -124,7 +125,7 @@ Use the exact `overlay-name` string from the list (and the header number shown f
 
 ### Flash-time default vs jetson-io
 
-Each carrier ships with an IMX219 overlay baked at flash time (quad on PAB, dual on JAJ and PAB_V3). `flash.sh` reads `products/<TARGET>/default_overlays` and passes each dtbo to tegraflash as `ADDITIONAL_DTB_OVERLAY`, which merges it into the base DTB for the detected Orin Nano/NX SKU. That is intentional: an `extlinux` `OVERLAYS` line would apply against the symbol-stripped UEFI DTB and can fail to resolve, so the ship default is baked at flash time rather than pre-selected in `extlinux.conf`.
+Each carrier ships with an IMX219 overlay baked at flash time (quad on PAB, dual on JAJ, PAB_V3, and PAB_CAN). `flash.sh` reads `products/<TARGET>/default_overlays` and passes each dtbo to tegraflash as `ADDITIONAL_DTB_OVERLAY`, which merges it into the base DTB for the detected Orin Nano/NX SKU. That is intentional: an `extlinux` `OVERLAYS` line would apply against the symbol-stripped UEFI DTB and can fail to resolve, so the ship default is baked at flash time rather than pre-selected in `extlinux.conf`.
 
 A later `jetson-io` choice still supersedes cleanly: jetson-io boots its own `FDT`'d entry off the clean `/boot/dtb` kernel DTB, so selecting another camera does not collide with the flash-time bake. Change the ship default by editing `default_overlays` and re-flashing.
 

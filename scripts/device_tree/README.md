@@ -2,7 +2,7 @@
 
 Helpers for working on the per-product device-tree overlays (see [docs/device-tree.md](../../docs/device-tree.md) for the overlay model itself).
 
-## `classify.sh [PAB|JAJ|PAB_V3|all]`
+## `classify.sh [PAB|JAJ|PAB_V3|PAB_CAN|all]`
 
 Drift check: flags any file under `products/<target>/device_tree/source/` that is byte-identical to the pinned BSP. Such files are pointless copies that go stale silently — the thing the overlay refactor removed. Extracts the stock tree from the BSP tarball in `downloads/` (cached), and exits non-zero if a duplicate is found, so it can gate CI or a BSP bump.
 
