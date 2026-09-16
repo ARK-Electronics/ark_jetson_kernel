@@ -3,6 +3,7 @@
 
 Writes a separate gzip/newc image, preserving all modules and original metadata.
 Runtime checksum validation falls back to depmod if an update changes the image.
+Also applies exact-hash-guarded root polling changes with unchanged failure budgets.
 """
 
 import argparse
@@ -19,6 +20,68 @@ import tempfile
 STOCK_DEPMOD = b"cd /usr/sbin;\nln -s /bin/kmod depmod\ndepmod -a\ncd /\n"
 CHECKSUM_FILE = "etc/ark-initrd-depmod.sha256"
 MARKER = "ARK_PRECOMPUTED_DEPMOD_V1"
+
+# Exact source and output hashes guard changes outside these two reviewed loops.
+# This source is shared by audited R36.5.0 rootfs images, independent of product.
+POLLING_MARKER = "ARK_ROOT_POLLING_V1"
+STOCK_INIT_SHA256 = "4f9f83acc62d168957a7ab6dd88f8c80bb19e367384a6dca5b3e30b4e928e059"
+POLLING_INIT_SHA256 = "9a0219efa548772d6c2ed33841a109f28ff3d19f482ba28357d06111aa800181"
+STOCK_MOUNT_LOOP = b'''	while [ ${count} -lt 50 ]; do
+		sleep 0.2;
+		count="$(expr ${count} + 1)"
+		if [ "${readonly}" -eq 1 ]; then
+			mount -r "${dev}" "${mnt}"
+		else
+			mount "${dev}" "${mnt}"
+		fi
+		if [ $? -eq 0 ]; then
+			mounted=1
+			break;
+		fi
+		if [ "${retry}" -eq 0 ]; then
+			break
+		fi
+	done
+'''
+FAST_MOUNT_LOOP = b'''	# ARK_ROOT_POLLING_V1: try immediately only when retry is allowed.
+	# Keep the original retry window and nonretry/encrypted-root behavior.
+	if [ "${retry}" -eq 1 ]; then
+		if [ "${readonly}" -eq 1 ]; then
+			mount -r "${dev}" "${mnt}"
+		else
+			mount "${dev}" "${mnt}"
+		fi
+		if [ $? -eq 0 ]; then
+			mounted=1
+		fi
+	fi
+	if [ "${mounted}" -ne 1 ]; then
+''' + STOCK_MOUNT_LOOP + b'''	fi
+'''
+STOCK_DEVICE_POLL = b'''elif [[ "${rootdev}" == mmcblk* || "${rootdev}" == nvme* ]]; then
+	if [ ! -e "/dev/${rootdev}" ]; then
+		count=0;
+		while [ ${count} -lt 50 ]
+		do
+			sleep 0.2;
+			count=`expr $count + 1`;
+			if [ -e "/dev/${rootdev}" ]; then
+				break;
+			fi
+		done
+	fi'''
+FAST_DEVICE_POLL = b'''elif [[ "${rootdev}" == mmcblk* || "${rootdev}" == nvme* ]]; then
+	if [ ! -e "/dev/${rootdev}" ]; then
+		count=0;
+		while [ ${count} -lt 500 ]
+		do
+			sleep 0.02;
+			count=$((count + 1));
+			if [ -e "/dev/${rootdev}" ]; then
+				break;
+			fi
+		done
+	fi'''
 
 
 def read_newc(data):
@@ -71,6 +134,21 @@ def run(command):
     return subprocess.run(command, check=True, text=True, capture_output=True).stdout
 
 
+def optimize_root_polling(init):
+    """Change only the two audited loops; retain mount and discovery budgets."""
+    if hashlib.sha256(init).hexdigest() != STOCK_INIT_SHA256:
+        raise ValueError("Unaudited /init SHA256; inspect the complete script before adapting root polling")
+    updated = init
+    for original, replacement in ((STOCK_MOUNT_LOOP, FAST_MOUNT_LOOP),
+                                  (STOCK_DEVICE_POLL, FAST_DEVICE_POLL)):
+        if updated.count(original) != 1:
+            raise ValueError("Expected exactly one audited root-mount/device-poll sequence")
+        updated = updated.replace(original, replacement)
+    if hashlib.sha256(updated).hexdigest() != POLLING_INIT_SHA256:
+        raise ValueError("Root-polling /init output checksum mismatch")
+    return updated
+
+
 def optimize(args):
     source = args.input.resolve()
     destination = args.output.resolve()
@@ -82,15 +160,19 @@ def optimize(args):
     for tool in ("depmod", "modprobe"):
         if not run([tool, "--version"]).startswith("kmod version 29\n"):
             raise ValueError("Run with Ubuntu 22.04 kmod 29 (e.g. the build container)")
-    entries, trailer = read_newc(gzip.decompress(source.read_bytes()))
+    source_bytes = source.read_bytes()
+    entries, trailer = read_newc(gzip.decompress(source_bytes))
     by_name = {entry["name"]: entry for entry in entries}
     init = by_name["init"]
-    if MARKER.encode() in init["payload"] or CHECKSUM_FILE in by_name:
+    if not stat.S_ISREG(init["fields"][1]) or init["fields"][4] != 1:
+        raise ValueError("Expected a single regular /init file")
+    if MARKER.encode() in init["payload"] or POLLING_MARKER.encode() in init["payload"] or CHECKSUM_FILE in by_name:
         raise ValueError("Initrd is already optimized; regenerate from the stock image")
     if init["payload"].count(STOCK_DEPMOD) != 1:
         raise ValueError("Unexpected /init depmod sequence; inspect this BSP before adapting")
     if b"modprobe -v pcie-tegra194;" not in init["payload"]:
         raise ValueError("Expected NVIDIA PCIe initialization is absent")
+    polled_init = optimize_root_polling(init["payload"])
     usr_merged = by_name.get("lib", {}).get("payload") == b"usr/lib"
     module_prefix = "usr/lib/modules/" if usr_merged else "lib/modules/"
     checksum_binary = "usr/bin/sha256sum" if by_name.get("bin", {}).get("payload") == b"usr/bin" else "bin/sha256sum"
@@ -173,7 +255,7 @@ if ! (
     depmod -a
 fi
 '''.encode()
-    updated["init"] = init["payload"].replace(STOCK_DEPMOD, replacement)
+    updated["init"] = polled_init.replace(STOCK_DEPMOD, replacement)
     payload = bytearray()
     for entry in entries:
         if entry["name"] in updated:
@@ -189,16 +271,21 @@ fi
     output = gzip.compress(bytes(payload), compresslevel=9, mtime=0)
     checked, _ = read_newc(gzip.decompress(output))
     checked_by_name = {entry["name"]: entry for entry in checked}
-    for entry in modules:
-        if checked_by_name[entry["name"]]["record"] != entry["record"]:
-            raise ValueError("Unexpected change to a kernel module")
+    for entry in entries:
+        if entry["name"] not in updated and checked_by_name[entry["name"]]["record"] != entry["record"]:
+            raise ValueError(f"Unexpected change to an original archive record: {entry['name']}")
+    if checked_by_name["init"]["payload"] != updated["init"]:
+        raise ValueError("Final /init verification failed")
     destination.parent.mkdir(parents=True, exist_ok=True)
     # Exclusive creation preserves earlier experiments and the source backup.
     with destination.open("xb") as stream:
         stream.write(output)
     destination.chmod(stat.S_IMODE(source.stat().st_mode))
     print(f"Optimized R36.5 initrd for {version}: {len(modules)} unchanged modules")
-    print(f"Input SHA256:  {hashlib.sha256(source.read_bytes()).hexdigest()}")
+    print(f"Root polling: {POLLING_MARKER}; immediate mount, 20 ms device checks, unchanged failure budgets")
+    print(f"Init source SHA256: {hashlib.sha256(init['payload']).hexdigest()}")
+    print(f"Init output SHA256: {hashlib.sha256(updated['init']).hexdigest()}")
+    print(f"Input SHA256:  {hashlib.sha256(source_bytes).hexdigest()}")
     print(f"Output SHA256: {hashlib.sha256(output).hexdigest()}")
     print(f"Output: {destination} ({len(output)} bytes); original preserved")
 

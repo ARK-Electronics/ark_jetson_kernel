@@ -5,7 +5,7 @@
 #   --fast                reuse the existing staged tree — recompile the kernel/DT
 #                         only, no re-stage and no re-provision (needs a prior build)
 #   --no-provision        re-stage and build a bare image, skipping provisioning
-#   --precompute-initrd   JAJ only: regenerate boot module indexes before flashing
+#   --precompute-initrd   regenerate boot module indexes before flashing (all targets)
 #   --clean, --provision  accepted but redundant now — they are the default
 #
 # A full build (the default) stages the L4T tree under its own staging/{TARGET}/,
@@ -71,11 +71,6 @@ if [ -z "$TARGET" ]; then
     fi
 fi
 
-if [ "$PRECOMPUTE_INITRD" -eq 1 ] && [ "$TARGET" != "JAJ" ]; then
-    echo "ERROR: --precompute-initrd is validated only for JAJ on R36.5.0." >&2
-    exit 1
-fi
-
 # ── Ensure BSP downloads are present (before container handoff or build) ─────
 # build.sh doesn't download — if any BSP tarball is missing, run setup.sh rather
 # than dead-ending. We re-verify after, so a real download failure still aborts.
@@ -122,6 +117,7 @@ if [ "$TARGET" = "all" ]; then
         echo "  Building $t"
         echo "========================================="
         ARGS=("$t")
+        [ "$PRECOMPUTE_INITRD" -eq 1 ] && ARGS+=("--precompute-initrd")
         [ "$FAST" -eq 1 ] && ARGS+=("--fast")
         [ "$FAST" -eq 0 ] && [ "$PROVISION" -eq 0 ] && ARGS+=("--no-provision")
         "$0" "${ARGS[@]}" || exit $?
@@ -341,7 +337,7 @@ require_bsp_staging "$STAGING_DIR"
 STAGED_FAST_BOOT_FIRMWARE=0
 if [ -e "$L4T_DIR/ark-fast-boot.json" ] || [ -L "$L4T_DIR/ark-fast-boot.json" ] || \
    [ -e "$L4T_DIR/ark-fast-boot.in-progress.json" ] || [ -L "$L4T_DIR/ark-fast-boot.in-progress.json" ]; then
-    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" --l4t-dir "$L4T_DIR" --verify
+    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" --l4t-dir "$L4T_DIR" --verify --product "$TARGET"
     STAGED_FAST_BOOT_FIRMWARE=1
 fi
 
@@ -557,13 +553,13 @@ elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
     exit 1
 fi
 
-# JAJ offers an opt-in BPMP debugfs worker without changing hardware setup.
-# The parameter remains false unless jaj_fastboot.bpmp_debugfs_async=1 is requested.
-# Refuse changed BSP sources instead of applying a fuzzy source modification.
-if [ "$TARGET" = "JAJ" ]; then
-    python3 "$SCRIPT_DIR/scripts/patch_bpmp_debugfs.py" \
-        --kernel-dir "$SOURCE_DIR/kernel/kernel-jammy-src" --mode apply
-fi
+# All ARK Orin carriers share this audited R36.5.0 BPMP driver. The opt-in
+# worker leaves hardware setup unchanged; its parameter remains false unless
+# jaj_fastboot.bpmp_debugfs_async=1 is requested (the namespace is shared).
+# Each target has its own source tree. Refuse changed BSP sources rather than
+# applying a fuzzy source modification, and keep board DT/pinmux deltas intact.
+python3 "$SCRIPT_DIR/scripts/patch_bpmp_debugfs.py" \
+    --kernel-dir "$SOURCE_DIR/kernel/kernel-jammy-src" --mode apply
 
 # ccache wraps the cross-compiler for the kernel proper only (kernel C rarely changes → warm
 # hits). The OOT NVIDIA modules build without it on purpose: their conftest/version steps
@@ -739,7 +735,7 @@ python3 "$SCRIPT_DIR/scripts/check_initrd_source.py" --target "$TARGET" \
 cmp "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
 
 if [ "$PRECOMPUTE_INITRD" -eq 1 ]; then
-    echo "Precomputing JAJ initramfs module dependency indexes..."
+    echo "Precomputing $TARGET initramfs module dependency indexes..."
     INITRD_WORK=$(mktemp -d)
     if ! sudo python3 "$SCRIPT_DIR/scripts/optimize_initrd.py" \
         --input "$L4T_DIR/rootfs/boot/initrd" \
@@ -763,7 +759,7 @@ fi
 
 # Kernel installation must leave every previously staged firmware file intact.
 if [ "$STAGED_FAST_BOOT_FIRMWARE" -eq 1 ]; then
-    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" --l4t-dir "$L4T_DIR" --verify
+    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" --l4t-dir "$L4T_DIR" --verify --product "$TARGET"
 fi
 
 # ── Record build metadata ───────────────────────────────────────────────────

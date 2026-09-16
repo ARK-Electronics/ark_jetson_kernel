@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the pinned R36.5 JAJ NVMe firmware; never flash a device.
+# Build the pinned R36.5 ARK NVMe firmware; never flash a device.
 set -euo pipefail
 
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -13,7 +13,8 @@ usage() {
     cat <<'EOF'
 Usage: scripts/build_fast_boot_uefi.sh [--build-dir DIRECTORY] [--without-tpm]
 
-Builds a RELEASE UEFI for R36.5 Just a Jetson with NVMe/ext4.
+Builds shared RELEASE UEFI for R36.5 JAJ, PAB and PAB_V3 with NVMe/ext4.
+The legacy jaj_nvme artifact name is shared; stage with the required --product.
 Requires git, python3, and Docker. Downloads source and builds a container.
 Output: DIRECTORY/artifacts/uefi_jaj_nvme_RELEASE.bin (default directory:
 /tmp/jaj-uefi-build). Does not copy into a BSP or access/flash any device.

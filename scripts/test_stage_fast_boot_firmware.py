@@ -60,6 +60,35 @@ class FirmwareStageTests(unittest.TestCase):
         self.assertEqual((self.l4t / firmware.BACKUPS / 'bootloader/uefi_jetson.bin').read_bytes(),
                          b'stock firmware')
 
+    def test_shared_profile_binds_manifest_to_each_product(self):
+        stamp = self.l4t / 'rootfs/etc/ark_jetson_kernel'
+        for product in firmware.PRODUCTS:
+            with self.subTest(product=product):
+                # A fresh manifest for the next independent product fixture.
+                (self.l4t / firmware.MARKER).unlink(missing_ok=True)
+                stamp.write_text(f'target={product}\n')
+                manifest = firmware.stage(self.l4t, self.artifacts, False, product=product)
+                self.assertEqual(manifest['target'], product)
+                firmware.load_verified_manifest(self.l4t, product=product)
+                other = 'PAB' if product == 'JAJ' else 'JAJ'
+                with self.assertRaisesRegex(ValueError, 'product mismatch'):
+                    firmware.load_verified_manifest(self.l4t, product=other)
+                stamp.write_text(f'target={other}\n')
+                with self.assertRaisesRegex(ValueError, 'manifest mismatch: target'):
+                    firmware.load_verified_manifest(self.l4t)
+
+    def test_unsupported_product_and_storage_rejected_before_mutation(self):
+        stamp = self.l4t / 'rootfs/etc/ark_jetson_kernel'
+        stamp.write_text('target=UNKNOWN\n')
+        with self.assertRaisesRegex(ValueError, 'completed JAJ, PAB or PAB_V3'):
+            firmware.stage(self.l4t, self.artifacts, False)
+        self.assertEqual((self.l4t / 'bootloader/uefi_jetson.bin').read_bytes(), b'stock firmware')
+        self.assertFalse((self.l4t / firmware.IN_PROGRESS).exists())
+        stamp.write_text('target=PAB_V3\n')
+        firmware.stage(self.l4t, self.artifacts, False)
+        with self.assertRaisesRegex(ValueError, 'nvme0n1p1'):
+            firmware.load_verified_manifest(self.l4t, storage='sda')
+
     def test_interrupted_first_stage_rejects_verification_and_flash(self):
         self.interrupt_after_first_replacement()
         self.assertEqual((self.l4t / 'bootloader/uefi_jetson.bin').read_bytes(), b'candidate firmware')

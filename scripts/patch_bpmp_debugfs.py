@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Apply/check/restore the audited R36.5.0 JAJ BPMP debugfs source patch.
+"""Apply/check/restore the shared R36.5.0 ARK Orin BPMP debugfs source patch.
 
 The added kernel parameter jaj_fastboot.bpmp_debugfs_async defaults to false. This
-helper changes only bpmp.c, and refuses any source other than the exact audited
+helper serves PAB, PAB_V3 and JAJ, changes only bpmp.c, and refuses any source
+other than the exact audited
 original or patched version. It never builds a kernel or edits boot arguments.
 """
 import argparse
@@ -16,7 +17,7 @@ import tempfile
 SOURCE = Path("drivers/firmware/tegra/bpmp.c")
 PATCH = Path(__file__).resolve().parents[1] / "products/JAJ/fastboot/bpmp-debugfs-async.patch"
 ORIGINAL = "b8dd7126e0c3432d7d903785d291bf169f6f2a02c9d8719a6e2c28a460f449a5"
-PATCHED = "8bdc230d4815ec430425e08a3e33e6e7fba740272f195cbc0c2eda74e19ab53f"
+PATCHED = "de2df4646d97afb6f2129af4784248b6920642f6683e6d60333bf887bbd380bc"
 
 
 def update(kernel_dir, mode):

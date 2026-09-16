@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage and verify the opt-in R36.5 JAJ NVMe firmware without flashing hardware."""
+"""Stage and verify shared R36.5 NVMe firmware for JAJ, PAB and PAB_V3."""
 
 import argparse
 import hashlib
@@ -23,6 +23,7 @@ IN_PROGRESS = "ark-fast-boot.in-progress.json"
 BACKUPS = "bootloader/ark-fastboot-stock"
 FLASH_TARGET = "jetson-orin-nano-devkit-super"
 STORAGE = "nvme0n1p1"
+PRODUCTS = ("JAJ", "PAB", "PAB_V3")
 
 
 def digest(path):
@@ -30,15 +31,19 @@ def digest(path):
         return hashlib.file_digest(source, "sha256").hexdigest() if hasattr(hashlib, "file_digest") else hashlib.sha256(source.read()).hexdigest()
 
 
-def check_product(l4t):
+def check_product(l4t, product=None):
     stamp = dict(line.split("=", 1) for line in
                  (l4t / "rootfs/etc/ark_jetson_kernel").read_text().splitlines()
                  if "=" in line)
-    if stamp.get("target") != "JAJ":
-        raise ValueError("Fast firmware requires a completed JAJ staging tree (target=JAJ)")
+    target = stamp.get("target")
+    if target not in PRODUCTS:
+        raise ValueError("Fast firmware requires a completed JAJ, PAB or PAB_V3 staging tree")
+    if product is not None and target != product:
+        raise ValueError(f"Staging product mismatch: expected {product}, found {target}")
     release = (l4t / "rootfs/etc/nv_tegra_release").read_text()
     if not re.search(r"^# R36 \(release\), REVISION: 5\.0,", release, re.M):
         raise ValueError("Fast firmware is pinned to Jetson Linux R36.5.0")
+    return target
 
 
 def reject_incomplete_stage(l4t):
@@ -48,12 +53,12 @@ def reject_incomplete_stage(l4t):
                          "Do not flash this tree; recover the saved stock files or rebuild it first.")
 
 
-def load_verified_manifest(l4t, flash_target=FLASH_TARGET, storage=STORAGE, *, _allow_in_progress=False):
+def load_verified_manifest(l4t, flash_target=FLASH_TARGET, storage=STORAGE, *, product=None, _allow_in_progress=False):
     if not _allow_in_progress:
         reject_incomplete_stage(l4t)
-    check_product(l4t)
+    target = check_product(l4t, product)
     manifest = json.loads((l4t / MARKER).read_text())
-    expected = {"schema_version": 1, "target": "JAJ", "bsp": "R36.5.0",
+    expected = {"schema_version": 1, "target": target, "bsp": "R36.5.0",
                 "flash_target": flash_target, "storage": storage}
     if flash_target != FLASH_TARGET or storage != STORAGE:
         raise ValueError("Fast firmware supports only jetson-orin-nano-devkit-super with nvme0n1p1")
@@ -143,9 +148,9 @@ def replace_file(source, destination):
             temporary.unlink(missing_ok=True)
 
 
-def stage(l4t, artifacts, quiet):
+def stage(l4t, artifacts, quiet, product=None):
     reject_incomplete_stage(l4t)
-    check_product(l4t)
+    target_product = check_product(l4t, product)
     source_hashes = artifact_hashes(artifacts)
     prior = load_verified_manifest(l4t) if (l4t / MARKER).exists() else None
     # Restaging a firmware artifact preserves an already enabled quiet profile.
@@ -161,7 +166,7 @@ def stage(l4t, artifacts, quiet):
                 raise ValueError(f"Quiet firmware requires {tool} (device-tree-compiler package)")
 
     # Prepare and validate every output before changing the staged BSP.
-    with tempfile.TemporaryDirectory(prefix="jaj-fastboot-stage-") as work:
+    with tempfile.TemporaryDirectory(prefix="ark-fastboot-stage-") as work:
         prepared = {}
         for name, relative in ARTIFACTS.items():
             target = Path(work) / name
@@ -209,14 +214,14 @@ def stage(l4t, artifacts, quiet):
         # mistake partially replaced firmware for an ordinary BSP without a marker.
         guard = l4t / IN_PROGRESS
         with guard.open('x') as stream:
-            json.dump({'schema_version': 1, 'target': 'JAJ', 'backup_dir': BACKUPS,
+            json.dump({'schema_version': 1, 'target': target_product, 'backup_dir': BACKUPS,
                        'planned_files': destinations, 'artifact_hashes': source_hashes}, stream, indent=2)
             stream.write('\n')
             stream.flush()
             os.fsync(stream.fileno())
         for relative, source in prepared.items():
             replace_file(source, l4t / relative)
-        manifest = {"schema_version": 1, "target": "JAJ", "bsp": "R36.5.0",
+        manifest = {"schema_version": 1, "target": target_product, "bsp": "R36.5.0",
                     "flash_target": FLASH_TARGET, "storage": STORAGE,
                     "quiet_firmware": quiet, "backup_dir": BACKUPS,
                     "artifact_hashes": source_hashes,
@@ -238,15 +243,16 @@ def main():
     parser.add_argument("--verify", action="store_true", help="verify a staged manifest without modifying files")
     parser.add_argument("--flash-target", default=FLASH_TARGET)
     parser.add_argument("--storage", default=STORAGE)
+    parser.add_argument("--product", choices=PRODUCTS, help="require this product staging stamp")
     args = parser.parse_args()
     try:
         if args.verify:
-            load_verified_manifest(args.l4t_dir, args.flash_target, args.storage)
-            print("Verified JAJ R36.5 NVMe fast-boot firmware and overlay")
+            manifest = load_verified_manifest(args.l4t_dir, args.flash_target, args.storage, product=args.product)
+            print(f"Verified {manifest['target']} R36.5 NVMe fast-boot firmware and overlay")
         else:
             if args.artifacts is None:
                 parser.error("--artifacts is required unless --verify is used")
-            stage(args.l4t_dir, args.artifacts, args.quiet_firmware)
+            stage(args.l4t_dir, args.artifacts, args.quiet_firmware, product=args.product)
             print(f"Staged fast firmware: {args.l4t_dir / MARKER}")
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f"ERROR: {error}\n")

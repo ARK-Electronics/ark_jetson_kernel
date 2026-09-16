@@ -1,4 +1,11 @@
-# JAJ NVMe UEFI build
+# Shared ARK Orin NVMe UEFI build
+
+This directory holds the common profile for JAJ, PAB and PAB_V3 on R36.5.0.
+The legacy `jaj_nvme` artifact name and `jaj_fastboot` kernel parameter namespace
+are shared by all three. Keep each product's own staged DTBs, pinmux, camera
+overlays, and modules; stage with `--product JAJ`, `--product PAB`, or
+`--product PAB_V3` to enforce its build stamp. Only JAJ has been measured on
+hardware in this work.
 
 This experimental RELEASE firmware reduces the boot-time hardware and boot
 manager work for a headless Just a Jetson using an NVMe/ext4 root filesystem.
@@ -75,7 +82,7 @@ of downloading Stuart tools; it does not disable boot image verification.
   `nvbootctrl verify` with a misleading runtime-service error. This profile
   explicitly enables `CONFIG_FIRMWARE_MANAGEMENT` and
   `CONFIG_FIRMWARE_MANAGEMENT_DIRECT`, while capsule delivery remains disabled.
-  It uses the JAJ-specific ESRT image GUID `0245bd35-a5ca-5267-9656-3486ecc85a78`.
+  It uses the shared fast-profile ESRT image GUID `0245bd35-a5ca-5267-9656-3486ecc85a78`.
 - Firmware capsule delivery and the UEFI setup menu remain absent. The FMP
   version provider reads the existing A/B VER partitions; it does not invent a
   replacement version or suppress NVIDIA's validation. Keep the stock BSP and
@@ -90,7 +97,7 @@ fast-boot overlay **after** the normal `ark_boot_order.dtbo` in the UEFI DTB.
 The R36.5 embedded L4TLauncher compares `DefaultBootPriority` to one complete
 device class, so its value must be exactly `nvme`. The normal comma-separated
 priority list, or only editing the standard EFI `BootOrder`, is insufficient.
-NVIDIA's `BootOrderNvme.dtbo` sets the same value; the JAJ overlay makes this
+NVIDIA's `BootOrderNvme.dtbo` sets the same value; the shared ARK overlay makes this
 requirement explicit in this repository.
 
 `flash.sh JAJ --bootloader-only` performs a **full QSPI flash**, including both

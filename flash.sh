@@ -121,13 +121,13 @@ fi
 # A staged fast profile is an explicit opt-in. Verify its paired firmware and
 # UEFI DTB overlay, and apply its single-device selector after normal overlays.
 if [ -f "$L4T_DIR/ark-fast-boot.json" ]; then
-    if [ "$TARGET" != "JAJ" ] || [ "$STORAGE_DEV" != "nvme0n1p1" ]; then
-        echo "ERROR: staged fast firmware requires JAJ with NVMe storage." >&2
+    if [ "$STORAGE_DEV" != "nvme0n1p1" ]; then
+        echo "ERROR: staged fast firmware requires NVMe storage." >&2
         exit 1
     fi
     python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" \
         --l4t-dir "$L4T_DIR" --verify --flash-target "$FLASH_TARGET" \
-        --storage "$STORAGE_DEV" || exit 1
+        --storage "$STORAGE_DEV" --product "$TARGET" || exit 1
     ADDITIONAL_DTB_OVERLAY="${ADDITIONAL_DTB_OVERLAY:+$ADDITIONAL_DTB_OVERLAY,}ark_fast_boot.dtbo"
 fi
 

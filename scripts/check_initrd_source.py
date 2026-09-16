@@ -6,7 +6,7 @@ import gzip
 from pathlib import Path
 import sys
 
-from optimize_initrd import CHECKSUM_FILE, MARKER, read_newc
+from optimize_initrd import CHECKSUM_FILE, MARKER, POLLING_MARKER, read_newc
 
 
 def check_source(path):
@@ -14,7 +14,7 @@ def check_source(path):
     by_name = {entry["name"]: entry for entry in entries}
     if "init" not in by_name:
         raise ValueError(f"Missing /init in {path}")
-    if MARKER.encode() in by_name["init"]["payload"] or CHECKSUM_FILE in by_name:
+    if any(marker.encode() in by_name["init"]["payload"] for marker in (MARKER, POLLING_MARKER)) or CHECKSUM_FILE in by_name:
         raise ValueError(f"Already optimized initramfs: {path}")
 
 
@@ -31,7 +31,7 @@ def main():
         print("NVIDIA's updater preserves /init, so reusing this source could retain "
               "an old optimization while replacing its modules.", file=sys.stderr)
         print(f"Run a fresh './build.sh {args.target}' build (add --precompute-initrd "
-              "for JAJ when desired), or restore BOTH initrd copies from a verified "
+              "when desired), or restore BOTH initrd copies from a verified "
               "unoptimized backup before retrying --fast. See docs/fast_boot.md.",
               file=sys.stderr)
         return 1

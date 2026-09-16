@@ -1,4 +1,4 @@
-JAJ kernel builds include an optional `jaj_fastboot.bpmp_debugfs_async` parameter. Its
+JAJ, PAB and PAB_V3 kernel builds include an optional `jaj_fastboot.bpmp_debugfs_async` parameter. Its
 default value is false; setting `jaj_fastboot.bpmp_debugfs_async=1` in the selected boot
 entry runs BPMP debugfs creation in a background kernel worker. Clock, reset,
 power-domain and BPMP transport initialization retain their existing order.
@@ -14,14 +14,17 @@ as `jetson_clocks` can use the completed tree. A tool that needs these diagnosti
 interfaces very early must wait for initialization; removing the parameter
 restores synchronous behavior. Global `debugfs=off` is not part of this profile.
 
-The freezable worker drains before suspend. Device-managed cleanup cancels and
-joins it before releasing BPMP resources, then removes its completed debugfs
-tree. Failure to allocate worker state falls back to synchronous creation.
+A dedicated unbound, freezable workqueue keeps the mirror out of the per-CPU
+worker pools used by CPUfreq's synchronous counter reads. The worker drains
+before suspend. Device-managed cleanup cancels and
+joins it before releasing BPMP resources, destroys its workqueue, then removes
+its completed debugfs tree. Failure to allocate worker state or its workqueue
+falls back to synchronous creation.
 No public BPMP structure or module ABI changes are introduced. The read-only
 state appears at `/sys/module/jaj_fastboot/parameters/bpmp_debugfs_async`,
 using a distinct namespace from NVIDIA's `tegra_bpmp.ko` hypervisor module.
 
-`build.sh` applies the source patch only for JAJ. The patch helper accepts only
+`build.sh` applies the source patch for JAJ, PAB and PAB_V3. The patch helper accepts only
 the exact audited original or patched R36.5.0 source checksum and supports
 `--mode apply`, `--mode check`, and `--mode restore`. For example:
 

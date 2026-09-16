@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 from check_initrd_source import check_source
-from optimize_initrd import CHECKSUM_FILE, MARKER, STOCK_DEPMOD, encode_record
+from optimize_initrd import CHECKSUM_FILE, MARKER, POLLING_MARKER, STOCK_DEPMOD, encode_record
 
 
 def image(init=b"#!/bin/bash\n" + STOCK_DEPMOD, checksum=False):
@@ -36,6 +36,11 @@ class InitrdSourceTests(unittest.TestCase):
 
     def test_optimizer_marker_is_rejected(self):
         self.path.write_bytes(image(init=b"#!/bin/bash\n# " + MARKER.encode()))
+        with self.assertRaisesRegex(ValueError, "Already optimized"):
+            check_source(self.path)
+
+    def test_polling_only_partial_optimization_is_rejected(self):
+        self.path.write_bytes(image(init=b"#!/bin/bash\n# " + POLLING_MARKER.encode()))
         with self.assertRaisesRegex(ValueError, "Already optimized"):
             check_source(self.path)
 

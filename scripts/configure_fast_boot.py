@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply or restore an opt-in JAJ headless profile in an offline rootfs."""
+"""Apply or restore an opt-in ARK headless profile in an offline rootfs."""
 
 import argparse
 import base64
@@ -25,6 +25,51 @@ USB_RUNTIME_DIRECTIVES = [
     f"ExecStart=/{USB_DIR}/nv-l4t-usb-device-mode-runtime-start.sh",
     f"ExecStopPost=/{USB_DIR}/nv-l4t-usb-device-mode-runtime-stop.sh",
 ]
+# Audited ARK-OS Jetson package units. Both bind to loopback and connect to
+# upstreams only on requests. Exact content prevents a customized network
+# requirement or service property from being silently changed by this option.
+EARLY_API_UNITS = {
+    "system-manager.service": """[Unit]
+Description=Microservice backend for monitoring and managing the linux system
+Wants=network.target network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=jetson
+Group=jetson
+ExecStart=/usr/lib/ark-os/venv/bin/python3 /usr/lib/ark-os/python/system_manager.py
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+Environment=PORT=3004
+
+[Install]
+WantedBy=multi-user.target ark-os.target
+""",
+    "ark-ui-backend.service": """[Unit]
+Description=ARK UI Backend Service
+Wants=network-online.target
+After=network-online.target nginx.service
+
+[Service]
+Type=simple
+User=jetson
+Group=jetson
+WorkingDirectory=/usr/lib/ark-os/ark-ui-backend
+ExecStart=/usr/lib/ark-os/bin/node /usr/lib/ark-os/ark-ui-backend/index.js
+Restart=on-failure
+Environment=NODE_ENV=production
+Environment=PATH=/usr/lib/ark-os/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+[Install]
+WantedBy=multi-user.target ark-os.target
+""",
+}
+EARLY_API_UNIT_DIRS = (*UNIT_DIRS, "etc/systemd/system.control",
+                       "run/systemd/system.control", "run/systemd/transient",
+                       "run/systemd/generator", "run/systemd/generator.early",
+                       "run/systemd/generator.late")
 BACKGROUND = "ark-fastboot-background.target"
 LAUNCHER = "ark-fastboot-background.service"
 TEMPLATES = Path(__file__).resolve().parents[1] / "products/JAJ/fastboot/rootfs"
@@ -217,7 +262,45 @@ def lvm_monitor_changes(root):
     return changes
 
 
-def make_changes(root, defer, skip_utmp, direct_usb=False, skip_lvm=False):
+def early_api_changes(root, applied=False):
+    """Copy audited units; dependency removal cannot be expressed by drop-ins."""
+    changes = {}
+    for unit, expected in EARLY_API_UNITS.items():
+        # These exact units have only the reviewed network/nginx dependencies.
+        # Keep default dependencies, service properties and enablement intact.
+        content = "".join(line for line in expected.splitlines(keepends=True)
+                          if not line.startswith(("Wants=", "After=")))
+        stem = unit.removesuffix(".service").split("-")
+        unsupported = [f"{unit}.d", f"{unit}.wants", f"{unit}.requires", "service.d"]
+        unsupported += ["-".join(stem[:i]) + "-.service.d" for i in range(1, len(stem))]
+        vendors = {}
+        for relative in EARLY_API_UNIT_DIRS:
+            directory = resolve_offline(root, relative)
+            for name in unsupported:
+                candidate = directory / name
+                if candidate.exists() or candidate.is_symlink():
+                    raise ValueError(f"Early ARK API refuses custom drop-ins or dependencies: {candidate}")
+            candidate = directory / unit
+            if not candidate.exists() and not candidate.is_symlink():
+                continue
+            if relative in ("usr/lib/systemd/system", "lib/systemd/system"):
+                if candidate.is_symlink() or not candidate.is_file() or candidate.read_bytes() != expected.encode():
+                    raise ValueError(f"Early ARK API requires the exact known regular vendor unit: {candidate}")
+                vendors[candidate] = snapshot(candidate)
+            elif relative != SYSTEM or not applied:
+                raise ValueError(f"Early ARK API refuses an existing unit override or mask: {candidate}")
+        if len(vendors) != 1:
+            raise ValueError(f"Early ARK API requires one known vendor unit for {unit}")
+        original = next(iter(vendors.values()))
+        state = file_state(content.encode(), original["mode"], original["uid"], original["gid"])
+        relative = f"{SYSTEM}/{unit}"
+        if applied and snapshot(path_in(root, relative)) != state:
+            raise ValueError(f"Early ARK API override no longer matches the audited vendor unit: {unit}")
+        changes[relative] = state
+    return changes
+
+
+def make_changes(root, defer, skip_utmp, direct_usb=False, skip_lvm=False, early_api=False):
     changes = {f"{SYSTEM}/default.target":
                symlink_state("/lib/systemd/system/multi-user.target")}
     deferred = []
@@ -225,6 +308,10 @@ def make_changes(root, defer, skip_utmp, direct_usb=False, skip_lvm=False):
         changes.update(direct_usb_changes(root))
     if skip_lvm:
         changes.update(lvm_monitor_changes(root))
+    if early_api:
+        if defer:
+            raise ValueError("Early ARK API cannot be combined with deferring ARK services")
+        changes.update(early_api_changes(root))
     if skip_utmp:
         relative = f"{SYSTEM}/systemd-update-utmp.service.d/override.conf"
         path = path_in(root, relative)
@@ -281,19 +368,22 @@ def make_changes(root, defer, skip_utmp, direct_usb=False, skip_lvm=False):
     return changes, deferred
 
 
-def apply(root, defer, skip_utmp, direct_usb=False, skip_lvm=False):
+def apply(root, defer, skip_utmp, direct_usb=False, skip_lvm=False, early_api=False):
     previous = read_manifest(root)
     if previous:
         options = {"defer_ark_services": defer, "skip_utmp_delay": skip_utmp,
-                   "direct_usb_runtime": direct_usb, "skip_lvm_monitor": skip_lvm}
+                   "direct_usb_runtime": direct_usb, "skip_lvm_monitor": skip_lvm,
+                   "early_ark_api": early_api}
         if any(previous.get(key, False) != value for key, value in options.items()):
             raise ValueError("Profile options differ; restore before applying new options")
         check_changes(root, previous)
         if direct_usb:
             validate_usb_runtime(root)
-        print("JAJ headless profile already applied; no changes")
+        if early_api:
+            early_api_changes(root, applied=True)
+        print("ARK headless profile already applied; no changes")
         return
-    desired, deferred = make_changes(root, defer, skip_utmp, direct_usb, skip_lvm)
+    desired, deferred = make_changes(root, defer, skip_utmp, direct_usb, skip_lvm, early_api)
     changes = {}
     created_dirs = set()
     for relative, state in desired.items():
@@ -307,6 +397,7 @@ def apply(root, defer, skip_utmp, direct_usb=False, skip_lvm=False):
     manifest = {"version": 1, "profile": "jaj-headless",
                 "defer_ark_services": defer, "skip_utmp_delay": skip_utmp,
                 "direct_usb_runtime": direct_usb, "skip_lvm_monitor": skip_lvm,
+                "early_ark_api": early_api,
                 "deferred_units": deferred,
                 "changes": changes, "created_dirs": sorted(created_dirs)}
     manifest_path = path_in(root, MANIFEST)
@@ -314,7 +405,7 @@ def apply(root, defer, skip_utmp, direct_usb=False, skip_lvm=False):
     # The manifest is written first so restore can recover a partial application.
     for relative, change in changes.items():
         write_state(path_in(root, relative), change["applied"])
-    print("Applied JAJ headless profile (multi-user target)")
+    print("Applied ARK headless profile (multi-user target)")
     if defer:
         print("Deferred enabled units: " + (", ".join(deferred) or "none"))
         print("ARK/application readiness occurs later; this is not a readiness benchmark")
@@ -323,7 +414,7 @@ def apply(root, defer, skip_utmp, direct_usb=False, skip_lvm=False):
 def restore(root):
     manifest = read_manifest(root)
     if not manifest:
-        print("No JAJ headless profile is applied; no changes")
+        print("No ARK headless profile is applied; no changes")
         return
     check_changes(root, manifest, allow_original=True)
     for relative, change in reversed(list(manifest["changes"].items())):
@@ -336,7 +427,7 @@ def restore(root):
     manifest_path.unlink()
     if not any(manifest_path.parent.iterdir()):
         manifest_path.parent.rmdir()
-    print("Restored the rootfs settings saved before the JAJ headless profile")
+    print("Restored the rootfs settings saved before the ARK headless profile")
 
 
 def main():
@@ -351,18 +442,22 @@ def main():
                         help="replace known USB runtime SysV-wrapper calls with native systemctl")
     parser.add_argument("--skip-lvm-monitor", action="store_true",
                         help="disable enabled LVM monitoring; requires confirmed absence of LVM")
+    parser.add_argument("--early-ark-api", action="store_true",
+                        help="let audited loopback ARK API services start after basic startup, "
+                             "without waiting for network-online/nginx; keeps nginx unchanged")
     args = parser.parse_args()
     root = args.rootfs.resolve()
     if root == Path("/") or not (root / "etc").is_dir():
         parser.error("rootfs must be a staged root filesystem with an etc directory, not /")
     if (root / "run/systemd/system").exists():
         parser.error("rootfs appears to contain a running systemd instance; use an offline image")
-    if (args.defer_ark_services or args.skip_utmp_delay or args.direct_usb_runtime or args.skip_lvm_monitor) and args.action != "apply":
+    if (args.defer_ark_services or args.skip_utmp_delay or args.direct_usb_runtime or
+            args.skip_lvm_monitor or args.early_ark_api) and args.action != "apply":
         parser.error("Profile options are valid only with apply")
     try:
         if args.action == "apply":
             apply(root, args.defer_ark_services, args.skip_utmp_delay,
-                  args.direct_usb_runtime, args.skip_lvm_monitor)
+                  args.direct_usb_runtime, args.skip_lvm_monitor, args.early_ark_api)
         elif args.action == "restore":
             restore(root)
         else:
@@ -371,11 +466,13 @@ def main():
                 check_changes(root, manifest)
                 if manifest.get("direct_usb_runtime", False):
                     validate_usb_runtime(root)
+                if manifest.get("early_ark_api", False):
+                    early_api_changes(root, applied=True)
                 print(json.dumps({key: manifest.get(key, False) for key in (
                     "profile", "defer_ark_services", "skip_utmp_delay", "direct_usb_runtime",
-                    "skip_lvm_monitor", "deferred_units")}, indent=2))
+                    "skip_lvm_monitor", "early_ark_api", "deferred_units")}, indent=2))
             else:
-                print("JAJ headless profile is not applied")
+                print("ARK headless profile is not applied")
     except (OSError, ValueError, KeyError) as error:
         print(f"configure_fast_boot: {error}", file=sys.stderr)
         return 1

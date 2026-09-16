@@ -1,14 +1,19 @@
-# Experimental JAJ fast-boot image
+# Experimental ARK Orin fast-boot images
 
-This workflow targets Just a Jetson, NVMe/ext4, and L4T R36.5.0. It combines
+This workflow supports JAJ, PAB and PAB_V3 with NVMe/ext4 and L4T R36.5.0.
+Hardware timing results below are from the connected JAJ only. PAB and PAB_V3
+share the implementation but still require board-specific cold-boot and camera
+validation. It combines
 reduced firmware work, a matched initramfs with precomputed module indexes, and
-headless userspace. **It does not establish a boot time under 10 seconds.** The
-customer's application-ready endpoint still needs to be defined and measured.
+headless userspace. The agreed customer-application stand-in is ARK-OS: a local
+`/api/system/info` request must return HTTP 200 and valid JSON before the target
+emits a readiness marker over the debug UART. **The measured results remain
+above 10 seconds.**
 
 ARK-OS services remain enabled and start normally by default. Moving application
 work after `multi-user.target` is a separate opt-in experiment, not a substitute
-for measuring application readiness. SSH listening, authenticated SSH, the first
-camera frame, and a complete inference are different endpoints.
+for this application measurement. The API endpoint does not establish readiness
+of every ARK service, camera, inference workload, or flight-controller connection.
 
 ## Build and stage
 
@@ -20,13 +25,28 @@ and its camera compatibility pins; retain that path for customer-image testing:
 scripts/build_fast_boot_uefi.sh --build-dir /tmp/jaj-uefi-build
 ```
 
-`--precompute-initrd` is the explicit JAJ optimization flag. Every build first
+`--precompute-initrd` is the explicit optimization flag for each supported target. Every build first
 refreshes the production initramfs after installing the final kernel and all
 in-tree/out-of-tree modules. With this flag, the build then generates compatible
 kmod 29 indexes and promotes the optimized image to both `rootfs/boot/initrd`
 and `bootloader/l4t_initrd.img`. NVIDIA's flash path can repopulate the first
 from the second, so updating both is necessary. The final build stamp records
 `precomputed_initrd=1` only after the two promoted copies agree.
+
+This opt-in also applies `ARK_ROOT_POLLING_V1` to the exact audited R36.5.0
+`/init`. The helper checks the entire original script's SHA-256 and the reviewed
+polling transformation's output hash before generating the image. It attempts
+one immediate root mount only when retries are enabled. If that fails, all 50
+original sleep-and-mount retries remain, including the attempt after 10 seconds
+of scheduled waits (51 attempts total). Nonretry mounts retain their original
+200 ms wait and single attempt, including encrypted-root callers. NVMe/MMC
+device discovery checks every 20 ms for at most 500 checks, retaining the same
+10-second scheduled wait budget; command overhead is additional. SD/NFS waits,
+encryption commands, recovery branches, and module payloads remain unchanged.
+The shared mount helper retains its read-only/overlay behavior. These changes
+remove 200 ms before a successful first retryable mount and can shorten device-detection
+latency by up to another 180 ms; end-to-end savings still require measurement.
+The earlier result table and artifact hashes below predate this polling change.
 
 The required refresh runs in the Ubuntu 22.04 build environment, using NVIDIA's
 `tools/l4t_update_initrd.sh -l <Linux_for_Tegra>`. That script repopulates the
@@ -89,8 +109,8 @@ initrd.
 The normal build already adds `quiet log_buf_len=4M` and its console loglevel
 override. The firmware staging helper verifies its firmware/overlay pair and
 records the selected files in `ark-fast-boot.json`. Staging these additional
-profiles remains separate from `--precompute-initrd`, which changes only how
-the production initramfs module indexes are prepared.
+profiles remains separate from `--precompute-initrd`, which prepares the
+production initramfs module indexes and audited root polling changes.
 
 A reused `--fast` build verifies an existing firmware profile before compiling,
 preserves its verified `kernel/dtb/ark_fast_boot.dtbo`, and verifies all recorded
@@ -135,8 +155,9 @@ manifest to bypass a checksum or missing-file error.
 - The initrd helper uses kmod 29, matches the single module tree to Image,
   validates dependencies, and preserves existing module payloads. Runtime
   integrity checks skip `depmod` only while those modules/indexes still match;
-  otherwise stock `depmod -a` runs. It does not remove root-device retries, USB,
-  thermal control, or encryption setup. Rebuild the candidate after updating
+  otherwise stock `depmod -a` runs. The guarded polling change retains retry
+  counts and failure wait budgets. It does not remove USB, thermal control, or
+  encryption setup. Rebuild the candidate after updating
   modules; do not reuse an earlier build's optimized initrd.
 - The firmware profile changes firmware boot-device discovery and update/setup
   capabilities. Read its [requirements and limitations](../products/JAJ/fastboot/README.md)
@@ -179,36 +200,84 @@ each run. Use external power-to-ready measurement alongside kernel and systemd
 timestamps. The [measurement helper](../scripts/measure_boot.py) records host
 monotonic times; its SCPI reference is command-send time, not a measured power
 edge, and its SSH banner probe is not authentication or application readiness.
-For acceptance, instrument the actual customer operation.
+The selected interval is **host SCPI power-on command send to host reception of
+`JAJ_API_READY`**, emitted by the temporary [target probe](../scripts/emit_boot_ready.py)
+after a local `http://127.0.0.1/api/system/info` response passes the HTTP/JSON
+check. The probe stores no response body. This interval includes the confirmed
+approximately two-second carrier power-on-reset (POR) delay, probe scheduling,
+and UART transport/capture latency; it is not an electrical-edge measurement.
+
+Record host HTTP-over-USB readiness separately. It also depends on USB gadget
+setup and host networking, which can finish after the local API is working.
+`systemd-analyze` and the target probe's kernel uptime exclude the earlier power
+and firmware interval and must not replace the selected host-clock measurement.
+
+With `--rigol`, the capture helper requires an explicit `--expected-serial`,
+records initial output/protection settings, and refuses a latched OCP/OVP fault
+before changing output. Its final output/alarm check classifies an OFF output or
+protection trip as `supply_fault`, rather than a software readiness timeout. It
+never clears a latch or changes protection limits. Retain supply-fault attempts
+in the experiment log and separate them from valid software boot timings.
 
 NVIDIA boot validation must finish successfully before the next reboot/power
 cycle. Do not trigger a rapid test loop solely from the earlier application or
 SSH marker. Preserve at least one usable recovery/diagnostic path when reducing
 serial output.
 
-Hardware validation is ongoing. The original image reached an SSH banner in
-33.371 seconds on one cold start. Reduced firmware plus the tested userspace and
-initrd changes reached SSH in 15.163 seconds on another cold start. These are
-SSH milestones, not the agreed application endpoint. The explicitly approved
-no-TPM experiment reached a valid local ARK-OS API JSON response in 13.649 seconds,
-observed through the debug UART; host USB-network access took 16.302 seconds on
-that same boot. These single-run observations do not establish a distribution
-or a result under 10 seconds.
+## Measured prototype results
 
-The user selected ARK-OS as the customer-application stand-in and confirmed an
-approximately two-second carrier POR delay. The measurement includes that delay.
-The temporary [readiness probe](../scripts/emit_boot_ready.py) emits its UART
-marker only after `/api/system/info` returns HTTP 200 and valid JSON. Camera and
-inference readiness require their own first-output tests.
+The following cold starts used the same matched `5.15.185-tegra #5` kernel,
+modules, and optimized initrd, with the BPMP parameter changed between the
+synchronous and asynchronous cases. **All three used the temporary no-TPM
+firmware experiment; these are not measurements of the default TPM-enabled
+profile.** Times are seconds from the host SCPI command reference.
 
-JAJ builds also include [optional asynchronous BPMP debugfs setup](../products/JAJ/fastboot/bpmp-debugfs.md).
-The default remains synchronous; enable the documented parameter only after
-installing the matched patched kernel/modules/initrd and validating diagnostic
-consumers. Keep global `debugfs=off` out of the production profile: the stock
-NVIDIA initramfs treats a failed debugfs mount as an error and waits 30 seconds.
+| Capture | Local API, observed through UART | Host API over USB | Kernel + userspace (`systemd-analyze`) |
+| --- | ---: | ---: | ---: |
+| `cold-new-kernel-sync-01` | 15.045 | 18.096 | 3.390 + 4.449 = 7.839 |
+| `cold-new-kernel-async-02` | 13.885 | 16.296 | 2.418 + 4.197 = 6.616 |
+| `cold-new-kernel-async-03` | 14.071 | 16.897 | — |
 
+The two valid asynchronous observations span 13.885–14.071 seconds, with a
+maximum of 14.071 seconds. The local API preceded host HTTP access by about
+2.4–3.1 seconds in these runs. This small sample supports further testing; it
+does not establish the worst case or a result under 10 seconds. Captures are
+identified by their `metadata.json` and UART/timeline files on the bench host.
 
-The final acceptance record must include cold-power timing through the required
-customer output, the run count, spread, maximum, and failures. An under-10-second
-systemd total alone is insufficient; firmware and remaining application work
-still contribute to the customer-observed interval.
+`cold-new-kernel-async-01` is a separate **invalid boot-timing attempt**: the
+supply's 4.9 A OCP protection tripped before firmware UART output. The earlier
+helper recorded `readiness_timeout`; investigation identified a supply fault.
+It is retained as a fixture failure, excluded from the two valid boot timings,
+and must not be attributed to the kernel change. Retry used the same protection
+limits. The third asynchronous capture used the improved supply checks and
+ended with output ON and no OCP/OVP alarm.
+
+For context, the original cold SSH-banner observation was 33.371 seconds; that
+is a different endpoint from the selected local API. An earlier kernel with
+the optional no-TPM firmware reached the local API in 13.649 seconds and host
+HTTP in 16.302 seconds. The separate no-TPM comparison suggested only about
+half a second of firmware benefit. TPM removal remains an explicit experiment,
+absent from the default profile; see its [requirements and limitations](../products/JAJ/fastboot/README.md#optional-no-tpm-timing-experiment).
+
+The matched kernel experiment used these SHA-256 artifact identities; a later
+rebuild needs its own recorded hashes:
+
+```text
+a13342d52ea607752815dc6afb0276de49c4956e9920b6361cf8b1be677e5661  Image
+6c1315eb07f9200a355e8e383be8a08010a2231197f2a69ff73977982722e278  initrd
+63abfb9267398d1a1bcf9a4d0d04a7a48bb7458fe96efdf27691b2798bafd11a  jaj-kernel-candidate-v1.tar.zst
+```
+
+JAJ builds include [optional asynchronous BPMP debugfs setup](../products/JAJ/fastboot/bpmp-debugfs.md).
+The default remains synchronous; enable `jaj_fastboot.bpmp_debugfs_async=1`
+only after installing the matched patched kernel/modules/initrd and validating
+diagnostic consumers. In the asynchronous diagnostic capture, BPMP debugfs
+finished at kernel uptime 1.560 seconds, and the subsequent clock query and
+NVIDIA boot validation succeeded. Early debugfs consumers must still wait for
+completion. Keep global `debugfs=off` out of the profile: the stock NVIDIA
+initramfs treats a failed debugfs mount as an error and waits 30 seconds.
+
+The final acceptance record must include the selected cold-power-to-API
+observation, exact image/configuration, run count, spread, maximum, and failures.
+An under-10-second systemd total alone is insufficient; the measured carrier,
+firmware, and application intervals remain part of the requirement.
