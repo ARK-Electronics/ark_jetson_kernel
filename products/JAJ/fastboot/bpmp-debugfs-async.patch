@@ -1,0 +1,149 @@
+--- a/drivers/firmware/tegra/bpmp.c
++++ b/drivers/firmware/tegra/bpmp.c
+@@ -4,7 +4,10 @@
+  */
+ 
+ #include <linux/clk/tegra.h>
++#include <linux/dcache.h>
++#include <linux/debugfs.h>
+ #include <linux/genalloc.h>
++#include <linux/jiffies.h>
+ #include <linux/mailbox_client.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+@@ -14,6 +17,7 @@
+ #include <linux/pm.h>
+ #include <linux/semaphore.h>
+ #include <linux/sched/clock.h>
++#include <linux/workqueue.h>
+ 
+ #include <soc/tegra/bpmp.h>
+ #include <soc/tegra/bpmp-abi.h>
+@@ -729,6 +733,118 @@
+ 	spin_unlock(&bpmp->lock);
+ }
+ 
++/* ARK: optional background creation of the BPMP diagnostic filesystem.
++ * Hardware clock, reset and power-domain setup remains synchronous.
++ */
++#if IS_ENABLED(CONFIG_DEBUG_FS)
++/* Keep the built-in parameter/sysfs namespace separate from NVIDIA's
++ * distinct tegra_bpmp.ko hypervisor driver. Loadable builds retain the usual
++ * unprefixed module argument convention.
++ */
++#ifndef MODULE
++#undef MODULE_PARAM_PREFIX
++#define MODULE_PARAM_PREFIX "jaj_fastboot."
++#endif
++static bool debugfs_async;
++module_param_named(bpmp_debugfs_async, debugfs_async, bool, 0444);
++MODULE_PARM_DESC(bpmp_debugfs_async,
++		"Initialize BPMP debugfs in the background");
++
++static unsigned int debugfs_delay_ms;
++
++static int tegra_bpmp_set_debugfs_delay(const char *val,
++				       const struct kernel_param *kp)
++{
++	return param_set_uint_minmax(val, kp, 0, 30000);
++}
++
++static const struct kernel_param_ops debugfs_delay_ops = {
++	.set = tegra_bpmp_set_debugfs_delay,
++	.get = param_get_uint,
++};
++module_param_cb(bpmp_debugfs_delay_ms, &debugfs_delay_ops,
++		&debugfs_delay_ms, 0444);
++MODULE_PARM_DESC(bpmp_debugfs_delay_ms,
++		"Delay asynchronous BPMP debugfs creation by 0-30000 ms (default 0)");
++
++struct tegra_bpmp_debugfs_work {
++	struct delayed_work work;
++	struct workqueue_struct *queue;
++	struct tegra_bpmp *bpmp;
++	struct dentry *root;
++};
++
++static void tegra_bpmp_debugfs_worker(struct work_struct *work)
++{
++	struct tegra_bpmp_debugfs_work *state =
++		container_of(to_delayed_work(work), struct tegra_bpmp_debugfs_work, work);
++	struct tegra_bpmp *bpmp = state->bpmp;
++	int err;
++
++	err = tegra_bpmp_init_debugfs(bpmp);
++	if (err < 0) {
++		dev_err(bpmp->dev, "debugfs initialization failed: %d\n", err);
++		return;
++	}
++
++	/* No directory exists when firmware does not support debugfs. */
++	if (!IS_ERR_OR_NULL(bpmp->debugfs_mirror)) {
++		state->root = dget_parent(bpmp->debugfs_mirror);
++		dev_info(bpmp->dev, "debugfs initialized asynchronously\n");
++	}
++}
++
++static void tegra_bpmp_debugfs_cancel(void *data)
++{
++	struct tegra_bpmp_debugfs_work *state = data;
++
++	/* Join before devres releases any BPMP transport or device storage. */
++	cancel_delayed_work_sync(&state->work);
++	destroy_workqueue(state->queue);
++	if (state->root) {
++		debugfs_remove_recursive(state->root);
++		dput(state->root);
++	}
++}
++
++static int tegra_bpmp_debugfs_start(struct tegra_bpmp *bpmp)
++{
++	struct tegra_bpmp_debugfs_work *state;
++	int err;
++
++	if (!debugfs_async)
++		return tegra_bpmp_init_debugfs(bpmp);
++
++	state = devm_kzalloc(bpmp->dev, sizeof(*state), GFP_KERNEL);
++	if (!state)
++		return tegra_bpmp_init_debugfs(bpmp);
++
++	state->bpmp = bpmp;
++	INIT_DELAYED_WORK(&state->work, tegra_bpmp_debugfs_worker);
++	/* Keep diagnostic work separate from per-CPU driver work. */
++	state->queue = alloc_workqueue("jaj_bpmp_debugfs",
++				      WQ_UNBOUND | WQ_FREEZABLE, 1);
++	if (!state->queue)
++		return tegra_bpmp_init_debugfs(bpmp);
++
++	/* Installed last: cancellation runs before earlier BPMP devres. */
++	err = devm_add_action_or_reset(bpmp->dev, tegra_bpmp_debugfs_cancel,
++				       state);
++	if (err)
++		return tegra_bpmp_init_debugfs(bpmp);
++
++	/* Freeze/drain this work before suspend can quiesce the transport. */
++	queue_delayed_work(state->queue, &state->work,
++			   msecs_to_jiffies(debugfs_delay_ms));
++	return 0;
++}
++#else
++static int tegra_bpmp_debugfs_start(struct tegra_bpmp *bpmp)
++{
++	return tegra_bpmp_init_debugfs(bpmp);
++}
++#endif
++
+ static int tegra_bpmp_probe(struct platform_device *pdev)
+ {
+ 	struct tegra_bpmp *bpmp;
+@@ -823,7 +939,7 @@
+ 			goto free_mrq;
+ 	}
+ 
+-	err = tegra_bpmp_init_debugfs(bpmp);
++	err = tegra_bpmp_debugfs_start(bpmp);
+ 	if (err < 0)
+ 		dev_err(&pdev->dev, "debugfs initialization failed: %d\n", err);
+ 
