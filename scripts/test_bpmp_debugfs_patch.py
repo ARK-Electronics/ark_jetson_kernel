@@ -66,6 +66,24 @@ class PatchTests(unittest.TestCase):
             helper.update(self.root / 'jaj', 'apply')
         self.assertEqual(self.source.read_bytes(), self.original)
 
+    def test_partially_applicable_patch_leaves_source_untouched(self):
+        # A later hunk can fail after an earlier hunk has already succeeded in
+        # patch's temporary file. Never promote that partial transformation.
+        with self.diff.open('a') as stream:
+            stream.write('@@ -20,1 +20,1 @@\n-missing old worker\n+new delayed worker\n')
+        with self.assertRaisesRegex(ValueError, 'patch failed in temporary fixture'):
+            helper.update(self.root / 'jaj', 'apply')
+        self.assertEqual(self.source.read_bytes(), self.original)
+
+    def test_previous_patch_revision_requires_matching_restore_first(self):
+        previous = b'/* firmware fixture */\nint option = 2;\n'
+        self.source.write_bytes(previous)
+        for mode in ('apply', 'restore', 'check'):
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(ValueError, 'differs from both audited'):
+                    helper.update(self.root / 'jaj', mode)
+                self.assertEqual(self.source.read_bytes(), previous)
+
     def test_symlink_source_is_rejected(self):
         target = self.root / 'outside.c'
         target.write_bytes(self.original)

@@ -14,19 +14,40 @@ as `jetson_clocks` can use the completed tree. A tool that needs these diagnosti
 interfaces very early must wait for initialization; removing the parameter
 restores synchronous behavior. Global `debugfs=off` is not part of this profile.
 
-A dedicated unbound, freezable workqueue keeps the mirror out of the per-CPU
-worker pools used by CPUfreq's synchronous counter reads. The worker drains
-before suspend. Device-managed cleanup cancels and
-joins it before releasing BPMP resources, destroys its workqueue, then removes
-its completed debugfs tree. Failure to allocate worker state or its workqueue
-falls back to synchronous creation.
+The optional read-only parameter `jaj_fastboot.bpmp_debugfs_delay_ms` accepts
+0–30000 milliseconds and defaults to 0. It delays queueing the mirror after
+BPMP probe without delaying clock, reset or power-domain setup, and is ignored
+unless `jaj_fastboot.bpmp_debugfs_async=1` is also set. For a controlled timing
+experiment, use both parameters:
+
+```text
+jaj_fastboot.bpmp_debugfs_async=1 jaj_fastboot.bpmp_debugfs_delay_ms=5000
+```
+
+A 5000 ms delay starts the mirror about five seconds after BPMP probe; it does
+not mean the debugfs tree is ready at five seconds. Early consumers such as
+`jetson_clocks` or jtop must wait for the completion message above. This option
+can move firmware traffic into userspace startup, so validate complete API and
+peripheral readiness and the consumer's actual data, not only kernel time.
+An unbound worker alone did not remove the observed CPUfreq probe stall; the
+specific lock or firmware serialization behind that stall has not been proven.
+
+The dedicated unbound, freezable workqueue separates the mirror from per-CPU
+driver work. Running work drains before suspend and pending work waits until
+thaw. Device-managed cleanup synchronously cancels the timer and joins any
+running worker before releasing BPMP resources, destroys its workqueue, then
+removes its completed debugfs tree. Failure to allocate worker state or its
+workqueue falls back to synchronous creation.
 No public BPMP structure or module ABI changes are introduced. The read-only
-state appears at `/sys/module/jaj_fastboot/parameters/bpmp_debugfs_async`,
+parameters appear under `/sys/module/jaj_fastboot/parameters/`,
 using a distinct namespace from NVIDIA's `tegra_bpmp.ko` hypervisor module.
 
 `build.sh` applies the source patch for JAJ, PAB and PAB_V3. The patch helper accepts only
-the exact audited original or patched R36.5.0 source checksum and supports
-`--mode apply`, `--mode check`, and `--mode restore`. For example:
+the exact audited original or current patched R36.5.0 source checksum and
+supports `--mode apply`, `--mode check`, and `--mode restore`. A staged source
+with an older patch is rejected: perform a fresh build, or use the matching
+older helper and patch to restore its original source before applying this
+revision. Do not apply a current reverse patch to an older revision. For example:
 
 ```sh
 python3 scripts/patch_bpmp_debugfs.py \
