@@ -1,6 +1,8 @@
 # Fast-boot validation record
 
-Bench date: 2026-09-16. **Under 10 seconds has not been achieved.** The historical
+Bench date: 2026-09-16. **Under 10 seconds has not been achieved.** Two final cold
+boots reached the normal UART shell at **12.582 and 12.618 s**, including POR.
+The historical
 13–14 s results measure generic API availability. Later TPM-enabled observations
 reached that endpoint in approximately 11.2–11.4 s. A stronger check requiring
 real Jetson metadata reached 17.636 s with the installed ARK-OS application.
@@ -68,13 +70,13 @@ all defaults of the supported profile.
 | Early loopback API services, retaining other ARK services | Local API: 13.571 → 12.818 | 0.753 | One run; still temporary no-TPM firmware |
 | #7 kernel with 2000 ms deferred BPMP debugfs | Local API: 12.818 → 12.270 | 0.548 | One non-tracing run; extra udev tracing instead yielded 13.510 |
 | Restore default TPM-enabled firmware, repeat | Local API: 12.270 → 11.813 | Unassigned | Run variation/configuration repeat; not evidence that restoring TPM accelerates boot |
-| Parallel JAJ C7 PCIe coldplug, TPM enabled | Local API: 11.813 → 11.371 | 0.443 | One observation; latest SSH 10.946 and host API 11.335 |
+| Parallel JAJ C7 PCIe coldplug, TPM enabled | Local API: 11.813 → 11.371 | 0.443 | One observation; at this step SSH was 10.946 and host API 11.335 |
 | Earlier broad C4-only and first C7-only UEFI candidates | Rejected; automatic B-slot fallback | — | No timing saving assigned; C7 UART revealed an enumeration assertion, corrected in the later compatibility hook |
 
-The original-to-latest SSH comparison is 33.371 → 10.946 s, an observed **22.424 s
+The original-to-fastest SSH comparison is 33.371 → 10.946 s, an observed **22.424 s
 reduction**. It measures host SSH access, not the unknown original application time.
 The first recorded host API result, already using reduced firmware, was 23.356 s;
-the latest was 11.335 s. There is no original-stock local API baseline.
+the corresponding later result was 11.335 s. There is no original-stock local API baseline.
 
 ## Later terminal and metadata checks
 
@@ -119,6 +121,60 @@ This improves external USB access in this comparison, without establishing a
 terminal or application-initialization saving. It does not replace peripheral
 traffic or physical reconnect testing. `--scoped-usb-udev` is opt-in and rejects
 unknown changes to the audited udev rules or native USB units before mutation.
+
+## Rejected deferred Linux C7 probe
+
+A separate temporary initrd held only C7 through its native `driver_override`
+before module loading. A paired, hash-verified service cleared the override and
+ran the full native probe after coldplug. The hardware capture verified both
+initrd markers, successful rebind, an empty override and the normal Linux driver
+link. NVMe, Wi-Fi and Ethernet remained detected. The C7 probe moved to kernel
+uptime 2.751–4.858 s; its full link timeout remained unchanged.
+
+The matched comparison used scoped USB startup, normal `Type=idle` getty, no
+`initcall_debug`, and the two nonblocking readiness probes in both runs:
+
+| Endpoint | Normal C7 probing | Deferred C7 probing |
+| --- | ---: | ---: |
+| UART shell | 12.509 s | 13.284 s |
+| SSH banner | 11.649 s | 11.984 s |
+| Generic local API | 11.886 s | 11.959 s |
+| Real Jetson metadata | 18.194 s | 18.244 s |
+
+The experiment did not improve readiness and was reverted. Its private test
+initrd and paired service are not part of the supported profile. The original
+matched initrd and full native C7 probing were restored before final checks.
+
+## Final retained configuration and repeat
+
+After reverting the deferred-probe experiment, the original #7 initrd and normal
+Linux C7 probing were confirmed. Temporary API/metadata probe services, initcall
+tracing and the getty scheduling override were removed. The retained profile uses
+TPM-enabled C7-filtered UEFI in slot A, stock ESP mounting, headless startup,
+precomputed initrd, 2000 ms deferred BPMP diagnostics, native/scoped USB startup,
+early API services, parallel C7 userspace coldplug and independently checked
+rsyslog kernel logging. Both firmware slots report normal; B is retained.
+
+| Final cold capture | UART shell prompt | SSH banner | Host API HTTP 200/JSON |
+| --- | ---: | ---: | ---: |
+| Repeat 1 | 12.618 s | 11.989 s | 12.143 s |
+| Repeat 2 | 12.582 s | 11.983 s | 12.172 s |
+
+Both captures completed without measurement or supply faults. This is only two
+runs, not a worst-case guarantee. The fastest earlier UART shell observation was
+12.088 s under an earlier diagnostic configuration; the final repeat establishes
+approximately **12.6 s** for the retained setup. A harmless command subsequently
+executed successfully through that UART shell as the existing user; its execution
+was not part of the boot timing. No new local metadata time is claimed after
+removing the probes; real metadata was verified after startup.
+
+The final checks confirmed cleared FFC override, normal driver binding, matched
+kernel/initrd, successful NVIDIA bootloader verification, current-boot kernel
+messages in `kern.log`, and userspace `/dev/kmsg` records in `syslog`. The temporary
+shutdown marker hook was removed and the device was left running. Rollback boot
+files are retained. The existing `mavlink-router.service` failure remains and
+was also present before optimization; flight-controller integration was not
+validated. The FFC connector had no attached endpoint for traffic testing.
 
 ## Earlier warm-reboot observations
 
