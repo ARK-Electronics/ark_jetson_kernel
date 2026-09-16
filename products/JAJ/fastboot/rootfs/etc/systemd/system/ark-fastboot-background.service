@@ -1,0 +1,18 @@
+[Unit]
+Description=Start optional JAJ services after the OS multi-user milestone
+# Without this, multi-user.target would implicitly order itself after this
+# service while this service orders itself after multi-user.target.
+DefaultDependencies=no
+After=multi-user.target ssh.service
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+# A separate transaction keeps the optional services' network-online and
+# other dependencies out of the initial multi-user transaction.
+ExecStart=/bin/systemctl --no-block start ark-fastboot-background.target
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

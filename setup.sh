@@ -180,7 +180,7 @@ download_with_retry "$ROOT_FS_URL" "$DOWNLOADS_DIR"
 download_with_retry "$PUBLIC_SOURCES_URL" "$DOWNLOADS_DIR" "$PUBLIC_SOURCES_FILE"
 
 echo "Installing build prerequisites"
-sudo apt-get install -y -qq make build-essential bc flex bison libssl-dev
+sudo apt-get install -y -qq make build-essential bc flex bison libssl-dev qemu-user-static binfmt-support
 
 # Toolchain
 mkdir -p "$HOME/l4t-gcc"

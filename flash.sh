@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./flash.sh <TARGET> [--sdcard] [--usb]
+# Usage: ./flash.sh <TARGET> [--sdcard] [--usb] [--bootloader-only]
 #
 # TARGET: PAB | JAJ | PAB_V3
 #
@@ -13,6 +13,7 @@ STORAGE_DEV="nvme0n1p1"
 USE_INITRD=true
 FLASH_TARGET="jetson-orin-nano-devkit-super"
 TARGET=""
+BOOTLOADER_ONLY=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -23,12 +24,15 @@ while [[ $# -gt 0 ]]; do
             STORAGE_DEV="mmcblk0p1"
             USE_INITRD=false
             shift ;;
+        --bootloader-only)
+            BOOTLOADER_ONLY=true
+            shift ;;
         --usb)
             STORAGE_DEV="sda"
             shift ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
+            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--bootloader-only]" >&2
             exit 1 ;;
     esac
 done
@@ -48,7 +52,7 @@ if [ -z "$TARGET" ]; then
         esac
     else
         echo "ERROR: target required (PAB | JAJ | PAB_V3) when running non-interactively." >&2
-        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
+        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--bootloader-only]" >&2
         exit 1
     fi
 fi
@@ -106,6 +110,27 @@ if [ -f "$DEFAULT_OVERLAYS_FILE" ]; then
     done < "$DEFAULT_OVERLAYS_FILE"
 fi
 
+# Firmware staging replaces several files. A crash before its final manifest
+# must never fall through to ordinary flashing with partially modified firmware.
+if [ -e "$L4T_DIR/ark-fast-boot.in-progress.json" ] || [ -L "$L4T_DIR/ark-fast-boot.in-progress.json" ]; then
+    echo "ERROR: fast-boot firmware staging is active or was interrupted." >&2
+    echo "       Do not flash this tree; recover its saved stock files or rebuild it first." >&2
+    exit 1
+fi
+
+# A staged fast profile is an explicit opt-in. Verify its paired firmware and
+# UEFI DTB overlay, and apply its single-device selector after normal overlays.
+if [ -f "$L4T_DIR/ark-fast-boot.json" ]; then
+    if [ "$TARGET" != "JAJ" ] || [ "$STORAGE_DEV" != "nvme0n1p1" ]; then
+        echo "ERROR: staged fast firmware requires JAJ with NVMe storage." >&2
+        exit 1
+    fi
+    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" \
+        --l4t-dir "$L4T_DIR" --verify --flash-target "$FLASH_TARGET" \
+        --storage "$STORAGE_DEV" || exit 1
+    ADDITIONAL_DTB_OVERLAY="${ADDITIONAL_DTB_OVERLAY:+$ADDITIONAL_DTB_OVERLAY,}ark_fast_boot.dtbo"
+fi
+
 GIT_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_DESCRIBE=$(git -C "$SCRIPT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -139,6 +164,17 @@ while true; do
     done
     sleep 1
 done
+
+# QSPI-only flashing leaves the existing NVMe rootfs intact. Classic flash.sh
+# handles this path without the initrd USB network or NetworkManager guard.
+if [ "$BOOTLOADER_ONLY" = true ]; then
+    cd "$L4T_DIR" || exit 1
+    echo "Flashing QSPI boot firmware only; overlay(s): $ADDITIONAL_DTB_OVERLAY"
+    sudo env "ADDITIONAL_DTB_OVERLAY=$ADDITIONAL_DTB_OVERLAY" \
+        ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml \
+        "$FLASH_TARGET" "$STORAGE_DEV"
+    exit $?
+fi
 
 # NetworkManager must not touch the flash-time USB NIC: host profiles matched on
 # the gadget drivers (ark-jetson-usb) auto-activate on the initrd's rndis/ncm
