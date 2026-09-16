@@ -1,9 +1,10 @@
 # Experimental ARK Orin fast-boot images
 
 This workflow supports JAJ, PAB and PAB_V3 with NVMe/ext4 and L4T R36.5.0.
-Hardware timing results below are from the connected JAJ only. PAB and PAB_V3
-share the implementation but still require board-specific cold-boot and camera
-validation. It combines
+Hardware timing results below are historical observations from the connected JAJ
+only. See the [validation record](fast_boot_validation.md) for the latest timing,
+artifact identities, and completed JAJ/PAB/PAB_V3 build checks. PAB and PAB_V3
+still require board-specific cold-boot, application and camera validation. The workflow combines
 reduced firmware work, a matched initramfs with precomputed module indexes, and
 headless userspace. The agreed customer-application stand-in is ARK-OS: a local
 `/api/system/info` request must return HTTP 200 and valid JSON before the target
@@ -12,8 +13,11 @@ above 10 seconds.**
 
 ARK-OS services remain enabled and start normally by default. Moving application
 work after `multi-user.target` is a separate opt-in experiment, not a substitute
-for this application measurement. The API endpoint does not establish readiness
+for this application measurement. The basic API endpoint does not establish readiness
 of every ARK service, camera, inference workload, or flight-controller connection.
+The target probe's optional `--ark-os-ready` criterion additionally requires
+populated Jetson hardware metadata; record it separately from the historical
+HTTP/JSON-only captures described below.
 
 ## Build and stage
 
@@ -89,7 +93,7 @@ cmp "$JAJ_L4T/bootloader/l4t_initrd.img" "$JAJ_ROOTFS/boot/initrd"
 # Headless and no known utmp delay; enabled ARK services still start normally.
 python3 scripts/configure_fast_boot.py apply "$JAJ_ROOTFS" --skip-utmp-delay
 python3 scripts/stage_fast_boot_firmware.py \
-  --l4t-dir "$JAJ_L4T" --artifacts /firmware --quiet-firmware
+  --l4t-dir "$JAJ_L4T" --product JAJ --artifacts /firmware --quiet-firmware
 python3 scripts/stage_fast_boot_firmware.py --l4t-dir "$JAJ_L4T" --verify
 python3 scripts/configure_fast_boot.py status "$JAJ_ROOTFS"
 STAGE
@@ -139,6 +143,24 @@ manifest to bypass a checksum or missing-file error.
   preserves cable-role checks, bridge/DHCP setup, and subsequent udev hotplug
   handling. Verify USB connection, disconnect/reconnect, and ARK API access after
   applying this option; it does not change which USB functions are exposed.
+- `--scoped-usb-udev` replaces the USB start script's global udev settle with
+  `udevadm trigger --settle` for its newly attached read-only loop device. This
+  still waits for the `L4T-README` label rule. An external 120-second timeout
+  bounds that wait, with a five-second kill grace; the existing service timeout
+  also applies. The two cable-state replays use subsystem filters instead of
+  reading properties from unrelated devices. All gadget functions, descriptors,
+  bridge/DHCP configuration and hotplug handlers remain unchanged. The helper
+  requires R36.5, udev 249, the timeout executable, exact vendor-script/unit
+  hashes and 125 required udev rules. The known ARK GPIO and fwupd rules are
+  optional, with exact contents required when present. Both audited versions
+  of `75-net-description.rules` are accepted; the newer version moves `net_id`
+  after USB/PCI identity imports. Unknown rules, masks and custom unit
+  dependencies cause rejection. Restore and review the audit after relevant
+  package changes.
+  It composes with `--direct-usb-runtime` but remains separately opt-in. Validate
+  the loop backing image/label, RNDIS/NCM/ACM/mass-storage functions, DHCP and
+  cable reconnect, including booting with no USB cable. Any improvement in
+  target setup must be measured separately from host USB/DHCP timing.
 - `--skip-lvm-monitor` removes existing LVM-monitor Wants enablement links and
   saves them for exact restoration. Use it only after confirming the deployment
   has **no LVM physical volumes, volume groups, logical volumes, root device,
@@ -148,6 +170,37 @@ manifest to bypass a checksum or missing-file error.
   have no LVM. The helper does not mask LVM, remove its packages, or change
   storage activation; custom Requires links cause it to refuse the change.
   Package re-enablement or another unit dependency can start monitoring again.
+- `--early-ark-api` lets the audited `system-manager` and `ark-ui-backend`
+  services initialize alongside networking. They bind to loopback; nginx and
+  the remaining ARK services retain their normal ordering. It copies the exact
+  reviewed vendor units into reversible full overrides, removing only their
+  network/nginx dependencies and retaining normal systemd default dependencies.
+  Custom units, drop-ins and dependency directories are rejected. Restore and
+  reapply after a vendor-unit update; stale full overrides must not hide package
+  changes. This option conflicts with `--defer-ark-services` and requires a
+  provisioned ARK-OS image. It does not change the API implementation.
+- `--parallel-jaj-pcie-coldplug` is **JAJ-only** and requires a completed
+  `target=JAJ` build stamp plus the audited native udev trigger unit, without
+  customer overrides. It runs initial userspace coldplug for the C7 controller
+  (`141e0000.pcie`, connected to the JAJ FFC) in a separate service alongside
+  the normal device enumeration. The main trigger excludes exactly that sysname;
+  the separate service replays its event. **Linux PCIe probing, link timeouts,
+  the FFC controller and subsequent hotplug remain enabled.** No peripheral is
+  disabled to obtain the timing change. Test the customer's FFC endpoint and
+  its cold-boot/hotplug behavior before acceptance. The PAB/PAB_V3 profiles
+  cannot select this JAJ-specific option. See the [coldplug implementation](../products/JAJ/fastboot/pcie-coldplug/README.md).
+- `--rsyslog-kernel-logging` changes kernel-log ingestion only when the audited
+  Ubuntu 22.04 logging topology is present. It requires matching configuration
+  and native-unit hashes, an enabled rsyslog service, its independent `imklog`
+  input, and the existing `kern.*` route to `/var/log/kern.log`. Unknown included
+  rules, competing loggers, unit overrides, journal drop-ins and separate or
+  noncanonical log mounts are rejected. The helper adds only a reversible
+  journald `ReadKMsg=no` drop-in; it does not add another kernel input or remove
+  persistent log output. New kernel records remain available in `kern.log` and
+  `dmesg`, while `journalctl -k` no longer receives them. Userspace journal
+  settings remain unchanged. Default profiles retain normal journald ingestion.
+  Run both log-route checks below after boot: an offline configuration
+  audit cannot establish runtime permissions, daemon health or storage writes.
 - `--defer-ark-services` is optional and is deliberately absent above. It moves
   enabled ARK/UI services, nginx, jtop, and first-boot hotspot setup into a later
   startup transaction. It can postpone the functionality the customer actually
@@ -155,8 +208,9 @@ manifest to bypass a checksum or missing-file error.
 - The initrd helper uses kmod 29, matches the single module tree to Image,
   validates dependencies, and preserves existing module payloads. Runtime
   integrity checks skip `depmod` only while those modules/indexes still match;
-  otherwise stock `depmod -a` runs. The guarded polling change retains retry
-  counts and failure wait budgets. It does not remove USB, thermal control, or
+  otherwise stock `depmod -a` runs. The guarded polling change retains the original delayed retry
+  sequence and failure wait budget, adding an immediate attempt for retryable
+  mounts. It does not remove USB, thermal control, or
   encryption setup. Rebuild the candidate after updating
   modules; do not reuse an earlier build's optimized initrd.
 - The firmware profile changes firmware boot-device discovery and update/setup
@@ -174,13 +228,32 @@ python3 scripts/configure_fast_boot.py apply "$JAJ_ROOTFS" \
   --skip-utmp-delay --direct-usb-runtime --skip-lvm-monitor
 ```
 
-ARK services remain enabled with this combination. LVM-monitor duration can
+For JAJ experiments that also use the audited early API, parallel C7 coldplug
+and independent rsyslog kernel logging, restore the previous profile first and
+select the complete option set explicitly. The following also selects the
+separate scoped USB udev experiment:
+
+```sh
+python3 scripts/configure_fast_boot.py restore "$JAJ_ROOTFS"
+python3 scripts/configure_fast_boot.py apply "$JAJ_ROOTFS" \
+  --skip-utmp-delay --direct-usb-runtime --skip-lvm-monitor --scoped-usb-udev \
+  --early-ark-api --parallel-jaj-pcie-coldplug --rsyslog-kernel-logging
+```
+
+The no-LVM requirement still applies. For PAB/PAB_V3 use the corresponding
+staged rootfs and omit `--parallel-jaj-pcie-coldplug`; a provisioned ARK-OS image
+is required for `--early-ark-api`. Do not infer hardware validation from the
+[completed bare-image build checks](fast_boot_validation.md#scope-and-completed-builds).
+
+ARK services remain enabled with these combinations. LVM-monitor duration can
 overlap NVMe device discovery; measure the resulting external readiness time
 instead of adding individual service durations as predicted savings.
 
 `configure_fast_boot.py restore ROOTFS` restores its saved default target,
-service links, utmp override, and USB state handler, including ownership. It refuses conflicting
-external edits. It does not undo an initrd or firmware replacement. The saved
+service links, utmp override, USB start/state scripts, API/coldplug overrides and
+journald drop-in, including ownership. It refuses conflicting external edits.
+Reapply and `status` re-audit selected logging/coldplug inputs; restore and review
+the option again after a relevant package update. It does not undo an initrd or firmware replacement. The saved
 stock initrd can restore both initrd locations only when it still matches the
 current kernel/modules. Otherwise regenerate a matching stock initrd. Keep a
 known-good QSPI image and the customer's NVMe backup for recovery.
@@ -207,6 +280,41 @@ check. The probe stores no response body. This interval includes the confirmed
 approximately two-second carrier power-on-reset (POR) delay, probe scheduling,
 and UART transport/capture latency; it is not an electrical-edge measurement.
 
+For hardware-metadata acceptance, run the temporary target probe with
+`--ark-os-ready`. In addition to HTTP 200 and strict JSON, it requires
+`device_type=jetson`, `hardware.type=jetson`, and non-placeholder strings for
+hardware `model`, `module` and `l4t`. It emits the same marker with
+`"criterion":"ark_os_metadata"`; it does not print or save the response body or
+device serial fields. This is a stronger criterion than API availability, but
+still does not validate cameras, inference, flight links or all ARK features.
+Use one selected probe criterion per timing capture, or explicitly match the
+metadata criterion on the host so an earlier generic marker cannot satisfy it.
+
+A temporary probe unit should use **`Type=simple`**, with ordinary dependencies
+after basic startup. For example, after placing the probe at the shown temporary
+target path and confirming the board's debug UART device:
+
+```ini
+[Unit]
+Description=Temporary ARK-OS metadata readiness probe
+After=basic.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /var/tmp/emit_boot_ready.py --ark-os-ready --serial-output /dev/ttyTCU0
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Remove this diagnostic unit after testing. Do not use `Type=oneshot` for a probe
+wanted by `multi-user.target`: the target would wait for the probe while jtop
+is ordered after that target, creating a readiness dependency cycle. Earlier
+HTTP/JSON captures used such a oneshot probe. Their API-availability observations
+remain historical measurements, but jtop was artificially postponed; they do
+not establish normal jtop startup timing or metadata readiness. Track stronger
+probe results and their exact unit configuration in the [validation record](fast_boot_validation.md).
+
 Record host HTTP-over-USB readiness separately. It also depends on USB gadget
 setup and host networking, which can finish after the local API is working.
 `systemd-analyze` and the target probe's kernel uptime exclude the earlier power
@@ -219,12 +327,53 @@ protection trip as `supply_fault`, rather than a software readiness timeout. It
 never clears a latch or changes protection limits. Retain supply-fault attempts
 in the experiment log and separate them from valid software boot timings.
 
+When `--rsyslog-kernel-logging` is selected, perform **two distinct checks**
+from an authorized root shell on the target. First, confirm rsyslog is active
+and inject a unique userspace record through `/dev/kmsg`:
+
+```sh
+systemctl is-active rsyslog.service
+ark_kmsg_canary="ARK_KMSG_CHECK_$(cat /proc/sys/kernel/random/uuid)"
+printf '<6>%s\n' "$ark_kmsg_canary" > /dev/kmsg
+# After rsyslog has processed the record:
+grep -F -- "$ark_kmsg_canary" /var/log/syslog
+```
+
+The audited `imklog` configuration accepts non-kernel facilities, so this checks
+its kernel-log input path into `syslog`. It does **not** prove the `kern.*` route:
+Linux's `devkmsg_write()` forces userspace writes with a kernel-facility prefix
+such as `<6>` to `LOG_USER`. A working configuration therefore need not put this
+canary in `kern.log`. A userspace `logger` command would not exercise `imklog`.
+
+Second, identify a genuine kernel-origin message in the **current boot's**
+`dmesg` and verify its message and precise kernel timestamp in `kern.log`. With
+the optional asynchronous BPMP setup enabled, its completion record is suitable:
+
+```sh
+dmesg --facility=kern --time-format=raw | grep -F 'tegra-bpmp bpmp: debugfs initialized asynchronously'
+grep -F 'tegra-bpmp bpmp: debugfs initialized asynchronously' /var/log/kern.log | tail -n 1
+sync -f /var/log/syslog /var/log/kern.log
+```
+
+Compare the bracketed kernel timestamp and text in both outputs, allowing
+whitespace differences, and ensure the file record belongs to this boot rather
+than accepting an older matching message. If asynchronous BPMP is disabled,
+select another identifiable current-boot kernel record; no module loading is
+needed. Retain both results with the capture and restore normal journald
+ingestion if either route fails validation. Existing rsyslog buffering and
+rotation remain in use; flushing these files does not promise survival of other
+records that were still buffered when power was cut.
+
 NVIDIA boot validation must finish successfully before the next reboot/power
 cycle. Do not trigger a rapid test loop solely from the earlier application or
 SSH marker. Preserve at least one usable recovery/diagnostic path when reducing
 serial output.
 
-## Measured prototype results
+## Historical prototype results
+
+The following comparisons retain their original endpoint and configuration.
+For later captures, current acceptance status and coverage on all three boards,
+use the [validation record](fast_boot_validation.md).
 
 The following cold starts used the same matched `5.15.185-tegra #5` kernel,
 modules, and optimized initrd, with the BPMP parameter changed between the
@@ -268,7 +417,7 @@ a13342d52ea607752815dc6afb0276de49c4956e9920b6361cf8b1be677e5661  Image
 63abfb9267398d1a1bcf9a4d0d04a7a48bb7458fe96efdf27691b2798bafd11a  jaj-kernel-candidate-v1.tar.zst
 ```
 
-JAJ builds include [optional asynchronous BPMP debugfs setup](../products/JAJ/fastboot/bpmp-debugfs.md).
+All three supported products include [optional asynchronous BPMP debugfs setup](../products/JAJ/fastboot/bpmp-debugfs.md).
 The default remains synchronous; enable `jaj_fastboot.bpmp_debugfs_async=1`
 only after installing the matched patched kernel/modules/initrd and validating
 diagnostic consumers. In the asynchronous diagnostic capture, BPMP debugfs
@@ -281,3 +430,22 @@ The final acceptance record must include the selected cold-power-to-API
 observation, exact image/configuration, run count, spread, maximum, and failures.
 An under-10-second systemd total alone is insufficient; the measured carrier,
 firmware, and application intervals remain part of the requirement.
+
+Later diagnostic captures used the matched #6 kernel with an unbound BPMP
+worker and the guarded faster root polling. With temporary `ReadKMsg=no`, EFI
+partition automount and initcall logging, the local API marker was 13.571 s.
+Adding the two early API unit overrides produced 12.818 s in one cold capture
+(0.753 s lower). Both still used the approved temporary no-TPM firmware. These
+are single diagnostic observations, not acceptance results; the unbound queue
+alone did not remove the remaining CPUfreq probe stall. Logging is now available
+through the explicit guarded `--rsyslog-kernel-logging` option; it remains absent
+by default. ESP automount remains a separate diagnostic and is not implemented
+by the rootfs profile.
+
+HTTP 200 with valid JSON establishes API availability only. The installed
+ARK-OS retry logic can initially return default Jetson metadata, and the old
+oneshot probe additionally postponed jtop. Use the `Type=simple` probe with
+`--ark-os-ready` to measure populated metadata independently. That criterion
+still does not prove a camera frame or inference output.
+A customer's actual image must provide a readiness marker for its required
+functionality, then pass repeated cold tests against the same power reference.

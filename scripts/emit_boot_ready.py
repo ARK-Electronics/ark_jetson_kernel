@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Temporary on-target HTTP readiness probe; stores no response bodies."""
+"""Temporary HTTP readiness probe; never stores response bodies or device serials."""
 import argparse
 import http.client
 import json
@@ -24,7 +24,20 @@ def invalid_constant(_value):
     raise ValueError("Non-JSON numeric constant")
 
 
-def http_ready(url, timeout):
+def ark_os_ready(payload):
+    """Require the existing Jetson collector's metadata, not its fallback values."""
+    if not isinstance(payload, dict) or payload.get("device_type") != "jetson":
+        return False
+    hardware = payload.get("hardware")
+    if not isinstance(hardware, dict) or hardware.get("type") != "jetson":
+        return False
+    placeholders = {"", "unknown", "not available", "unavailable", "n/a", "none", "null"}
+    return all(isinstance(hardware.get(key), str)
+               and hardware[key].strip().casefold() not in placeholders
+               for key in ("model", "module", "l4t"))
+
+
+def http_ready(url, timeout, require_ark_os=False):
     kind = http.client.HTTPSConnection if url.scheme == "https" else http.client.HTTPConnection
     connection = kind(url.hostname, url.port, timeout=timeout)
     # Bound slow headers/body trickles as well as individual socket operations.
@@ -38,8 +51,8 @@ def http_ready(url, timeout):
             body = response.read(MAX_BODY + 1)
             if len(body) > MAX_BODY:
                 return False
-            json.loads(body, parse_constant=invalid_constant)
-            return True
+            payload = json.loads(body, parse_constant=invalid_constant)
+            return ark_os_ready(payload) if require_ark_os else True
     except (OSError, http.client.HTTPException, ValueError, RecursionError):
         return False
     finally:
@@ -77,6 +90,9 @@ def main():
     parser.add_argument("--url", default="http://127.0.0.1/api/system/info")
     parser.add_argument("--timeout", type=float, default=60, help="Overall deadline in seconds")
     parser.add_argument("--serial-output", help="Explicit target serial device, e.g. /dev/ttyTCU0; default stdout")
+    parser.add_argument("--ark-os-ready", action="store_true",
+                        help="Require Jetson type/model/module/L4T metadata; does not validate all ARK features. "
+                             "Response bodies and device serial values are never saved or printed")
     args = parser.parse_args()
     url = urlsplit(args.url)
     if url.scheme not in ("http", "https") or not url.hostname or url.username or url.password or url.fragment:
@@ -86,13 +102,16 @@ def main():
     signal.signal(signal.SIGALRM, expired)
     started = time.monotonic()
     while (remaining := args.timeout - (time.monotonic() - started)) > 0:
-        if http_ready(url, min(0.25, remaining)):
+        if http_ready(url, min(0.25, remaining), args.ark_os_ready):
             record = {"kernel_uptime_s": round(time.clock_gettime(time.CLOCK_BOOTTIME), 6),
                       "probe_elapsed_s": round(time.monotonic() - started, 6)}
+            if args.ark_os_ready:
+                record["criterion"] = "ark_os_metadata"
             emit("JAJ_API_READY " + json.dumps(record, separators=(",", ":")), args.serial_output)
             return 0
         time.sleep(min(0.05, max(0, args.timeout - (time.monotonic() - started))))
-    print("JAJ_API_TIMEOUT: no HTTP 200 with valid JSON before deadline", file=sys.stderr)
+    requirement = "HTTP 200 with valid JSON and Jetson metadata" if args.ark_os_ready else "HTTP 200 with valid JSON"
+    print("JAJ_API_TIMEOUT: no " + requirement + " before deadline", file=sys.stderr)
     return 1
 
 

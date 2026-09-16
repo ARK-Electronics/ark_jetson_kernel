@@ -45,6 +45,66 @@ OS or its earlier fTPM provisioning messages, and its boot-time effect must be
 measured on hardware. It is unsuitable for workflows requiring TPM measurements,
 sealed secrets or attestation. It does not modify TPM provisioning data or fuses.
 
+## Optional JAJ FFC PCIe firmware experiment
+
+This separate candidate skips only the positively identified T234 PCIe controller
+C7, the JAJ FFC port, during UEFI discovery. C1 Wi-Fi, C4 NVMe, C8 Ethernet and all
+other controllers retain their original UEFI behavior. TPM, OP-TEE persistent
+variables, Secure Boot verification support, FMP and ESRT remain configured.
+Linux's device tree and its enabled FFC node are unchanged. This option is for
+JAJ's audited controller mapping only; other carrier mappings need separate review.
+
+```sh
+DOCKER=docker scripts/build_fast_boot_uefi.sh --skip-uefi-ffc-pcie \
+  --build-dir /tmp/jaj-uefi-skip-ffc
+```
+
+Use an independent build directory to preserve the standard artifact. The option
+cannot be combined with `--without-tpm`, so the comparison retains TPM. The
+default build does not apply this patch. The earlier broad C4-only experimental
+option was withdrawn after a failed boot/fallback and is not a supported profile.
+
+The reviewed `uefi-pcie-skip-ffc.patch` adds a device-tree compatibility predicate
+to NVIDIA's T234 DesignWare PCIe driver. A valid `nvidia,controller-id` takes precedence;
+otherwise an absent property falls back to `linux,pci-domain`, used by the JAJ
+DTB. Only controller ID 7 returns `EFI_UNSUPPORTED`. Other IDs, missing nodes,
+missing/malformed properties and other SoCs return `EFI_SUCCESS`, preserving the
+original driver's subsequent decisions instead of rejecting an unknown port.
+
+The pinned `DeviceDiscoveryDriverLib.c` supplies the original device-tree base
+and node offset to its compatibility predicate. `GetSupportedDeviceTreeNodes`
+treats a rejected predicate as a normal nonmatch and computes its final status
+from accepted nodes. Thus C7 is excluded before handle creation, controller
+power/clock/reset changes, threads or exit callbacks. No shared enumeration code
+or assertions are changed. The original binding-phase experiment was incorrect:
+when C7 was the last enumerated node and other controller threads were pending,
+its `EFI_UNSUPPORTED` leaked out as the enumerator's final status and triggered
+the driver's initialization assertion. The compatibility-phase regression test
+covers that exact failure path and preserves genuine initialization errors.
+The skipped C7 gets no UEFI initialization or teardown callback. The existing
+FDT handoff callback visits only
+GPU/GOP devices with an initialized parent controller; it does not disable every
+uninitialized controller. This patch writes no device-tree properties, and Linux
+still has the enabled C7 node and its driver. UEFI cannot boot from the FFC port
+while this candidate is installed. Verify the actual controller exclusion, NVMe,
+Ethernet, Wi-Fi and any attached FFC device on a complete cold boot before use.
+
+`uefi_pcie_filter.py` verifies exact original/patched source SHA-256, refuses
+modified tracked checkouts, and reverses only the reviewed patch after the build,
+including failure exits. It refuses restoration if the source changes while
+building. Artifacts include the patch, `source-patches.json` with its pinned
+revision and all three hashes, and `build-options.json`. The LF patch is applied
+with NVIDIA's original CRLF source endings, also checked by the complete file
+hashes. The upstream source lock and separate patch record together identify the
+firmware. Builds lock their directory and publish only complete, validated
+artifacts after source restoration; previous successful artifacts are retained.
+
+The pinned driver has an unconditional 100 ms busy wait for each initialized
+controller, plus a 201 ms link-training wait that can overlap other work. Skipping
+C7 avoids its UEFI work, but these durations do not establish a total boot saving.
+This narrower candidate needs a paired hardware timing and functionality test.
+It retains the full-QSPI deployment and key-persistence limitations below.
+
 ## R36.5 source compatibility
 
 The R36.5 UEFI source uses `Platform/NVIDIA/Tegra/build.sh` with a

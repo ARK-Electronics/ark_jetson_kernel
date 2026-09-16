@@ -6,21 +6,28 @@ repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 config_dir="$repo_dir/products/JAJ/fastboot"
 build_dir=${JAJ_UEFI_BUILD_DIR:-}
 without_tpm=0
+skip_uefi_ffc_pcie=0
 docker_bin=${DOCKER:-docker}
 image=${JAJ_UEFI_BUILD_IMAGE:-ark-jaj-uefi-builder:r36.5}
 
 usage() {
     cat <<'EOF'
-Usage: scripts/build_fast_boot_uefi.sh [--build-dir DIRECTORY] [--without-tpm]
+Usage: scripts/build_fast_boot_uefi.sh [--build-dir DIRECTORY] [--without-tpm] [--skip-uefi-ffc-pcie]
 
 Builds shared RELEASE UEFI for R36.5 JAJ, PAB and PAB_V3 with NVMe/ext4.
 The legacy jaj_nvme artifact name is shared; stage with the required --product.
-Requires git, python3, and Docker. Downloads source and builds a container.
+Requires Linux, git, python3, flock, and Docker. Downloads source and builds a container.
 Output: DIRECTORY/artifacts/uefi_jaj_nvme_RELEASE.bin (default directory:
 /tmp/jaj-uefi-build). Does not copy into a BSP or access/flash any device.
 --without-tpm builds an experimental profile without UEFI TPM measurements,
 using /tmp/jaj-uefi-no-tpm by default. Secure Boot, OP-TEE variables and ESRT
 remain enabled. Only use this for devices that do not require TPM measured boot.
+--skip-uefi-ffc-pcie builds a separate JAJ T234 experiment that skips only PCIe
+C7 (FFC) in UEFI, leaving the OS DTB and TPM/security/persistence unchanged.
+Default directory: /tmp/jaj-uefi-skip-ffc. Do not combine with --without-tpm;
+this candidate isolates controller selection with TPM enabled.
+Overlapping builds in one directory are rejected. Successful rebuilds retain the
+previous artifact set in the reported .artifacts.build.* directory.
 DOCKER may name a Docker executable; JAJ_UEFI_BUILD_IMAGE selects the image tag.
 EOF
 }
@@ -28,20 +35,73 @@ while (($#)); do
     case "$1" in
         --build-dir) build_dir=${2:?--build-dir requires a directory}; shift 2 ;;
         --without-tpm) without_tpm=1; shift ;;
+        --skip-uefi-ffc-pcie) skip_uefi_ffc_pcie=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) printf 'Unknown argument: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     esac
 done
+if ((without_tpm && skip_uefi_ffc_pcie)); then
+    printf 'Use separate candidates: --skip-uefi-ffc-pcie requires TPM enabled\n' >&2
+    exit 2
+fi
 if [[ -z "$build_dir" ]]; then
-    if ((without_tpm)); then
+    if ((skip_uefi_ffc_pcie)); then
+        build_dir=/tmp/jaj-uefi-skip-ffc
+    elif ((without_tpm)); then
         build_dir=/tmp/jaj-uefi-no-tpm
     else
         build_dir=/tmp/jaj-uefi-build
     fi
 fi
 mkdir -p -- "$build_dir"
-build_dir=$(cd -- "$build_dir" && pwd)
-mkdir -p -- "$build_dir/src" "$build_dir/artifacts" "$build_dir/generated-config"
+build_dir=$(cd -- "$build_dir" && pwd -P)
+# Keep this inode in place: unlinking a flock file can let another writer acquire
+# a different lock. Lock before even generating config in a reused directory.
+exec {build_lock_fd}>"$build_dir/.ark-uefi-build.lock"
+if ! flock -n "$build_lock_fd"; then
+    printf 'Another firmware build owns %s; use a separate --build-dir\n' "$build_dir" >&2
+    exit 1
+fi
+patch_applied=0
+artifacts_work=""
+artifacts_identity=""
+cleanup_build() {
+    build_status=$?
+    trap - EXIT INT TERM
+    if ((patch_applied)); then
+        # Also cover interruption while the apply helper is running. An exact
+        # original file needs no restoration; every other state is checked by
+        # the normal restore helper, which never resets an external edit.
+        if ! python3 - "$config_dir" "$build_dir/src/edk2-nvidia" <<'PYCLEANUP'
+from pathlib import Path
+import subprocess
+import sys
+sys.path.insert(0, sys.argv[1])
+import uefi_pcie_filter as patch
+if patch.digest(Path(sys.argv[2]) / patch.SOURCE) != patch.BEFORE:
+    subprocess.run([sys.executable, str(Path(sys.argv[1]) / "uefi_pcie_filter.py"),
+                    "restore", sys.argv[2]], check=True)
+PYCLEANUP
+        then
+            printf 'Could not restore candidate source; inspect it before rebuilding\n' >&2
+            build_status=1
+        fi
+    fi
+    # Atomic exchange leaves the previous good artifact directory at the work
+    # path. Only remove our new directory, never that previous generation (even
+    # if interrupted immediately after publication).
+    if [[ -n "$artifacts_work" && -d "$artifacts_work" ]] &&
+       [[ $(stat -c '%d:%i' -- "$artifacts_work") == "$artifacts_identity" ]]; then
+        rm -rf -- "$artifacts_work"
+    fi
+    exit "$build_status"
+}
+trap cleanup_build EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+mkdir -p -- "$build_dir/src" "$build_dir/generated-config"
+artifacts_work=$(mktemp -d "$build_dir/.artifacts.build.XXXXXXXX")
+artifacts_identity=$(stat -c '%d:%i' -- "$artifacts_work")
 # Keep the base profile unchanged and record the actual requested configuration.
 python3 - "$config_dir/jaj_nvme.defconfig" "$build_dir/generated-config/jaj_nvme.defconfig" "$without_tpm" <<'PYCONFIG'
 from pathlib import Path
@@ -79,12 +139,32 @@ while read -r source_repo revision source_url; do
 done < "$config_dir/uefi-sources.lock"
 git -C "$build_dir/src/edk2" submodule update --init --depth 1 --jobs 4
 
-"$docker_bin" build -t "$image" -f "$config_dir/Dockerfile" "$config_dir"
+# Apply only to this explicitly selected candidate checkout. The helper checks
+# both the pinned original and complete patched source hashes. Restore on exit;
+# refuse cleanup if another writer changed the patched file during the build.
+if ((skip_uefi_ffc_pcie)); then
+    patch_applied=1
+    python3 "$config_dir/uefi_pcie_filter.py" apply "$build_dir/src/edk2-nvidia"
+fi
+
+# Separate build directories may share this tag. Run the exact image produced
+# by this build, even if another process subsequently retags it.
+"$docker_bin" build --iidfile "$artifacts_work/container-image.txt" \
+    -t "$image" -f "$config_dir/Dockerfile" "$config_dir"
+build_image_id=$(cat -- "$artifacts_work/container-image.txt")
+[[ "$build_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+    printf 'Docker did not record a valid immutable image ID\n' >&2; exit 1;
+}
+# Require this build to produce the exported image; do not accept a cached export
+# if the builder unexpectedly returns success without generating one.
+artifact="$build_dir/src/images/uefi_jaj_nvme_RELEASE.bin"
+rm -f -- "$artifact"
 "$docker_bin" run --rm --user "$(id -u):$(id -g)" \
-    -v "$build_dir:/build" -v "$config_dir:/config:ro" -w /build/src \
+    -v "$build_dir:/build" -v "$config_dir:/config:ro" \
+    -v "$artifacts_work:/artifacts" -w /build/src \
     -e UEFI_SKIP_UPDATE=1 -e UEFI_SKIP_VENV=1 -e UEFI_RELEASE_ONLY=1 \
     -e FIRMWARE_VERSION_BASE=36.5.0 -e GIT_SYNC_REVISION=79ad0c17-jaj \
-    "$image" bash -euc '
+    "$build_image_id" bash -euc '
         # These EDK2 Python tools still import pkg_resources, removed from newer
         # setuptools. Pin that dependency rather than silently modifying EDK2.
         test -x venv/bin/python || python3 -m venv venv
@@ -96,20 +176,71 @@ git -C "$build_dir/src/edk2" submodule update --init --depth 1 --jobs 4
         rm -f nvidia-config/jaj_nvme/.config
         bash edk2-nvidia/Platform/NVIDIA/Tegra/build.sh \
             --init-defconfig /build/generated-config/jaj_nvme.defconfig
-        dtc -@ -I dts -O dtb -o /build/artifacts/ark_fast_boot.dtbo /config/ark_fast_boot.dts
-        python -m pip freeze > /build/artifacts/python-packages.txt
-        aarch64-linux-gnu-gcc --version > /build/artifacts/compiler.txt
+        dtc -@ -I dts -O dtb -o /artifacts/ark_fast_boot.dtbo /config/ark_fast_boot.dts
+        python -m pip freeze > /artifacts/python-packages.txt
+        aarch64-linux-gnu-gcc --version > /artifacts/compiler.txt
     ' 2>&1 | tee "$build_dir/uefi-build.log"
 
-artifact="$build_dir/src/images/uefi_jaj_nvme_RELEASE.bin"
 [[ -s "$artifact" ]] || { printf 'Missing firmware: %s\n' "$artifact" >&2; exit 1; }
 # The standard T234 QSPI A/B cpu-bootloader partitions are 3.5 MiB.
 (( $(stat -c %s "$artifact") <= 3670016 )) || {
     printf 'Firmware exceeds the standard T234 UEFI partition size\n' >&2; exit 1;
 }
-cp -- "$artifact" "$build_dir/artifacts/"
-cp -- "$build_dir/generated-config/jaj_nvme.defconfig" "$config_dir/uefi-sources.lock" "$config_dir/ark_fast_boot.dts" "$build_dir/artifacts/"
-cp -- "$build_dir/src/nvidia-config/jaj_nvme/.config" "$build_dir/artifacts/resolved.config"
-"$docker_bin" image inspect --format '{{.Id}}' "$image" > "$build_dir/artifacts/container-image.txt"
-(cd -- "$build_dir/artifacts" && sha256sum uefi_jaj_nvme_RELEASE.bin ark_fast_boot.dtbo > SHA256SUMS)
+cp -- "$artifact" "$artifacts_work/"
+cp -- "$build_dir/generated-config/jaj_nvme.defconfig" "$config_dir/uefi-sources.lock" "$config_dir/ark_fast_boot.dts" "$artifacts_work/"
+cp -- "$build_dir/src/nvidia-config/jaj_nvme/.config" "$artifacts_work/resolved.config"
+"$docker_bin" image inspect --format '{{.Id}}' "$build_image_id" > "$artifacts_work/container-image.txt"
+python3 - "$artifacts_work/build-options.json" "$without_tpm" "$skip_uefi_ffc_pcie" <<'PYOPTIONS'
+import json
+from pathlib import Path
+import sys
+path, without_tpm, skip_uefi_ffc_pcie = sys.argv[1:]
+Path(path).write_text(json.dumps({"without_tpm": without_tpm == "1",
+                                 "skip_uefi_ffc_pcie": skip_uefi_ffc_pcie == "1"}, indent=2) + "\n")
+PYOPTIONS
+if ((skip_uefi_ffc_pcie)); then
+    cp -- "$config_dir/uefi-pcie-skip-ffc.patch" "$artifacts_work/"
+    python3 "$config_dir/uefi_pcie_filter.py" describe > "$artifacts_work/source-patches.json"
+fi
+(cd -- "$artifacts_work" && sha256sum uefi_jaj_nvme_RELEASE.bin ark_fast_boot.dtbo > SHA256SUMS)
+# Validate and restore before publishing checksums. A changed source must not
+# leave an apparently stageable new artifact with audited-patch provenance.
+if ((patch_applied)); then
+    python3 "$config_dir/uefi_pcie_filter.py" restore "$build_dir/src/edk2-nvidia"
+    patch_applied=0
+fi
+while read -r source_repo revision source_url; do
+    [[ -z "$source_repo" || "$source_repo" == \#* ]] && continue
+    source_dir="$build_dir/src/$source_repo"
+    if [[ $(git -C "$source_dir" rev-parse HEAD) != "$revision" ]] ||
+       ! git -C "$source_dir" diff --quiet || ! git -C "$source_dir" diff --cached --quiet; then
+        printf 'Source changed during firmware build: %s; artifacts not published\n' "$source_dir" >&2
+        exit 1
+    fi
+done < "$config_dir/uefi-sources.lock"
+
+# Both directories are on the same filesystem. Linux RENAME_EXCHANGE replaces
+# an existing complete set atomically and preserves it at the private work path.
+# If the filesystem lacks this operation, fail without touching the old set.
+python3 - "$artifacts_work" "$build_dir/artifacts" <<'PYPUBLISH'
+import ctypes
+import os
+from pathlib import Path
+import stat
+import sys
+work, destination = map(Path, sys.argv[1:])
+if destination.exists() or destination.is_symlink():
+    if not stat.S_ISDIR(destination.lstat().st_mode):
+        raise SystemExit("Refusing a non-directory artifact destination")
+    libc = ctypes.CDLL(None, use_errno=True)
+    exchange = libc.renameat2
+    exchange.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    exchange.restype = ctypes.c_int
+    if exchange(-100, os.fsencode(work), -100, os.fsencode(destination), 2):
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    print(f"Previous artifacts retained: {work}")
+else:
+    work.rename(destination)
+PYPUBLISH
 printf '\nBuilt: %s\n' "$build_dir/artifacts/uefi_jaj_nvme_RELEASE.bin"
