@@ -71,6 +71,7 @@ if [ ${#LEGACY_DIRS[@]} -gt 0 ]; then
 
     echo "Removing legacy directories..."
     for d in "${LEGACY_DIRS[@]}"; do
+        python3 "$SCRIPT_DIR/scripts/check_cleanup_mounts.py" "$SCRIPT_DIR/$d" || exit 1
         sudo rm -rf "$SCRIPT_DIR/$d"
     done
     echo "Legacy cleanup complete."
@@ -91,12 +92,14 @@ if [ -d "$SCRIPT_DIR/staging" ]; then
                 if [ $FORCE -eq 0 ]; then
                     read -p "Delete staging/$target_name/? (y/N): " confirm
                     if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
+                        python3 "$SCRIPT_DIR/scripts/check_cleanup_mounts.py" "$target_dir" || exit 1
                         sudo rm -rf "$target_dir"
                         echo "  Removed."
                     else
                         echo "  Skipped (build.sh will refuse to build against a mismatched BSP)."
                     fi
                 else
+                    python3 "$SCRIPT_DIR/scripts/check_cleanup_mounts.py" "$target_dir" || exit 1
                     sudo rm -rf "$target_dir"
                     echo "  Removed (--force)."
                 fi
@@ -180,7 +183,7 @@ download_with_retry "$ROOT_FS_URL" "$DOWNLOADS_DIR"
 download_with_retry "$PUBLIC_SOURCES_URL" "$DOWNLOADS_DIR" "$PUBLIC_SOURCES_FILE"
 
 echo "Installing build prerequisites"
-sudo apt-get install -y -qq make build-essential bc flex bison libssl-dev
+sudo apt-get install -y -qq make build-essential bc flex bison libssl-dev qemu-user-static binfmt-support
 
 # Toolchain (Crosstool-NG x-tools for JP7 / L4T R39)
 mkdir -p "$HOME/l4t-gcc"

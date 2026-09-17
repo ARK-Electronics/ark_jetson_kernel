@@ -40,10 +40,40 @@ Model strings are **not** files — they live in `products/<target>/dtb_models.e
 After staging the stock BSP, `build.sh`:
 
 1. `cp -r`s the files above into the staged tree.
-2. Appends `#include "ark-<target>-overrides.dtsi"` to the **stock** `tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi`, so ARK's fragment is the last thing parsed and its overrides win. (Idempotent; fails loud if the BSP renamed nv-common or the fragment is missing.)
-3. Stamps each SKU's model from `dtb_models.env` onto the stock `-nv`/`-nv-super` DTS (the `-nv-super` DTB gets `" Super"` appended).
+2. Appends `#include "ark-<target>-overrides.dtsi"` to the **stock** `tegra234-p3768-0000+p3767-xxxx-nv-common.dtsi`, so ARK's fragment is the last thing parsed and its overrides win within the DTB. (Idempotent; fails loud if the BSP renamed nv-common or the fragment is missing.)
+3. Drops the SKU overlay's `max-link-speed` write for C7 (see below), so the carrier fragment decides that rate; fails the build if that write can no longer be found.
+4. Stamps each SKU's model from `dtb_models.env` onto the stock `-nv`/`-nv-super` DTS (the `-nv-super` DTB gets `" Super"` appended).
 
 Because ARK only overrides nodes, the rest of every node — and anything NVIDIA adds in a future BSP — flows through untouched.
+
+## What UEFI applies after the DTB
+
+`tegra234-p3768-0000+p3767-0000-dynamic.dtbo` is applied over the kernel DTB at boot, after every layer above, so its fragments beat the base fragment. Each is conditional:
+
+| Condition | Writes |
+|-----------|--------|
+| fuse `disable-{nvenc,pva,dla0,dla1}` | `status = "disabled"` on that engine |
+| ids `3767-0000/-0001/-0003/-0004` | `mmc@3400000` disabled |
+| ids `3767-0003/-0004/-0005` (Orin Nano) | `max-link-speed = <3>` on C1, C4, C4-EP, C7, C8, C9 |
+| odm-data `gbe-uphy-config-9` | C7 and C9 to x1, C9 enabled |
+| odm-data `hsio-uphy-config-40`/`-41` | C4 disabled, C4-EP enabled, C1 to Gen2 |
+
+A base-fragment value on one of those properties is reverted with nothing to show for it: the DTB on disk keeps ARK's value while `/proc/device-tree` reports NVIDIA's. Only the Orin Nano PCIe rates currently collide with anything ARK sets, and `build.sh` handles that one.
+
+To check a live board, compare `dtc -I fs -O dts /proc/device-tree` against `dtc -I dtb -O dts` of the DTB in `/boot/dtb/`.
+
+## UEFI variables
+
+`L4TConfiguration.dtbo` (BSP) and `ark_boot_order.dtbo` (`products/*/overlay/`) write `/firmware/uefi/variables/` into the kernel DTB, which is where UEFI reads them. Both ride `OVERLAY_DTB_FILE`; ARK's is appended via `ADDITIONAL_DTB_OVERLAY`, so it lands last and wins.
+
+| Variable | Stock | ARK |
+|----------|-------|-----|
+| `NewDeviceHierarchy` | `[01]` — new devices go to the top of the boot order | `[00]` — bottom |
+| `DefaultBootPriority` | `usb,nvme,emmc,sd,ufs` | `nvme,usb,emmc,sd,ufs` |
+
+UEFI auto-creates HTTPv6/HTTPv4/PXEv6/PXEv4 boot options as soon as a NIC enumerates. None of them appear in `DefaultBootPriority`, so under `NewDeviceHierarchy = 01` all four rank as new devices and sit ahead of the SSD — and are re-promoted after any manual reorder.
+
+`DefaultBootPriority` is `locked`: UEFI re-asserts it from the DTB every boot, so it is settable only at flash time. `NewDeviceHierarchy` is `runtime`/`non-volatile`, so a unit already in the field can be corrected without a reflash — Device Manager → NVIDIA Configuration → Boot Configuration → "Add new devices to top or bottom of boot order" → **Bottom**.
 
 ## Updating after a BSP bump
 

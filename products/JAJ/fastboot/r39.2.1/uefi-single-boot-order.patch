@@ -1,0 +1,146 @@
+--- a/Silicon/NVIDIA/Library/PlatformBootManagerLib/PlatformBm.c
++++ b/Silicon/NVIDIA/Library/PlatformBootManagerLib/PlatformBm.c
+@@ -58,6 +58,7 @@
+ #include <Protocol/AcpiSystemDescriptionTable.h>
+ #include <Uefi/UefiSpec.h>
+ #include <Guid/EventGroup.h>
++#include <Guid/StatusCodeDataTypeId.h>
+ #include <Guid/FirmwarePerformance.h>
+ #include <Guid/RtPropertiesTable.h>
+ #include <Guid/TtyTerm.h>
+@@ -687,13 +688,66 @@
+     ));
+ }
+ 
++/** Promote the selected single-boot option without deleting other options. */
++STATIC
++EFI_STATUS
++PlatformPromoteBootOption (
++  UINT16  OptionNumber
++  )
++{
++  EFI_STATUS  Status;
++  UINT16      *BootOrder;
++  UINTN       BootOrderSize;
++  UINTN       Index;
++
++  BootOrder = NULL;
++  Status = GetEfiGlobalVariable2 (L"BootOrder", (VOID **)&BootOrder, &BootOrderSize);
++  if (EFI_ERROR (Status)) {
++    return Status;
++  }
++
++  if ((BootOrder == NULL) || (BootOrderSize == 0) ||
++      ((BootOrderSize % sizeof (UINT16)) != 0))
++  {
++    if (BootOrder != NULL) {
++      FreePool (BootOrder);
++    }
++
++    return EFI_COMPROMISED_DATA;
++  }
++
++  for (Index = 0; Index < BootOrderSize / sizeof (UINT16); Index++) {
++    if (BootOrder[Index] == OptionNumber) {
++      break;
++    }
++  }
++
++  if (Index == BootOrderSize / sizeof (UINT16)) {
++    Status = EFI_NOT_FOUND;
++  } else if (Index != 0) {
++    CopyMem (&BootOrder[1], BootOrder, Index * sizeof (UINT16));
++    BootOrder[0] = OptionNumber;
++    Status = gRT->SetVariable (
++                    L"BootOrder",
++                    &gEfiGlobalVariableGuid,
++                    EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS | EFI_VARIABLE_NON_VOLATILE,
++                    BootOrderSize,
++                    BootOrder
++                    );
++  }
++
++  FreePool (BootOrder);
++  return Status;
++}
++
+ STATIC
+ VOID
+ PlatformRegisterFvBootOption (
+   CONST EFI_GUID                     *FileGuid,
+   CHAR16                             *Description,
+   UINT32                             Attributes,
+-  EFI_BOOT_MANAGER_LOAD_OPTION_TYPE  LoadOptionType
++  EFI_BOOT_MANAGER_LOAD_OPTION_TYPE  LoadOptionType,
++  UINTN                              Position
+   )
+ {
+   EFI_STATUS                         Status;
+@@ -750,8 +804,15 @@
+                   );
+ 
+   if (OptionIndex == -1) {
+-    Status = EfiBootManagerAddLoadOptionVariable (&NewOption, MAX_UINTN);
++    Status = EfiBootManagerAddLoadOptionVariable (&NewOption, Position);
+     ASSERT_EFI_ERROR (Status);
++  } else if ((Position == 0) && (LoadOptionType == LoadOptionTypeBoot)) {
++    Status = PlatformPromoteBootOption ((UINT16)BootOptions[OptionIndex].OptionNumber);
++    ASSERT_EFI_ERROR (Status);
++  }
++
++  if ((Position == 0) && EFI_ERROR (Status)) {
++    Print (L"Single boot: unable to prioritize embedded application: %r\r\n", Status);
+   }
+ 
+   EfiBootManagerFreeLoadOption (&NewOption);
+@@ -1951,7 +2012,19 @@
+       ((Value == (EFI_SOFTWARE_DXE_BS_DRIVER | EFI_SW_DXE_BS_EC_BOOT_OPTION_LOAD_ERROR)) ||
+        (Value == (EFI_SOFTWARE_DXE_BS_DRIVER | EFI_SW_DXE_BS_EC_BOOT_OPTION_FAILED))))
+   {
+-    DEBUG ((DEBUG_ERROR, "Single Boot/RCM Failure detected, halting system\n"));
++    EFI_STATUS      FailureStatus;
++    CONST EFI_GUID  ReturnStatusDataType = EFI_STATUS_CODE_SPECIFIC_DATA_GUID;
++
++    FailureStatus = EFI_LOAD_ERROR;
++    if ((Data != NULL) && CompareGuid (&Data->Type, &ReturnStatusDataType) &&
++        (Data->HeaderSize == sizeof (EFI_STATUS_CODE_DATA)) &&
++        (Data->Size >= sizeof (EFI_RETURN_STATUS_EXTENDED_DATA) - sizeof (EFI_STATUS_CODE_DATA)))
++    {
++      CopyMem (&FailureStatus, &((EFI_RETURN_STATUS_EXTENDED_DATA *)Data)->ReturnStatus, sizeof (FailureStatus));
++    }
++
++    // Keep this diagnostic visible in RELEASE builds with DEBUG prints disabled.
++    Print (L"Single boot failure: code 0x%08x, status %r; halting\r\n", Value, FailureStatus);
+     CpuDeadLoop ();
+   }
+ 
+@@ -2113,7 +2186,8 @@
+           &gUefiShellFileGuid,
+           L"UEFI Shell",
+           LOAD_OPTION_ACTIVE,
+-          LoadOptionTypeBoot
++          LoadOptionTypeBoot,
++          MAX_UINTN
+           );
+         Status = EfiBootManagerGetStaticApp (&BootOption, &gUefiShellFileGuid);
+         if (!EFI_ERROR (Status)) {
+@@ -2145,7 +2219,8 @@
+           &gAndroidFastbootFileGuid,
+           L"Android Fastboot",
+           LOAD_OPTION_ACTIVE,
+-          LoadOptionTypeBoot
++          LoadOptionTypeBoot,
++          MAX_UINTN
+           );
+         Status = EfiBootManagerGetStaticApp (&BootOption, &gAndroidFastbootFileGuid);
+         if (EFI_ERROR (Status)) {
+@@ -2188,7 +2263,8 @@
+       SingleBootAppGuid,
+       L"Boot Application",
+       LOAD_OPTION_ACTIVE,
+-      LoadOptionTypeBoot
++      LoadOptionTypeBoot,
++      0
+       );
+ 
+     Status = gBS->LocateProtocol (&gEfiRscHandlerProtocolGuid, NULL, (VOID **)&mRscHandler);

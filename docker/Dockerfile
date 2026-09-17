@@ -12,8 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         flex \
         bison \
         libssl-dev \
+        liblzma-dev \
+        libzstd-dev \
+        zlib1g-dev \
+        pkg-config \
         bc \
         kmod \
+        qemu-user-static \
+        binfmt-support \
+        device-tree-compiler \
         wget \
         curl \
         tar \
@@ -27,5 +34,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         rsync \
         xxd \
     && rm -rf /var/lib/apt/lists/*
+
+# R39 initramfs uses kmod 31. Keep Ubuntu 22.04's kmod 29 available for
+# historical R36 profiles, and select this pinned tool only for R39 builds.
+RUN curl -fL --retry 3 -o /tmp/kmod.tar.xz \
+        https://mirrors.edge.kernel.org/pub/linux/utils/kernel/kmod/kmod-31.tar.xz \
+    && echo "f5a6949043cc72c001b728d8c218609c5a15f3c33d75614b78c79418fcf00d80  /tmp/kmod.tar.xz" | sha256sum -c - \
+    && tar -xJf /tmp/kmod.tar.xz -C /tmp \
+    && cd /tmp/kmod-31 \
+    && ./configure --prefix=/opt/ark-kmod31 --with-rootlibdir=/opt/ark-kmod31/lib \
+        LDFLAGS=-Wl,-rpath,/opt/ark-kmod31/lib \
+        --disable-manpages --with-xz --with-zstd --with-zlib \
+    && make -j"$(nproc)" \
+    && make install \
+    && ln -sf kmod /opt/ark-kmod31/bin/depmod \
+    && ln -sf kmod /opt/ark-kmod31/bin/modprobe \
+    && /opt/ark-kmod31/bin/depmod --version \
+    && rm -rf /tmp/kmod-31 /tmp/kmod.tar.xz
 
 WORKDIR /workspace

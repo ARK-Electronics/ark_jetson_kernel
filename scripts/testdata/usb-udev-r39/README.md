@@ -1,0 +1,1 @@
+BSD-3-Clause NVIDIA USB scripts from nvidia-l4t-usb-service 39.2.1-20260806224157. Copyright notices and license terms are retained in every file. Tests synthesize rule inventory contents; production pins the exact Noble/R39 rule hashes.

@@ -21,3 +21,7 @@ ark-*.tar.gz
 
 # Misc
 output.txt
+
+# Python validation cache
+__pycache__/
+*.pyc

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./flash.sh <TARGET> [--sdcard] [--usb]
+# Usage: ./flash.sh <TARGET> [--sdcard] [--usb] [--bootloader-only]
 #
 # TARGET: PAB | JAJ | PAB_V3
 #
@@ -13,6 +13,7 @@ STORAGE_DEV="nvme0n1p1"
 USE_INITRD=true
 FLASH_TARGET="jetson-orin-nano-devkit-super"
 TARGET=""
+BOOTLOADER_ONLY=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -23,12 +24,15 @@ while [[ $# -gt 0 ]]; do
             STORAGE_DEV="mmcblk0p1"
             USE_INITRD=false
             shift ;;
+        --bootloader-only)
+            BOOTLOADER_ONLY=true
+            shift ;;
         --usb)
             STORAGE_DEV="sda"
             shift ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
+            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--bootloader-only]" >&2
             exit 1 ;;
     esac
 done
@@ -48,7 +52,7 @@ if [ -z "$TARGET" ]; then
         esac
     else
         echo "ERROR: target required (PAB | JAJ | PAB_V3) when running non-interactively." >&2
-        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
+        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--bootloader-only]" >&2
         exit 1
     fi
 fi
@@ -106,6 +110,27 @@ if [ -f "$DEFAULT_OVERLAYS_FILE" ]; then
     done < "$DEFAULT_OVERLAYS_FILE"
 fi
 
+# Firmware staging replaces several files. A crash before its final manifest
+# must never fall through to ordinary flashing with partially modified firmware.
+if [ -e "$L4T_DIR/ark-fast-boot.in-progress.json" ] || [ -L "$L4T_DIR/ark-fast-boot.in-progress.json" ]; then
+    echo "ERROR: fast-boot firmware staging is active or was interrupted." >&2
+    echo "       Do not flash this tree; recover its saved stock files or rebuild it first." >&2
+    exit 1
+fi
+
+# A staged fast profile is an explicit opt-in. Verify its paired firmware and
+# UEFI DTB overlay, and apply its single-device selector after normal overlays.
+if [ -f "$L4T_DIR/ark-fast-boot.json" ]; then
+    if [ "$STORAGE_DEV" != "nvme0n1p1" ]; then
+        echo "ERROR: staged fast firmware requires NVMe storage." >&2
+        exit 1
+    fi
+    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" \
+        --l4t-dir "$L4T_DIR" --verify --flash-target "$FLASH_TARGET" \
+        --storage "$STORAGE_DEV" --product "$TARGET" || exit 1
+    ADDITIONAL_DTB_OVERLAY="${ADDITIONAL_DTB_OVERLAY:+$ADDITIONAL_DTB_OVERLAY,}ark_fast_boot.dtbo"
+fi
+
 GIT_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_DESCRIBE=$(git -C "$SCRIPT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -140,6 +165,17 @@ while true; do
     sleep 1
 done
 
+# QSPI-only flashing leaves the existing NVMe rootfs intact. Classic flash.sh
+# handles this path without the initrd USB network or NetworkManager guard.
+if [ "$BOOTLOADER_ONLY" = true ]; then
+    cd "$L4T_DIR" || exit 1
+    echo "Flashing QSPI boot firmware only; overlay(s): $ADDITIONAL_DTB_OVERLAY"
+    sudo env "ADDITIONAL_DTB_OVERLAY=$ADDITIONAL_DTB_OVERLAY" \
+        ./flash.sh --no-systemimg -c bootloader/generic/cfg/flash_t234_qspi.xml \
+        "$FLASH_TARGET" "$STORAGE_DEV"
+    exit $?
+fi
+
 # NetworkManager must not touch the flash-time USB NIC: host profiles matched on
 # the gadget drivers (ark-jetson-usb) auto-activate on the initrd's rndis/ncm
 # interface and tear down the flasher's NFS link mid-write. Mark those drivers
@@ -151,6 +187,77 @@ if command -v nmcli > /dev/null 2>&1 && systemctl is-active --quiet NetworkManag
     sudo nmcli general reload
     trap 'sudo rm -f "$NM_FLASH_GUARD"; sudo nmcli general reload' EXIT
 fi
+
+# ── Wait for SSH during the flashed image's first boot ──────────────────────
+# The image ships no SSH host keys. R39 generates them with the native
+# nvfb-ssh-keygen.service; R36 uses nvfb.service. SSH's identification banner
+# proves the daemon has started; a socket listener alone does not.
+# The board serves 192.168.55.1 over the cable it was just flashed on.
+# Keep in sync with the copy in packaging/flash_from_package.sh.
+
+FIRST_BOOT_TIMEOUT="${ARK_FIRST_BOOT_TIMEOUT:-480}"
+JETSON_USB_ADDRESS="192.168.55.1"
+
+jetson_usb_interface() {
+    # Match the device-mode gadget on USB vendor: its interface name and MAC are
+    # per-board, the vendor id is not.
+    local net device
+    for net in /sys/class/net/*; do
+        device="$(readlink -f "$net/device" 2>/dev/null)" || continue
+        if [ "$(cat "$device/../idVendor" 2>/dev/null)" = "0955" ]; then
+            echo "${net##*/}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+ssh_banner_ready() {
+    # Noble socket activation can open port 22 before sshd has usable host keys.
+    # Require sshd's identification, rather than only a successful TCP connect.
+    timeout 3 bash -c '
+        exec 3<>"/dev/tcp/$1/$2"
+        IFS= read -r -t 2 banner <&3
+        [[ "$banner" == SSH-2.0-* || "$banner" == SSH-1.99-* ]]
+    ' -- "$1" "${2:-22}" 2>/dev/null
+}
+
+wait_for_first_boot() {
+    local start elapsed announced interface addresses
+    start=$(date +%s)
+    announced=0
+    echo ""
+    echo "Waiting for SSH on the Jetson — leave it powered and connected."
+    while :; do
+        elapsed=$(( $(date +%s) - start ))
+        [ "$elapsed" -lt "$FIRST_BOOT_TIMEOUT" ] || break
+        interface="$(jetson_usb_interface || true)"
+        if [ -n "$interface" ]; then
+            # The gadget's DHCP pool is the single address .100; take it directly
+            # rather than depend on a DHCP client running on this host NIC.
+            sudo ip link set "$interface" up 2>/dev/null || true
+            addresses="$(ip -4 -o addr show dev "$interface" 2>/dev/null || true)"
+            case "$addresses" in
+                *"inet 192.168.55."*) ;;
+                *) sudo ip addr add 192.168.55.100/24 dev "$interface" 2>/dev/null || true ;;
+            esac
+            if ssh_banner_ready "$JETSON_USB_ADDRESS"; then
+                echo "SSH ready after ${elapsed}s on $JETSON_USB_ADDRESS. Use normal shutdown before removing power."
+                return 0
+            fi
+        fi
+        if [ $(( elapsed - announced )) -ge 30 ]; then
+            announced="$elapsed"
+            echo "  still booting (${elapsed}s)"
+        fi
+        sleep 5
+    done
+    echo "" >&2
+    echo "ERROR: no sshd on $JETSON_USB_ADDRESS:22 within ${FIRST_BOOT_TIMEOUT}s — the first boot did not finish." >&2
+    echo "       Keep it powered and cabled; check its console: systemctl status nvfb-ssh-keygen ssh" >&2
+    echo "       Removing power now can leave a unit whose sshd never starts." >&2
+    return 1
+}
 
 cd "$L4T_DIR"
 
@@ -174,3 +281,11 @@ else
     sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY=$ADDITIONAL_DTB_OVERLAY} \
         ./flash.sh "$FLASH_TARGET" "$STORAGE_DEV"
 fi
+flash_status=$?
+
+if [ "$flash_status" -ne 0 ]; then
+    echo "ERROR: flashing failed (exit $flash_status)." >&2
+    exit "$flash_status"
+fi
+
+wait_for_first_boot || exit 1

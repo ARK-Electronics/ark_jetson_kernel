@@ -14,19 +14,24 @@
 	};
 
 	/* VBUS for the single USB-A (J33) is a load switch (U20, active-high enable) gated by
-	 * soc_gpio39/PN.01. Stock DT left that pin a pulled-up input, so the port leaned on the
-	 * board's 100K pull-up (R144) alone and enumerated unreliably — the USBSS0 USB3 drive (and
-	 * its USB2 companion) would intermittently go missing. Model the switch as a regulator so
-	 * the kernel drives the enable high at boot. The other three USB-A ports are powered by the
-	 * onboard USB2 hub (uhubctl), not a SoC GPIO. */
+	 * soc_gpio39/PN.01, which the board also pulls up through R144 (100K to 1V8). Modelling it
+	 * as a regulator gives the kernel the pin; deliberately NOT boot-on, so reg-fixed-voltage
+	 * takes it low at probe and tegra186_utmi_phy_init raises it when xhci brings usb2-2 up.
+	 * VBUS then arrives with the host, as it does on the other three USB-A ports (the onboard
+	 * USB2 hub powers those only once it has enumerated). Asserted any earlier, a SuperSpeed
+	 * device on J33 finishes its Rx.Detect handshake before the host exists and parks: its USB2
+	 * companion still enumerates, the SS link never appears, and nothing short of a VBUS cycle
+	 * recovers it. The MB1 gpio BCT holds the same pin low through the bootloader.
+	 * Open drain: U20's FLG (open-drain fault flag) is wired to the same net so an over-current
+	 * pulls EN low; a push-pull high would fight it. gpio-tegra186 has no native open drain, so
+	 * gpiolib emulates it — "high" is Hi-Z and R144 does the pulling. */
 	vdd_5v0_usbss0: regulator-usbss0-vbus {
 		compatible = "regulator-fixed";
 		regulator-name = "VDD_5V0_USBSS0";
 		regulator-min-microvolt = <5000000>;
 		regulator-max-microvolt = <5000000>;
-		gpio = <&gpio TEGRA234_MAIN_GPIO(N, 1) GPIO_ACTIVE_HIGH>;
+		gpio = <&gpio TEGRA234_MAIN_GPIO(N, 1) (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 		enable-active-high;
-		regulator-boot-on;
 		vin-supply = <&vdd_5v0_sys>;
 	};
 };
@@ -80,20 +85,24 @@
 	};
 };
 
-/* Recovery/OTG port carries a micro-USB connector (drop the stock typec link). */
+/* Recovery/OTG port: a mux hands usb2-0 to the FMU's USB, or to the micro-USB when that has VBUS.
+ * No ID pin — the "id" line is inverted VBUS-detect on PZ.01, so active-low reads host idle (FMU)
+ * and device with a recovery cable in. Drop the stock Type-C link. */
 &{/bus@0/padctl@3520000/ports/usb2-0} {
 	/delete-node/ port;
 	connector {
-		compatible = "usb-b-connector", "gpio-usb-b-connector";
+		compatible = "gpio-usb-b-connector", "usb-b-connector";
 		label = "micro-USB";
 		type = "micro";
-		id-gpio = <&gpio TEGRA234_MAIN_GPIO(Z, 1) GPIO_ACTIVE_LOW>;
+		id-gpios = <&gpio TEGRA234_MAIN_GPIO(Z, 1) GPIO_ACTIVE_LOW>;
 	};
 };
 
-/* Carrier USB-A port mapping. */
+/* USB-A mapping: usb2-2 + usb3-0 = J33; usb3-1/usb3-2 = J34 lower/upper, whose USB2 halves are
+ * downstream ports of the USB2 hub on usb2-1 — hence the shared companion (T234 uses it only for
+ * PORT_CAP and the OTG lookup). Leave usb3-3 unused: OTG usb2-0 has no SS companion and the padctl
+ * takes a free usb3 port as its device-mode fake. */
 &{/bus@0/padctl@3520000/ports} {
-	/* usb2-2 + usb3-0 are the single USB-A (J33); point its VBUS at the GPIO-gated switch above. */
 	usb2-2 { vbus-supply = <&vdd_5v0_usbss0>; };
 	usb3-0 { nvidia,usb2-companion = <2>; };
 	usb3-1 { nvidia,usb2-companion = <1>; };
@@ -119,4 +128,11 @@
 	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-2}>;
 	phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0",
 		    "usb3-1", "usb3-2";
+};
+
+/* PCIe: C1 = M.2 Key E, C4 = M.2 Key M, C8 = the module's own Ethernet controller. C7 (module
+ * PCIE2, x2 on the GBE UPHY) has no pins on this carrier; stock leaves it enabled and it logs
+ * "Phy link never came up" on every boot. */
+&{/bus@0/pcie@141e0000} {
+	status = "disabled";
 };

@@ -113,3 +113,10 @@
 	       <&{/bus@0/padctl@3520000/pads/usb3/lanes/usb3-0}>;
 	phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0";
 };
+
+/* PCIe: C1 = M.2 Key E, C4 = M.2 Key M, C8 = the module's own Ethernet controller. C7 (module
+ * PCIE2, x2 on the GBE UPHY) has no pins on this carrier; stock leaves it enabled and it logs
+ * "Phy link never came up" on every boot. */
+&{/bus@0/pcie@141e0000} {
+	status = "disabled";
+};

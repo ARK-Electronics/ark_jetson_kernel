@@ -53,7 +53,6 @@
 				TEGRA234_MAIN_GPIO(P, 6)
 				TEGRA234_MAIN_GPIO(R, 4)
 				TEGRA234_MAIN_GPIO(R, 5)
-				TEGRA234_MAIN_GPIO(N, 1)
 				TEGRA234_MAIN_GPIO(G, 0)
 				TEGRA234_MAIN_GPIO(G, 7)
 				TEGRA234_MAIN_GPIO(L, 2)
@@ -67,6 +66,11 @@
 				TEGRA234_MAIN_GPIO(AC, 6)
 				>;
 			gpio-output-low = <
+				/* J33 VBUS enable (U20). Held off through the bootloader so a SuperSpeed
+				 * device there powers up against a live host, not tens of seconds before
+				 * one exists. The kernel owns the pin from probe on — see
+				 * vdd_5v0_usbss0 in ark-PAB-overrides.dtsi. */
+				TEGRA234_MAIN_GPIO(N, 1)
 				TEGRA234_MAIN_GPIO(Y, 4)
 				TEGRA234_MAIN_GPIO(H, 0)
 				TEGRA234_MAIN_GPIO(H, 6)

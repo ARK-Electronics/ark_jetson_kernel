@@ -666,13 +666,86 @@ else
     fi
 fi
 
+# ── Wait for SSH during the flashed image's first boot ──────────────────────
+# The image ships no SSH host keys. R39 generates them with the native
+# nvfb-ssh-keygen.service; R36 uses nvfb.service. SSH's identification banner
+# proves the daemon has started; a socket listener alone does not.
+# The board serves 192.168.55.1 over the cable it was just flashed on.
+# Keep in sync with the copy in flash.sh.
+
+FIRST_BOOT_TIMEOUT="${ARK_FIRST_BOOT_TIMEOUT:-480}"
+JETSON_USB_ADDRESS="192.168.55.1"
+
+jetson_usb_interface() {
+    # Match the device-mode gadget on USB vendor: its interface name and MAC are
+    # per-board, the vendor id is not.
+    local net device
+    for net in /sys/class/net/*; do
+        device="$(readlink -f "$net/device" 2>/dev/null)" || continue
+        if [ "$(cat "$device/../idVendor" 2>/dev/null)" = "0955" ]; then
+            echo "${net##*/}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+ssh_banner_ready() {
+    # Noble socket activation can open port 22 before sshd has usable host keys.
+    # Require sshd's identification, rather than only a successful TCP connect.
+    timeout 3 bash -c '
+        exec 3<>"/dev/tcp/$1/$2"
+        IFS= read -r -t 2 banner <&3
+        [[ "$banner" == SSH-2.0-* || "$banner" == SSH-1.99-* ]]
+    ' -- "$1" "${2:-22}" 2>/dev/null
+}
+
+wait_for_first_boot() {
+    local start elapsed announced interface addresses
+    start=$(date +%s)
+    announced=0
+    echo ""
+    echo "Waiting for SSH on the Jetson — leave it powered and connected."
+    while :; do
+        elapsed=$(( $(date +%s) - start ))
+        [ "$elapsed" -lt "$FIRST_BOOT_TIMEOUT" ] || break
+        interface="$(jetson_usb_interface || true)"
+        if [ -n "$interface" ]; then
+            # The gadget's DHCP pool is the single address .100; take it directly
+            # rather than depend on a DHCP client running on this host NIC.
+            sudo ip link set "$interface" up 2>/dev/null || true
+            addresses="$(ip -4 -o addr show dev "$interface" 2>/dev/null || true)"
+            case "$addresses" in
+                *"inet 192.168.55."*) ;;
+                *) sudo ip addr add 192.168.55.100/24 dev "$interface" 2>/dev/null || true ;;
+            esac
+            if ssh_banner_ready "$JETSON_USB_ADDRESS"; then
+                echo "SSH ready after ${elapsed}s on $JETSON_USB_ADDRESS. Use normal shutdown before removing power."
+                return 0
+            fi
+        fi
+        if [ $(( elapsed - announced )) -ge 30 ]; then
+            announced="$elapsed"
+            echo "  still booting (${elapsed}s)"
+        fi
+        sleep 5
+    done
+    echo "" >&2
+    echo "ERROR: no sshd on $JETSON_USB_ADDRESS:22 within ${FIRST_BOOT_TIMEOUT}s — the first boot did not finish." >&2
+    echo "       Keep it powered and cabled; check its console: systemctl status nvfb-ssh-keygen ssh" >&2
+    echo "       Removing power now can leave a unit whose sshd never starts." >&2
+    return 1
+}
+
 echo ""
 echo "========================================="
 echo "  Flash complete!"
 echo "========================================="
+
+wait_for_first_boot
+
 echo ""
-echo "The Jetson will reboot automatically."
-echo "Once booted, connect via: ssh jetson@jetson.local"
+echo "Connect via: ssh jetson@jetson.local"
 echo ""
 echo "Cached data: $CACHE_DIR"
 echo "To free disk space: $0 --clean"

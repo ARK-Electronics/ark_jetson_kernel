@@ -88,3 +88,14 @@
 	phy-names = "usb2-0", "usb2-1", "usb2-2", "usb3-0",
 		    "usb3-1", "usb3-2";
 };
+
+/* C7 is the 16-pin PCIe FFC header: one lane over unshielded flat flex, on a pinout
+ * Raspberry Pi rates at 5 GT/s and treats 8 GT/s as best-effort. Left alone the link
+ * trains at 8 GT/s with no margin and floods correctable AER.
+ *
+ * NVIDIA's SKU overlay pins every Orin Nano controller at Gen3 from UEFI, over the top
+ * of this DTB, so build.sh drops its write for C7 to let the rate below reach the
+ * kernel. See docs/device-tree.md. */
+&{/bus@0/pcie@141e0000} {
+	max-link-speed = <2>;
+};

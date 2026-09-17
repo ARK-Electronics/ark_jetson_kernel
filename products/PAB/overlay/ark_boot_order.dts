@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026, ARK Electronics.
+
+/dts-v1/;
+/plugin/;
+
+/*
+ * UEFI boot order, layered over the BSP's L4TConfiguration.dtbo.
+ *
+ * NewDeviceHierarchy = 01 (stock) puts every newly discovered boot device at the
+ * TOP of the order. UEFI's network stack auto-creates HTTPv6/HTTPv4/PXEv6/PXEv4
+ * options the moment a NIC enumerates, and none of them appear in
+ * DefaultBootPriority, so each counts as "new": four DHCP timeouts land ahead of
+ * the SSD, and a manual reorder is undone on the next boot. 00 sends them to the
+ * bottom instead.
+ *
+ * DefaultBootPriority is stock apart from moving nvme ahead of usb: every product
+ * flashes to NVMe, and an inserted USB stick must not outrank the installed
+ * system. A --usb build still boots — with no NVMe present, usb is simply next.
+ */
+
+/ {
+	overlay-name = "ARK UEFI Boot Order";
+
+	fragment@0 {
+		target-path = "/";
+
+		board_config {
+			sw-modules = "uefi";
+		};
+
+		__overlay__ {
+
+			firmware {
+
+				uefi {
+
+					variables {
+
+						gNVIDIAPublicVariableGuid {
+
+							NewDeviceHierarchy {
+								data = [00];
+								runtime;
+								non-volatile;
+							};
+						};
+
+						gNVIDIATokenSpaceGuid {
+
+							DefaultBootPriority {
+								data = "nvme,usb,emmc,sd,ufs";
+								locked;
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+};

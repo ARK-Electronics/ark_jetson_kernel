@@ -18,53 +18,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=versions.env
 source "$SCRIPT_DIR/versions.env"
 
-ARK_OS_PKG="ark-os-jetson-jammy"
-ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
-ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
+# Select the artifact by the actual rootfs ABI, then validate its Debian metadata.
+# A Jammy venv cannot be installed into Noble by renaming the package.
+source "$SCRIPT_DIR/scripts/provision_packages.sh"
+select_provision_packages "$ROOTFS_DIR"
+DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
-# Camera userspace stack — see versions.env and docs/argus_relaunch_regression.md.
-# gstreamer ships from the `common` pool; the other three from the SoC pool
-# (`t234` on R36, `som` on R39+).
 NV_CAMERA_PKGS=(nvidia-l4t-gstreamer nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils)
 nv_camera_deb() { echo "${1}_${NV_CAMERA_STACK_VERSION}_arm64.deb"; }
 nv_camera_url() {
-    local pool="t234"
-    [ "$1" = "nvidia-l4t-gstreamer" ] && pool="common"
-    if [ "$1" != "nvidia-l4t-gstreamer" ] && [ "${EXPECTED_BSP_RELEASE}" = "R39" ]; then
-        pool="som"
-    fi
+    local pool="$NV_CAMERA_POOL"
+    [ "$1" = nvidia-l4t-gstreamer ] && pool=common
     echo "https://repo.download.nvidia.com/jetson/${pool}/pool/main/n/${1}/$(nv_camera_deb "$1")"
 }
-
-# Prefer a deb already in downloads/ over downloading
-DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
-
-# Use the pinned ARK_OS_VERSION when its deb is cached locally or published on
-# GitHub; otherwise fall back loudly to the newest published (pre)release.
-if [ -f "$DOWNLOADS_DIR/$ARK_OS_DEB" ]; then
-    echo "Using local ARK-OS deb: $ARK_OS_DEB"
-elif curl -sfIL -o /dev/null "$ARK_OS_URL"; then
-    echo "Using pinned ARK-OS release: v${ARK_OS_VERSION}"
-else
-    echo "WARNING: pinned ARK-OS v${ARK_OS_VERSION} has no published release asset ($ARK_OS_DEB);" >&2
-    echo "WARNING: falling back to the newest published ARK-OS (pre)release." >&2
-    if [ -n "${GITHUB_ACTIONS:-}" ]; then
-        echo "::warning::Pinned ARK-OS v${ARK_OS_VERSION} is not published; provisioning with the newest (pre)release instead."
-    fi
-    ARK_OS_URL=$(curl -sfL "https://api.github.com/repos/ARK-Electronics/ARK-OS/releases?per_page=100" \
-        | python3 -c '
-import sys, json
-rels = json.load(sys.stdin)
-for r in sorted(rels, key=lambda r: r.get("created_at", ""), reverse=True):
-    for a in r.get("assets", []):
-        n = a.get("name", "")
-        if n.startswith("ark-os-jetson-jammy_") and n.endswith("_arm64.deb"):
-            print(a["browser_download_url"]); sys.exit(0)
-sys.exit(1)
-') || { echo "ERROR: could not resolve a latest ARK-OS jetson deb." >&2; exit 1; }
-    ARK_OS_DEB="$(basename "$ARK_OS_URL")"
-    echo "Latest ARK-OS deb: $ARK_OS_DEB"
-fi
 
 # Stage a deb into the rootfs /tmp, caching under downloads/ so rebuilds reuse it
 fetch_deb() {
@@ -86,8 +52,22 @@ fetch_deb() {
     sudo cp "$DOWNLOADS_DIR/$deb" "$ROOTFS_DIR/tmp/$deb"
 }
 
-echo "Fetching the ARK-OS deb..."
-fetch_deb "$ARK_OS_DEB" "$ARK_OS_URL"
+echo "Fetching the ABI-matched ARK-OS deb..."
+if [ -n "${ARK_OS_DEB_PATH:-}" ]; then
+    validate_ark_os_deb "$ARK_OS_DEB_PATH"
+    sudo cp "$ARK_OS_DEB_PATH" "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
+else
+    # No fallback to a different release or OS: absence is actionable, not an
+    # excuse to silently ship an incompatible or unpinned application.
+    if [ ! -f "$DOWNLOADS_DIR/$ARK_OS_DEB" ] && ! curl -sfIL -o /dev/null "$ARK_OS_URL"; then
+        echo "ERROR: pinned artifact $ARK_OS_DEB is not cached or published." >&2
+        echo "       Build the matching package using docs/jetpack7_provisioning.md," >&2
+        echo "       place it in downloads/, or set ARK_OS_DEB_PATH to its local path." >&2
+        exit 1
+    fi
+    fetch_deb "$ARK_OS_DEB" "$ARK_OS_URL"
+    validate_ark_os_deb "$ROOTFS_DIR/tmp/$ARK_OS_DEB"
+fi
 
 # Block service (re)starts in the chroot: there's no init, so a dependency's
 # maintainer script trying to start a daemon would fail or hang. policy-rc.d → 101
@@ -128,57 +108,109 @@ fi
 sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/dev/null 2>&1' \
     || { echo "ERROR: installed ark-os ships no bundled MAVSDK under /usr/lib/ark-os/mavsdk." >&2; exit 1; }
 
-### Install the pinned camera userspace stack (Argus + GStreamer plugins)
-# apply_binaries installs the BSP-stamp camera/multimedia debs; replace them (and add
-# nvidia-l4t-gstreamer, which the BSP set lacks) with the pinned known-good set. The
-# pinned debs' deps assume their own release, so repack each with the out-of-set bounds
-# relaxed (nvidia-l4t-core upper cap, exact-stamp cuda/nvsci) and the in-set exact deps
-# retargeted to the +ark1 version — a clean apt install instead of dpkg --force-depends,
-# so on-device apt stays consistent. Hold the set so an on-device upgrade can't drag it
-# back to the regressed BSP stamp.
-relax_l4t_deps() {
-    local in="$1" out="$2" work
-    work=$(mktemp -d)
-    dpkg-deb -R "$in" "$work"
-    sed -i \
-        -e "s/nvidia-l4t-core (<< [0-9.]*-0)/nvidia-l4t-core (<< 37.0-0)/" \
-        -e "s/nvidia-l4t-cuda (= [^)]*)/nvidia-l4t-cuda/" \
-        -e "s/nvidia-l4t-nvsci (= [^)]*)/nvidia-l4t-nvsci/" \
-        -e "s/(= ${NV_CAMERA_STACK_VERSION})/(= ${NV_CAMERA_STACK_VERSION}+ark1)/g" \
-        -e "s/^Version: .*/&+ark1/" \
-        "$work/DEBIAN/control"
-    dpkg-deb -b --root-owner-group "$work" "$out" >/dev/null
-    rm -rf "$work"
-}
-echo "Installing the pinned camera userspace stack (${NV_CAMERA_STACK_VERSION}+ark1)..."
+# ARK-OS binds its gateway and flight review to IPv4. Noble may resolve
+# localhost to ::1 in nginx, producing intermittent 502s despite healthy services.
+# Patch only the pinned package configuration; unknown customizations fail closed.
+if [ "$EXPECTED_BSP_RELEASE" = R39 ]; then
+    sudo python3 "$SCRIPT_DIR/scripts/patch_ark_nginx_upstreams.py" \
+        --rootfs "$ROOTFS_DIR" --product "$TARGET"
+    sudo chroot "$ROOTFS_DIR" nginx -t
+fi
+
+### Install the camera userspace stack (Argus + GStreamer plugins)
+# R39 uses its native BSP versions and dependencies unchanged. In particular,
+# preserve the nvgpu/openrm backend selected by apply_binaries. Only R36 uses
+# the previously validated Argus regression workaround and package holds.
+echo "Installing camera userspace (${NV_CAMERA_INSTALLED_VERSION}, $NV_CAMERA_POLICY)..."
 NV_CAMERA_TMP_DEBS=()
 for pkg in "${NV_CAMERA_PKGS[@]}"; do
     deb=$(nv_camera_deb "$pkg")
     fetch_deb "$deb" "$(nv_camera_url "$pkg")"
-    relax_l4t_deps "$DOWNLOADS_DIR/$deb" "/tmp/ark1_$deb"
-    sudo mv "/tmp/ark1_$deb" "$ROOTFS_DIR/tmp/ark1_$deb"
-    sudo rm -f "$ROOTFS_DIR/tmp/$deb"
-    NV_CAMERA_TMP_DEBS+=("/tmp/ark1_$deb")
+    if [ "$NV_CAMERA_POLICY" = repack-r36 ]; then
+        work=$(mktemp -d)
+        relax_l4t_deps "$DOWNLOADS_DIR/$deb" "$work/ark1_$deb"
+        sudo mv "$work/ark1_$deb" "$ROOTFS_DIR/tmp/ark1_$deb"
+        rmdir "$work"
+        sudo rm -f "$ROOTFS_DIR/tmp/$deb"
+        NV_CAMERA_TMP_DEBS+=("/tmp/ark1_$deb")
+    else
+        NV_CAMERA_TMP_DEBS+=("/tmp/$deb")
+    fi
 done
-# One transaction: the set inter-depends by exact version.
+# One transaction preserves the quartet's exact-version dependencies.
 sudo chroot "$ROOTFS_DIR" apt-get install -y --allow-downgrades --allow-change-held-packages \
     "${NV_CAMERA_TMP_DEBS[@]}"
-sudo chroot "$ROOTFS_DIR" apt-mark hold "${NV_CAMERA_PKGS[@]}"
+if [ "$NV_CAMERA_POLICY" = repack-r36 ]; then
+    sudo chroot "$ROOTFS_DIR" apt-mark hold "${NV_CAMERA_PKGS[@]}"
+fi
 for pkg in "${NV_CAMERA_PKGS[@]}"; do
     v=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Version}' "$pkg")
-    [ "$v" = "${NV_CAMERA_STACK_VERSION}+ark1" ] || {
-        echo "ERROR: $pkg is '$v', expected ${NV_CAMERA_STACK_VERSION}+ark1." >&2; exit 1; }
+    [ "$v" = "$NV_CAMERA_INSTALLED_VERSION" ] || {
+        echo "ERROR: $pkg is '$v', expected $NV_CAMERA_INSTALLED_VERSION." >&2; exit 1; }
 done
+sudo chroot "$ROOTFS_DIR" apt-get check
 # Assert the plugin actually loads and registers nvarguscamerasrc — file existence
 # alone misses unresolvable libraries. Inspect the plugin *file*, not the element:
 # element instantiation (e.g. --exists) dials nvargus-daemon/EGL, absent in a chroot.
 # The registry cache is pointed at /tmp so scan state doesn't ship in the image.
-sudo chroot "$ROOTFS_DIR" env GST_REGISTRY=/tmp/provision-gst-registry.bin \
+GPU_LIBRARY_PATH=$(provision_gpu_library_path "$ROOTFS_DIR" "$TARGET")
+GST_CHECK_ENV=(GST_REGISTRY=/tmp/provision-gst-registry.bin)
+# R39's GPU libraries become globally visible through its first-boot service.
+# Supply only this check's loader path; leave that service and its state intact.
+[ -z "$GPU_LIBRARY_PATH" ] || GST_CHECK_ENV+=("LD_LIBRARY_PATH=$GPU_LIBRARY_PATH")
+sudo chroot "$ROOTFS_DIR" env "${GST_CHECK_ENV[@]}" \
     gst-inspect-1.0 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so \
     | grep -qw nvarguscamerasrc \
     || { echo "ERROR: nvarguscamerasrc missing or failed to load after installing the camera stack." >&2; exit 1; }
 sudo rm -f "$ROOTFS_DIR/tmp/provision-gst-registry.bin"
-for pkg in "${NV_CAMERA_PKGS[@]}"; do sudo rm -f "$ROOTFS_DIR/tmp/ark1_$(nv_camera_deb "$pkg")"; done
+for deb in "${NV_CAMERA_TMP_DEBS[@]}"; do sudo rm -f "$ROOTFS_DIR$deb"; done
+
+### Hold the boot chain we build ourselves
+# /boot/Image and /boot/*.dtb* are ordinary package files owned by nvidia-l4t-kernel
+# and nvidia-l4t-kernel-dtbs, not conffiles, and the image ships NVIDIA's apt source
+# live — so one `apt upgrade` swaps the ARK defconfig and DTBs for stock. The DTB half
+# is the silent one: the board keeps running the ARK tree from the kernel-dtb
+# partition, so only jetson-io notices, dying on the resulting model mismatch.
+# nvidia-l4t-bootloader is in the set because its postinst rewrites the QSPI that
+# carries our MB1 BCT pinmux. The kernel packages hold as one group — vermagic ties
+# the OOT modules to the kernel, so a partial upgrade is worse than either.
+NV_BOOT_CHAIN_PKGS=(
+    nvidia-l4t-kernel
+    nvidia-l4t-kernel-dtbs
+    nvidia-l4t-kernel-headers
+    nvidia-l4t-kernel-oot-headers
+    nvidia-l4t-kernel-oot-modules
+    nvidia-l4t-display-kernel
+    nvidia-l4t-bootloader
+)
+# R39 splits additional kernel backends, partition images, and initrd into
+# independent packages. Updating any one would break the matched custom set.
+if [ "$EXPECTED_BSP_RELEASE" = R39 ]; then
+    NV_BOOT_CHAIN_PKGS+=(
+        nvidia-l4t-kernel-module-configs
+        nvidia-l4t-kernel-nvgpu
+        nvidia-l4t-kernel-openrm
+        nvidia-l4t-kernel-partitions
+        nvidia-l4t-initrd
+        nvidia-l4t-bootloader-utils
+    )
+fi
+for pkg in "${NV_BOOT_CHAIN_PKGS[@]}"; do
+    status=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || true)
+    [ "$status" = 'install ok installed' ] || {
+        echo "ERROR: required boot-chain package $pkg is not installed." >&2; exit 1; }
+done
+echo "Holding the ARK-built boot chain against NVIDIA's apt repo..."
+sudo chroot "$ROOTFS_DIR" apt-mark hold "${NV_BOOT_CHAIN_PKGS[@]}"
+# apt-mark hold is a no-op on a package that is not installed, so assert the result
+# rather than the command.
+held=$(sudo chroot "$ROOTFS_DIR" apt-mark showhold)
+REQUIRED_HELD_PKGS=("${NV_BOOT_CHAIN_PKGS[@]}")
+[ "$NV_CAMERA_POLICY" != repack-r36 ] || REQUIRED_HELD_PKGS+=("${NV_CAMERA_PKGS[@]}")
+for pkg in "${REQUIRED_HELD_PKGS[@]}"; do
+    printf '%s\n' "$held" | grep -qx "$pkg" || {
+        echo "ERROR: $pkg is not held; an apt upgrade would replace it." >&2; exit 1; }
+done
 
 ### Install pip
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
