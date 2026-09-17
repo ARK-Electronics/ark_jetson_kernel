@@ -1,0 +1,63 @@
+server {
+    listen 80;
+    server_name localhost;
+    client_max_body_size 500M;
+
+    # Static files
+    location / {
+        root /var/www/ark-ui/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Never cache the SPA shell. Vue's JS/CSS are content-hashed so they bust
+    # themselves, but a cached index.html keeps serving an old bundle after an upgrade
+    # — the "fix shipped but the UI still looks old" trap. try_files above falls back
+    # here for client routes, so this also covers deep links.
+    location = /index.html {
+        root /var/www/ark-ui/html;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    # API Gateway - all API traffic goes to Express server
+    location /api/ {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /flight-review {
+        rewrite ^/flight-review$ /flight-review/browse redirect;
+        rewrite ^/flight-review/(.*)$ /$1 break;
+        proxy_pass http://localhost:5006;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Sub-filter to adjust paths
+        sub_filter '"/static/' '"/flight-review/static/';
+        sub_filter '"/js/' '"/flight-review/js/';
+        sub_filter '"/css/' '"/flight-review/css/';
+        sub_filter_once off;
+
+    }
+
+    # Video page -> go2rtc. go2rtc's API/signaling (including the WHEP endpoint at
+    # /video/api/webrtc) is localhost-only; proxy it here. WebRTC *media* does not pass
+    # through nginx — it flows directly between the browser and this device over UDP/TCP
+    # 8555 (see /etc/ark-os/go2rtc.yaml). The Upgrade headers also let go2rtc's
+    # WebSocket API work through this path.
+    location /video/ {
+        proxy_pass http://127.0.0.1:1984/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+}

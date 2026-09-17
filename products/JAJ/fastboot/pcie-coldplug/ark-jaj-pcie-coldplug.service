@@ -1,0 +1,16 @@
+[Unit]
+Description=Replay JAJ C7 PCIe coldplug independently
+# systemd-udev-trigger.service wants this service without ordering after it.
+# Keep the controller and its full kernel link-training timeout available.
+DefaultDependencies=no
+Wants=systemd-udevd.service
+After=systemd-udevd-kernel.socket systemd-udevd-control.socket
+Conflicts=shutdown.target
+Before=shutdown.target
+ConditionPathIsReadWrite=/sys
+ConditionPathExists=/sys/bus/platform/devices/141e0000.pcie
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=udevadm trigger --type=devices --action=add --subsystem-match=platform --sysname-match=141e0000.pcie

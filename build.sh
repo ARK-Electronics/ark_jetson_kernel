@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# Usage: ./build.sh <PAB|JAJ|PAB_V3|all> [--fast] [--no-provision]
+# Usage: ./build.sh <PAB|JAJ|PAB_V3|all> [--fast] [--no-provision] [--precompute-initrd]
 #   (default)             wipe staging/{TARGET}/, re-stage, provision, then build
 #   --fast                reuse the existing staged tree — recompile the kernel/DT
 #                         only, no re-stage and no re-provision (needs a prior build)
 #   --no-provision        re-stage and build a bare image, skipping provisioning
+#   --precompute-initrd   regenerate boot module indexes before flashing (all targets)
 #   --clean, --provision  accepted but redundant now — they are the default
 #
 # A full build (the default) stages the L4T tree under its own staging/{TARGET}/,
@@ -23,6 +24,7 @@ source "$SCRIPT_DIR/scripts/check_bsp.sh"
 CLEAN=1
 PROVISION=1
 FAST=0
+PRECOMPUTE_INITRD=0
 TARGET=""
 
 for arg in "$@"; do
@@ -30,12 +32,13 @@ for arg in "$@"; do
         PAB|JAJ|PAB_V3) TARGET="$arg" ;;
         all)            TARGET="all" ;;
         --fast)         FAST=1 ;;
+        --precompute-initrd) PRECOMPUTE_INITRD=1 ;;
         --no-provision) PROVISION=0 ;;
         --clean)        CLEAN=1 ;;      # the default now; still accepted so old commands work
         --provision)    PROVISION=1 ;;  # the default now; still accepted so old commands work
         *)
             echo "Invalid argument: $arg" >&2
-            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision]" >&2
+            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision] [--precompute-initrd]" >&2
             exit 1
             ;;
     esac
@@ -63,7 +66,7 @@ if [ -z "$TARGET" ]; then
         esac
     else
         echo "ERROR: target required (PAB | JAJ | PAB_V3 | all) when running non-interactively." >&2
-        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision]" >&2
+        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision] [--precompute-initrd]" >&2
         exit 1
     fi
 fi
@@ -114,6 +117,7 @@ if [ "$TARGET" = "all" ]; then
         echo "  Building $t"
         echo "========================================="
         ARGS=("$t")
+        [ "$PRECOMPUTE_INITRD" -eq 1 ] && ARGS+=("--precompute-initrd")
         [ "$FAST" -eq 1 ] && ARGS+=("--fast")
         [ "$FAST" -eq 0 ] && [ "$PROVISION" -eq 0 ] && ARGS+=("--no-provision")
         "$0" "${ARGS[@]}" || exit $?
@@ -127,6 +131,7 @@ export TARGET
 # doesn't re-prompt.
 if needs_container; then
     CONTAINER_ARGS=("$TARGET")
+    [ "$PRECOMPUTE_INITRD" -eq 1 ] && CONTAINER_ARGS+=("--precompute-initrd")
     [ "$FAST" -eq 1 ] && CONTAINER_ARGS+=("--fast")
     [ "$FAST" -eq 0 ] && [ "$PROVISION" -eq 0 ] && CONTAINER_ARGS+=("--no-provision")
     run_in_container "$0" "${CONTAINER_ARGS[@]}"
@@ -145,13 +150,7 @@ STAGING_DIR="$SCRIPT_DIR/staging/$TARGET"
 if [ "$CLEAN" -eq 1 ] && [ -d "$STAGING_DIR" ]; then
     # A leaked bind mount under $STAGING_DIR (interrupted provisioning) would make
     # rm -rf recurse into host /proc,/sys,/dev. Refuse to clean until it's unmounted.
-    mounts_under=$(mount | awk -v d="$STAGING_DIR/" 'index($3, d)==1 {print $3}')
-    if [ -n "$mounts_under" ]; then
-        echo "ERROR: active mount(s) under $STAGING_DIR — refusing to 'rm -rf' it" >&2
-        echo "       (recursing into them could destroy host /dev). Unmount first:" >&2
-        echo "$mounts_under" | sed 's/^/         sudo umount /' >&2
-        exit 1
-    fi
+    python3 "$SCRIPT_DIR/scripts/check_cleanup_mounts.py" "$STAGING_DIR"
     echo "Cleaning staging/$TARGET/..."
     sudo rm -rf "$STAGING_DIR"
 fi
@@ -163,23 +162,36 @@ fi
 L4T_DIR="$STAGING_DIR/Linux_for_Tegra"
 SOURCE_DIR="$L4T_DIR/source"
 PRODUCT_DIR="$SCRIPT_DIR/products/$TARGET"
+DEFAULT_OVERLAYS_FILE="$PRODUCT_DIR/default_overlays"
 
 if [ ! -d "$PRODUCT_DIR" ]; then
     echo "ERROR: products/$TARGET/ does not exist." >&2
     exit 1
 fi
 
-# Check the toolchain before staging: a missing one would otherwise surface as a
-# command-not-found from make, after the ~30 min stage + provision.
+# Check the pinned R39 compiler before staging. Native AArch64 builds do
+# not require a cross compiler.
 THIS_MACHINE="$(uname -m)"
 if [[ "$THIS_MACHINE" != "aarch64" ]]; then
-    export CROSS_COMPILE="$HOME/l4t-gcc/$TOOLCHAIN_DIRNAME/bin/aarch64-buildroot-linux-gnu-"
+    export CROSS_COMPILE="$HOME/l4t-gcc/${TOOLCHAIN_CROSS_PREFIX}"
     if [ ! -x "${CROSS_COMPILE}gcc" ]; then
         echo "ERROR: cross toolchain not found at ${CROSS_COMPILE}gcc — run ./setup.sh" >&2
         exit 1
     fi
 fi
-export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
+# Both installed module indexes and the optimized initrd must use the target's
+# format. Do not silently create R39 indexes with the host's Jammy kmod 29.
+if [ "$EXPECTED_BSP_RELEASE" = R39 ]; then
+    if [ -x /opt/ark-kmod31/bin/depmod ]; then
+        export PATH="/opt/ark-kmod31/bin:$PATH"
+    fi
+    if ! depmod --version | grep -qx 'kmod version 31'; then
+        echo "ERROR: R39 needs kmod 31; rebuild/run through docker/Dockerfile." >&2
+        exit 1
+    fi
+fi
+export KERNEL_HEADERS="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}"
+export kernel_name="${KERNEL_NAME}"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
 
 # --fast reuses an existing staged tree; there's nothing to reuse if it's absent.
@@ -230,8 +242,9 @@ if [ ! -d "$L4T_DIR" ]; then
     # skips that file, the reconfigure finally exits 0, nvfb drops its once-only
     # nvfirstboot guard, and sshd can never start again. Clearing truncated keys first
     # lets nvfb's own retry loop do what it was written to do.
+    if [ "$EXPECTED_BSP_RELEASE" = R36 ]; then
     echo "Patching nvfb.sh so an interrupted SSH host key generation can be retried..."
-    sudo python3 - "$L4T_DIR/rootfs/etc/systemd/nvfb.sh" <<'PY'
+        sudo python3 - "$L4T_DIR/rootfs/etc/systemd/nvfb.sh" <<'PY'
 import sys
 path = sys.argv[1]
 src = open(path).read()
@@ -245,6 +258,17 @@ fix = ("\t# A zero-length key from an interrupted run would otherwise be skipped
 open(path, 'w').write(src.replace(anchor, fix + anchor))
 PY
 
+    elif [ "$EXPECTED_BSP_RELEASE" = R39 ]; then
+        # R39 replaces nvfb.sh with a native first-boot key generator. Preserve
+        # that service rather than patching a script which no longer exists.
+        KEYGEN_UNIT="$L4T_DIR/rootfs/etc/systemd/system/nvfb-ssh-keygen.service"
+        if ! grep -qx 'ExecStart=/usr/bin/ssh-keygen -A' "$KEYGEN_UNIT" || \
+           ! grep -qx 'Before=ssh.service' "$KEYGEN_UNIT"; then
+            echo "ERROR: unexpected R39 SSH host-key generation service" >&2
+            exit 1
+        fi
+    fi
+
     if [ "$PROVISION" -eq 1 ]; then
         PROVISION_SCRIPT="$SCRIPT_DIR/provision.sh"
         if [ ! -f "$PROVISION_SCRIPT" ]; then
@@ -257,6 +281,7 @@ PY
         echo "========================================="
 
         ROOTFS_DIR="$L4T_DIR/rootfs"
+        source "$SCRIPT_DIR/scripts/provision_resolver.sh"
 
         cleanup_chroot() {
             # /proc and /sys pull in nested submounts (binfmt_misc, cgroup, ...) via
@@ -271,14 +296,15 @@ PY
                 echo "WARNING: mounts still present under $ROOTFS_DIR after cleanup:" >&2
                 mount | grep " on $ROOTFS_DIR/" >&2
             fi
+            restore_provision_resolver
         }
         trap cleanup_chroot EXIT
 
+        prepare_provision_resolver "$ROOTFS_DIR"
         sudo mount --bind /proc "$ROOTFS_DIR/proc"
         sudo mount --bind /sys "$ROOTFS_DIR/sys"
         sudo mount --bind /dev "$ROOTFS_DIR/dev"
         sudo mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
-        sudo cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
         export ROOTFS_DIR TARGET
         if ! bash "$PROVISION_SCRIPT"; then
@@ -299,6 +325,10 @@ PY
     tar xf kernel_src.tbz2
     tar xf kernel_oot_modules_src.tbz2
     tar xf nvidia_kernel_display_driver_source.tbz2
+    # R39+ ships a second display tree (unifiedgpudisp). Absent on R36.
+    if [ -f nvidia_unified_gpu_display_driver_source.tbz2 ]; then
+        tar xf nvidia_unified_gpu_display_driver_source.tbz2
+    fi
     popd > /dev/null
 
     # Snapshot the pristine stock overlay Makefile so the per-build ARK overlay step
@@ -307,7 +337,7 @@ PY
     cp "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay/Makefile" \
        "$STAGING_DIR/.overlay-makefile.stock"
 
-    DEFCONFIG="$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/configs/defconfig"
+    DEFCONFIG="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/configs/defconfig"
     echo "Applying shared defconfig fragment..."
     cat "$SCRIPT_DIR/defconfig.fragment" >> "$DEFCONFIG"
 
@@ -325,6 +355,45 @@ fi
 # ── BSP version check ──────────────────────────────────────────────────────
 
 require_bsp_staging "$STAGING_DIR"
+
+# A reused staged tree may contain the optional, separately built UEFI profile.
+# Validate it before changing the kernel tree, and retain its owned overlay
+# during stale kernel-overlay cleanup. An incomplete stage must fail closed.
+STAGED_FAST_BOOT_FIRMWARE=0
+if [ -e "$L4T_DIR/ark-fast-boot.json" ] || [ -L "$L4T_DIR/ark-fast-boot.json" ] || \
+   [ -e "$L4T_DIR/ark-fast-boot.in-progress.json" ] || [ -L "$L4T_DIR/ark-fast-boot.in-progress.json" ]; then
+    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" --l4t-dir "$L4T_DIR" --verify --product "$TARGET"
+    STAGED_FAST_BOOT_FIRMWARE=1
+fi
+
+# The initrd updater below always chroots into the ARM rootfs, including --fast
+# builds that skip l4t_flash_prerequisites.sh. Check before a lengthy compile.
+if ! dpkg -s qemu-user-static >/dev/null 2>&1; then
+    echo "ERROR: initrd refresh requires qemu-user-static and working AArch64 binfmt." >&2
+    echo "       Install qemu-user-static binfmt-support on Ubuntu 22.04, or rebuild" >&2
+    echo "       docker/Dockerfile and rerun through the build container wrapper." >&2
+    exit 1
+fi
+
+# Fail before rebuilding an already optimized staged image. NVIDIA's updater
+# preserves /init; silently feeding it our patched script would retain an old
+# optimization even when --precompute-initrd was omitted on this invocation.
+if [ "$FAST" -eq 1 ]; then
+    python3 "$SCRIPT_DIR/scripts/check_initrd_source.py" --target "$TARGET" \
+        "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+fi
+
+# R39 Orin display loading must let the native GPU power policy finish before
+# DRM first powers the GPU. Apply on fresh and reused trees; unknown vendor
+# revisions fail rather than silently shipping an unconfigured power mode.
+if [ "$EXPECTED_BSP_RELEASE" = R39 ]; then
+    sudo python3 "$SCRIPT_DIR/scripts/patch_gpu_power_order.py" \
+        --rootfs "$L4T_DIR/rootfs" --product "$TARGET"
+    # Keep NVIDIA's Realtek driver first, then allow generic Bluetooth devices
+    # such as Qualcomm adapters to bind instead of suppressing btusb globally.
+    sudo python3 "$SCRIPT_DIR/scripts/patch_bluetooth_preference.py" \
+        --rootfs "$L4T_DIR/rootfs" --product "$TARGET"
+fi
 
 # ── Layer ARK's device-tree delta onto the stock BSP ─────────────────────────
 # products/<target>/device_tree/ carries ONLY ARK's delta: the BCT pinmux/gpio
@@ -506,20 +575,31 @@ echo "========================================="
 
 cd "$SOURCE_DIR"
 
-# The bootlin toolchain defaults to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
+# Some toolchains default to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
 # startfiles and fails — its LAST line is a collect2 error, which NVIDIA's nv_compiler.h
 # recipe bakes into the module's /proc version banner via `tail -1`. Repoint it at
 # `--version | head -1`, which never links. Fail loud if the BSP moved the recipe; drop the
 # stale header so it regenerates.
-NVIDIA_KBUILD="$SOURCE_DIR/nvdisplay/kernel-open/nvidia/nvidia.Kbuild"
-if grep -qF -- '-v 2>&1 | tail -n 1' "$NVIDIA_KBUILD"; then
-    sed -i 's/\$(CC) -v 2>&1 | tail -n 1/$(CC) --version 2>\&1 | head -n 1/' "$NVIDIA_KBUILD"
-    rm -f "$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
-elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
-    echo "ERROR: nv_compiler.h version probe in nvidia.Kbuild is neither the known-bad nor" >&2
-    echo "       the patched form — BSP layout changed; re-check the probe patch in build.sh." >&2
-    exit 1
-fi
+DISPLAY_TREES=(nvdisplay)
+[ "$EXPECTED_BSP_RELEASE" = R39 ] && DISPLAY_TREES+=(unifiedgpudisp)
+for display_tree in "${DISPLAY_TREES[@]}"; do
+    NVIDIA_KBUILD="$SOURCE_DIR/$display_tree/kernel-open/nvidia/nvidia.Kbuild"
+    if grep -qF -- '-v 2>&1 | tail -n 1' "$NVIDIA_KBUILD"; then
+        sed -i 's/\$(CC) -v 2>&1 | tail -n 1/$(CC) --version 2>\&1 | head -n 1/' "$NVIDIA_KBUILD"
+        rm -f "$SOURCE_DIR/$display_tree/kernel-open/nv_compiler.h"
+    elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
+        echo "ERROR: unexpected compiler-version probe in $NVIDIA_KBUILD" >&2
+        exit 1
+    fi
+done
+
+# All ARK Orin carriers share the release-audited BPMP driver. The opt-in
+# worker leaves hardware setup unchanged; its parameter remains false unless
+# jaj_fastboot.bpmp_debugfs_async=1 is requested (the namespace is shared).
+# Each target has its own source tree. Refuse changed BSP sources rather than
+# applying a fuzzy source modification, and keep board DT/pinmux deltas intact.
+python3 "$SCRIPT_DIR/scripts/patch_bpmp_debugfs.py" \
+    --kernel-dir "$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}" --mode apply
 
 # ccache wraps the cross-compiler for the kernel proper only (kernel C rarely changes → warm
 # hits). The OOT NVIDIA modules build without it on purpose: their conftest/version steps
@@ -530,29 +610,44 @@ if command -v ccache >/dev/null 2>&1; then
     KERNEL_MAKE_ARGS+=("CC=ccache ${CROSS_COMPILE}gcc")
 fi
 
-make -C kernel "${KERNEL_MAKE_ARGS[@]}" \
-    && make modules CC="${CROSS_COMPILE}gcc" \
-    && make dtbs CC="${CROSS_COMPILE}gcc"
-
-# Sanity-check the display-driver build: nv_compiler.h must read as a real compiler version
-# (probe fixed above) and the three display .kos must be non-empty — catches a broken or
-# missing cross-compiler instead of silently shipping a bad module.
-NV_COMPILER_H="$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
-if [ ! -s "$NV_COMPILER_H" ] || ! grep -qE 'version|[0-9]+\.[0-9]+\.[0-9]+' "$NV_COMPILER_H"; then
-    echo "ERROR: NVIDIA compiler-version probe produced no sane version string:" >&2
-    echo "       $NV_COMPILER_H: $(cat "$NV_COMPILER_H" 2>/dev/null)" >&2
-    exit 1
+# R39 ships compressed firmware. Resolve Kconfig before a lengthy compile so
+# missing loader support cannot silently ship working PCIe with broken WiFi.
+# The vendor wrapper repeats the same defconfig resolution before compilation.
+if [ "$EXPECTED_BSP_RELEASE" = R39 ]; then
+    make -C "$KERNEL_HEADERS" ARCH=arm64 "${KERNEL_MAKE_ARGS[@]}" "${KERNEL_DEF_CONFIG:-defconfig}"
+    python3 "$SCRIPT_DIR/scripts/check_firmware_config.py" --target "$TARGET" \
+        "$KERNEL_HEADERS/.config"
 fi
-for ko in nvidia.ko nvidia-modeset.ko nvidia-drm.ko; do
-    [ -s "$SOURCE_DIR/nvdisplay/kernel-open/$ko" ] \
-        || { echo "ERROR: NVIDIA module $ko missing or empty after build" >&2; exit 1; }
+
+# Separate commands so set -e actually stops on a mid-chain failure.
+# (`cmd1 && cmd2 && cmd3` does not trip set -e when cmd2 fails.)
+make -C kernel "${KERNEL_MAKE_ARGS[@]}"
+make modules CC="${CROSS_COMPILE}gcc"
+make dtbs CC="${CROSS_COMPILE}gcc"
+
+# R39 builds two supported GPU backends. Validate each result so stale vendor
+# modules cannot hide a missing backend in the newly compiled image.
+for display_tree in "${DISPLAY_TREES[@]}"; do
+    NV_COMPILER_H="$SOURCE_DIR/$display_tree/kernel-open/nv_compiler.h"
+    if [ ! -s "$NV_COMPILER_H" ] || ! grep -qE 'version|[0-9]+\.[0-9]+\.[0-9]+' "$NV_COMPILER_H"; then
+        echo "ERROR: invalid compiler-version header: $NV_COMPILER_H" >&2
+        exit 1
+    fi
+    display_modules=(nvidia.ko nvidia-modeset.ko nvidia-drm.ko)
+    [ "$display_tree" = unifiedgpudisp ] && display_modules+=(nvidia-uvm.ko)
+    for ko in "${display_modules[@]}"; do
+        [ -s "$SOURCE_DIR/$display_tree/kernel-open/$ko" ] || {
+            echo "ERROR: $display_tree/$ko missing or empty after build" >&2
+            exit 1
+        }
+    done
 done
 
 echo "Installing in-tree modules and dtbs..."
-sudo -E make install -C kernel
+sudo -E env "PATH=$PATH" make install -C kernel
 
 echo "Installing out-of-tree modules..."
-sudo -E make modules_install
+sudo -E env "PATH=$PATH" make modules_install
 
 # ── Fix module symlinks ─────────────────────────────────────────────────────
 
@@ -568,14 +663,28 @@ fi
 echo "Built kernel release: $JETSON_KERNEL_VERSION"
 
 MODULES_PATH="$INSTALL_MOD_PATH/lib/modules/$JETSON_KERNEL_VERSION"
-HEADERS_TARGET="/usr/src/linux-headers-${JETSON_KERNEL_VERSION}-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
 
 if [ ! -d "$MODULES_PATH" ]; then
     echo "ERROR: module path $MODULES_PATH not found after modules_install" >&2
     echo "       (kernel release '$JETSON_KERNEL_VERSION' does not match the installed modules)." >&2
     exit 1
 fi
-echo "Fixing kernel module symlinks in rootfs..."
+
+# Headers tree path changes with the distro (ubuntu22.04/jammy vs ubuntu24.04/noble).
+# Resolve it from the rootfs that apply_binaries installed rather than hardcoding.
+HEADERS_HOST=$(python3 "$SCRIPT_DIR/scripts/find_kernel_headers.py" \
+    "$INSTALL_MOD_PATH" "$JETSON_KERNEL_VERSION")
+# The vendor header package shares the release string but not necessarily the
+# custom config/export CRCs. Preserve native ARM build tools while synchronizing
+# final public/generated headers, .config and Module.symvers from this build.
+sudo python3 "$SCRIPT_DIR/scripts/stage_kernel_headers.py" \
+    --kernel-source "$KERNEL_HEADERS" --headers-dir "$HEADERS_HOST"
+# Canonicalize both paths before deriving the device path: CI's staging
+# symlink resolves outside /workspace, but installed links must start at /usr.
+HEADERS_TARGET=$(python3 "$SCRIPT_DIR/scripts/find_kernel_headers.py" --target-path \
+    "$INSTALL_MOD_PATH" "$JETSON_KERNEL_VERSION")
+
+echo "Fixing kernel module symlinks in rootfs (headers -> $HEADERS_TARGET)..."
 sudo rm -f "$MODULES_PATH/build" "$MODULES_PATH/source"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
@@ -583,9 +692,19 @@ sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
 # ── Install build outputs ───────────────────────────────────────────────────
 
 echo "Installing kernel Image..."
-cp "$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
+cp "$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
 
-DTBS_SOURCE="$SOURCE_DIR/kernel-devicetree/generic-dts/dtbs"
+# R36 wrote dtbs under kernel-devicetree/generic-dts/dtbs. R39 `make dtbs`
+# writes them under build/nvidia-public/devicetree/generic-dtbs instead.
+DTBS_SOURCE="$SOURCE_DIR/build/nvidia-public/devicetree/generic-dtbs"
+if [ ! -d "$DTBS_SOURCE" ]; then
+    DTBS_SOURCE="$SOURCE_DIR/kernel-devicetree/generic-dts/dtbs"
+fi
+if [ ! -d "$DTBS_SOURCE" ]; then
+    echo "ERROR: no compiled DTB output dir (looked for R39 generic-dtbs and" >&2
+    echo "       R36 kernel-devicetree/generic-dts/dtbs). Did 'make dtbs' run?" >&2
+    exit 1
+fi
 
 echo "Installing DTBs..."
 for variant in 0000 0001 0003 0004 0005; do
@@ -612,6 +731,12 @@ done
 for dir in "$L4T_DIR/rootfs/boot" "$L4T_DIR/kernel/dtb"; do
     for f in "$dir"/tegra*.dtbo "$dir"/ark_*.dtbo; do
         [ -e "$f" ] || continue
+        # This firmware-owned overlay was checksum-verified above; it is not
+        # built by the kernel overlay Makefile and must survive --fast reuse.
+        if [ "$STAGED_FAST_BOOT_FIRMWARE" -eq 1 ] && \
+           [ "$f" = "$L4T_DIR/kernel/dtb/ark_fast_boot.dtbo" ]; then
+            continue
+        fi
         filename=$(basename "$f")
         found=false
         for src in "${source_dtbos[@]}"; do
@@ -626,6 +751,21 @@ for dir in "$L4T_DIR/rootfs/boot" "$L4T_DIR/kernel/dtb"; do
         fi
     done
 done
+
+# flash.sh bakes products/<target>/default_overlays from kernel/dtb/. Fail here
+# rather than at flash time if 'make dtbs' did not produce them.
+if [ -f "$DEFAULT_OVERLAYS_FILE" ]; then
+    while IFS= read -r name; do
+        name="${name%%#*}"
+        name="$(echo "$name" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -z "$name" ] && continue
+        if [ ! -f "$L4T_DIR/kernel/dtb/$name" ]; then
+            echo "ERROR: default overlay '$name' was not built into kernel/dtb/" >&2
+            echo "       (DTBS_SOURCE=$DTBS_SOURCE). Check 'make dtbs' and overlay/dtbo.list." >&2
+            exit 1
+        fi
+    done < "$DEFAULT_OVERLAYS_FILE"
+fi
 
 # ── Quiet the serial console ────────────────────────────────────────────────
 
@@ -674,6 +814,66 @@ sudo tee "$L4T_DIR/rootfs/etc/sysctl.d/99-ark-console-quiet.conf" >/dev/null <<'
 kernel.printk = 4 4 1 7
 EOF
 
+# Refresh both the production initramfs and NVIDIA's saved flashing copy only
+# after the final Image and in-tree/out-of-tree modules have been installed.
+# Otherwise a custom kernel build or a later flash can use stale boot modules.
+# A reused tree whose unoptimized sources were explicitly restored may still
+# contain the flash-time wrapper. Restore its verified vendor updater for this
+# build; install a fresh wrapper only after the requested optimization succeeds.
+if [ -d "$L4T_DIR/tools/ark-initrd" ]; then
+    sudo python3 "$SCRIPT_DIR/scripts/prepare_flash_initrd.py" remove --l4t-dir "$L4T_DIR"
+fi
+echo "Refreshing the production initramfs from the installed kernel modules..."
+cmp "$L4T_DIR/kernel/Image" "$L4T_DIR/rootfs/boot/Image"
+python3 "$SCRIPT_DIR/scripts/check_initrd_source.py" --target "$TARGET" \
+    "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+INITRD_UPDATE_ARGS=()
+# R39 infers the BSP from the updater's own location and removed the -l option.
+[ "$EXPECTED_BSP_RELEASE" = R36 ] && INITRD_UPDATE_ARGS=(-l "$L4T_DIR")
+sudo "$L4T_DIR/tools/l4t_update_initrd.sh" "${INITRD_UPDATE_ARGS[@]}"
+# Audit the updater's result before recording an unoptimized build or passing it
+# to the optimizer. Its rootfs and bootloader-side outputs must also agree.
+python3 "$SCRIPT_DIR/scripts/check_initrd_source.py" --target "$TARGET" \
+    "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+cmp "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+
+if [ "$PRECOMPUTE_INITRD" -eq 1 ]; then
+    # Match the target kmod index format. The pinned host remains Ubuntu 22.04;
+    # its default kmod 29 must not generate Noble's kmod 31 indexes.
+    INITRD_TOOL_PATH="$PATH"
+    if [ "$EXPECTED_BSP_RELEASE" = R39 ] && [ -x /opt/ark-kmod31/bin/depmod ]; then
+        INITRD_TOOL_PATH="/opt/ark-kmod31/bin:$PATH"
+    fi
+    echo "Precomputing $TARGET initramfs module dependency indexes..."
+    INITRD_WORK=$(mktemp -d)
+    if ! sudo env "PATH=$INITRD_TOOL_PATH" python3 "$SCRIPT_DIR/scripts/optimize_initrd.py" \
+        --input "$L4T_DIR/rootfs/boot/initrd" \
+        --output "$INITRD_WORK/initrd" \
+        --l4t-release "$L4T_DIR/rootfs/etc/nv_tegra_release" \
+        --kernel-image "$L4T_DIR/rootfs/boot/Image"; then
+        sudo rm -rf "$INITRD_WORK"
+        exit 1
+    fi
+    # Save the freshly refreshed, matching unoptimized image before promotion.
+    # A later --fast build requires restoring these sources explicitly first.
+    sudo cp -p "$L4T_DIR/bootloader/l4t_initrd.img" \
+        "$L4T_DIR/bootloader/l4t_initrd.before-precompute.img"
+    # NVIDIA flash.sh restores its saved copy into rootfs/boot/initrd, so both
+    # must contain the same validated optimized image.
+    sudo install -m 0644 "$INITRD_WORK/initrd" "$L4T_DIR/rootfs/boot/initrd"
+    sudo install -m 0644 "$INITRD_WORK/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+    cmp "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+    sudo rm -rf "$INITRD_WORK"
+    # NVIDIA refreshes these images again while preparing a full flash. Keep
+    # that refresh and recompute afterward, including in self-contained packages.
+    sudo python3 "$SCRIPT_DIR/scripts/prepare_flash_initrd.py" install --l4t-dir "$L4T_DIR"
+fi
+
+# Kernel installation must leave every previously staged firmware file intact.
+if [ "$STAGED_FAST_BOOT_FIRMWARE" -eq 1 ]; then
+    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" --l4t-dir "$L4T_DIR" --verify --product "$TARGET"
+fi
+
 # ── Record build metadata ───────────────────────────────────────────────────
 
 BUILD_COMMIT=$ARK_BUILD_COMMIT
@@ -685,6 +885,7 @@ commit=$BUILD_COMMIT
 date=$BUILD_DATE
 build_os=$ARK_BUILD_OS
 target=$TARGET
+precomputed_initrd=$PRECOMPUTE_INITRD
 EOF
 
 # ── Done ────────────────────────────────────────────────────────────────────
