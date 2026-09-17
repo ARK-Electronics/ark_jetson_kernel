@@ -40,9 +40,10 @@ afterward with target kmod under QEMU, including in a packaged BSP. The native
 header probe was built and loaded on the actual corrected kernel, rather than
 only comparing host-generated files.
 
-All 282 final helper/test cases were exercised successfully: 281 passed in the
-Ubuntu 22.04 builder, and its one skipped systemd dependency-ordering case passed
-separately on the host where `systemd-analyze` was available. The generated units
+All 282 final helper/test cases passed in an Ubuntu 22.04 builder with
+`systemd-analyze` 249 installed, with no skips. The dependency-ordering check
+also passed on a host with systemd 255; an intentional cycle is rejected on
+both versions. The generated units
 also passed native systemd verification on JAJ. These tests supplement the
 hardware checks below; they do not qualify untested peripherals.
 
@@ -182,9 +183,8 @@ All three final-profile captures completed with readiness observed and no
 supply fault. NVIDIA validation completed, slot A remained current/active and
 both slots remained normal. Final checks repeated the CUDA integer-add probe,
 confirmed WiFi UP and automatic `hci0`, verified retained C7 support, and loaded
-the three camera plugins for inspection. A userspace `/dev/kmsg` canary was not
-used as evidence for `kern.log`: Linux assigns that injected record a userspace
-facility. Persistence was verified using an actual current-boot kernel message.
+the three camera plugins for inspection. Persistent logging was verified using
+an actual current-boot kernel message.
 
 Temporary benchmark services, readiness probes and private diagnostic/shutdown
 helpers were removed after testing. The API still returns HTTP 200 with populated

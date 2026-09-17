@@ -121,25 +121,44 @@ class NobleScopedUSBTests(unittest.TestCase):
     def test_actual_units_and_order_dropin_have_no_dependency_cycle(self):
         f = self.fixture
         f.apply()
-        # systemd-analyze on older hosts dereferences absolute unit symlinks
-        # before applying --root. Materialize identical vendor bodies only in
-        # this analysis fixture; production keeps both native symlinks.
+        # systemd 249 (Ubuntu 22.04 CI) cannot verify with --root. Isolate its
+        # unit search path instead, materializing the native units and mapping
+        # only executable paths into this fixture. Keep every dependency and
+        # the managed ordering drop-in unchanged; no target script is executed.
         for unit in (profile.USB_MAIN, profile.USB_RUNTIME):
             link = f.system / unit
             link.unlink()
-            link.write_bytes((f.root / profile.USB_DIR / unit).read_bytes())
+            lines = (f.root / profile.USB_DIR / unit).read_text().splitlines(keepends=True)
+            for index, line in enumerate(lines):
+                if line.startswith(('ExecStart=/', 'ExecStopPost=/')):
+                    directive, executable = line.rstrip('\n').split('=', 1)
+                    self.assertTrue(executable.startswith('/' + profile.USB_DIR + '/'))
+                    self.assertNotIn(' ', executable)
+                    lines[index] = f'{directive}={f.root / executable.lstrip("/")}\n'
+            link.write_text(''.join(lines))
         for script in (f.root / profile.USB_DIR).glob('*.sh'):
             script.chmod(0o755)
         for unit in ('sysinit.target', 'basic.target', 'shutdown.target',
                      'systemd-tmpfiles-setup-dev.service'):
             content = '[Unit]\nDescription=Synthetic dependency\nDefaultDependencies=no\n'
             if unit.endswith('.service'):
-                content += f'[Service]\nExecStart=/{profile.USB_START}\n'
+                content += f'[Service]\nExecStart={f.root / profile.USB_START}\n'
             (f.system / unit).write_text(content)
-        result = subprocess.run(['systemd-analyze', 'verify', '--root', str(f.root),
-                                 profile.USB_RUNTIME, profile.USB_MAIN],
-                                capture_output=True, text=True, timeout=10)
+        def verify():
+            return subprocess.run(['systemd-analyze', 'verify',
+                                   str(f.system / profile.USB_RUNTIME),
+                                   str(f.system / profile.USB_MAIN)],
+                                  env={**os.environ, 'SYSTEMD_UNIT_PATH': str(f.system)},
+                                  capture_output=True, text=True, timeout=10)
+        result = verify()
         self.assertEqual(result.returncode, 0, result.stderr)
+        # Prove verify loaded the managed drop-in: adding an opposite ordering
+        # edge must fail, rather than silently validating just the vendor units.
+        order = f.root / profile.USB_RUNTIME_ORDER
+        order.write_bytes(order.read_bytes() + f'Before={profile.USB_MAIN}\n'.encode())
+        result = verify()
+        self.assertNotEqual(result.returncode, 0, result.stderr)
+        self.assertIn('ordering cycle', result.stderr.lower())
 
     def test_unknown_or_edited_runtime_order_is_rejected_without_mutation(self):
         f = self.fixture
