@@ -106,6 +106,26 @@ if [ -f "$DEFAULT_OVERLAYS_FILE" ]; then
     done < "$DEFAULT_OVERLAYS_FILE"
 fi
 
+# ── Fast boot (opt-in: scripts/enable_fast_boot.sh) ─────────────────────────
+# The reduced UEFI's L4TLauncher matches DefaultBootPriority against one device
+# class, not ark_boot_order.dtbo's list, so NVIDIA's BootOrderNvme.dtbo goes on
+# last. Its DTB lives in the NVMe kernel-dtb partition and NVMe is the only device
+# that firmware can boot: a full flash to NVMe is the only supported layout.
+FAST_BOOT=false
+if [ -f "$SCRIPT_DIR/staging/$TARGET/.fast-boot" ]; then
+    FAST_BOOT=true
+    if [ "$STORAGE_DEV" != "nvme0n1p1" ]; then
+        echo "ERROR: fast boot firmware only boots NVMe; --sdcard/--usb are not supported." >&2
+        echo "       Run ./scripts/enable_fast_boot.sh $TARGET --restore to flash other storage." >&2
+        exit 1
+    fi
+    if [ ! -f "$L4T_DIR/kernel/dtb/BootOrderNvme.dtbo" ]; then
+        echo "ERROR: BootOrderNvme.dtbo missing from staging/$TARGET/Linux_for_Tegra/kernel/dtb/" >&2
+        exit 1
+    fi
+    ADDITIONAL_DTB_OVERLAY="${ADDITIONAL_DTB_OVERLAY:+$ADDITIONAL_DTB_OVERLAY,}BootOrderNvme.dtbo"
+fi
+
 GIT_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_DESCRIBE=$(git -C "$SCRIPT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -119,6 +139,7 @@ echo "========================================="
 echo "  Target:   $TARGET"
 echo "  Storage:  $STORAGE_DEV"
 echo "  Board:    $FLASH_TARGET"
+[ "$FAST_BOOT" = true ] && echo "  Fast boot: yes (reduced UEFI, silent MB1/MB2/BPMP)"
 echo "========================================="
 
 read -p "Flash $TARGET? (y/N): " confirm
