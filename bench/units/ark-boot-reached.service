@@ -1,0 +1,14 @@
+# Bench marker: fires once multi-user.target is reached. DefaultDependencies=no
+# keeps the target from ordering itself after this unit while this unit orders
+# itself after the target.
+[Unit]
+Description=Boot-time marker: multi-user.target reached
+DefaultDependencies=no
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo "ARK_BOOT_REACHED $(cut -d" " -f1 /proc/uptime)" > /dev/ttyTCU0'
+
+[Install]
+WantedBy=multi-user.target
