@@ -5,6 +5,8 @@ description: Drive a Jetson carrier (PAB, JAJ, PAB_V3) on the bench — power it
 
 # Jetson hardware in the loop
 
+> **TODO: untested.** Neither this skill nor `jetson_hil.py` has been run against a real Jetson or DP712. The first session that uses it must check each step and command it relies on against the hardware, fix what is wrong, and include those fixes and the removal of this notice in any PR produced with the skill's help.
+
 `jetson_hil.py` (next to this file, needs pyserial) does the mechanics: `ports`, `psu`, `console` (with `--cycle-psu` for a timed cold boot), `wait-ssh`. Run it with `--help`.
 
 ## 1. Ask before touching anything
