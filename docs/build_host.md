@@ -15,6 +15,30 @@ The container runs as root, so everything it writes through the bind mounts (`st
 
 `flash.sh` always runs on the host — it transfers already-built artifacts to the device over USB and gains nothing from containerization.
 
+## Initramfs and firmware tools
+
+Every kernel build refreshes NVIDIA's production initramfs after installing the
+final Image and modules. NVIDIA's updater requires `qemu-user-static` and working
+AArch64 binfmt registration to run `nv-update-initrd` inside the staged ARM
+rootfs, including `--fast` builds that skip the BSP prerequisite installer. The
+22.04 builder includes `qemu-user-static` and `binfmt-support`. It also includes
+`device-tree-compiler` (`dtc`, `fdtget`, and `fdtput`) for the optional JAJ firmware
+profile. On a native Ubuntu 22.04 host, install these prerequisites:
+
+```sh
+sudo apt-get install qemu-user-static binfmt-support device-tree-compiler
+sudo update-binfmts --enable qemu-aarch64
+```
+
+The container wrapper rebuilds its image when the Dockerfile content hash
+changes. Rerun `build.sh` through that wrapper after updating this checkout;
+a manually launched container with an older image tag does not receive the new
+packages automatically. If NVIDIA's updater reports that `qemu-user-static` is
+not installed, rebuild the image or install the native prerequisites before
+rerunning the build. Package installation alone is insufficient when the host
+kernel has no working AArch64 binfmt handler; the updater's chroot must also
+execute successfully. Do not omit initrd refresh to bypass that failure.
+
 ## Why 22.04 specifically — the kmod incompatibility
 
 The proximate reason is a binary-format incompatibility between `kmod` versions on the host and on the device.
