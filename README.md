@@ -4,12 +4,13 @@ Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an AR
 
 | Component | Version |
 | --- | --- |
-| JetPack | 6.2.2 |
-| L4T (BSP) | R36.5.0 |
-| Kernel | Linux 5.15 |
+| JetPack | 7.2.1 |
+| L4T (BSP) | R39.2.1 |
+| Kernel | Linux 6.8 |
+| Device OS | Ubuntu 24.04 |
 | Host OS | Ubuntu 22.04 |
 
-> **Building on a non-22.04 host?** `setup.sh` and `build.sh` auto-containerize themselves in a 22.04 docker image (docker is auto-installed via apt if missing). See [docs/build_host.md](docs/build_host.md) for why we pin to 22.04.
+> **Build tools:** `setup.sh` and `build.sh` auto-containerize themselves in a 22.04 docker image (docker is auto-installed via apt if missing). R39 also uses that container on Ubuntu 22.04 when native kmod 31 is unavailable. See [docs/build_host.md](docs/build_host.md).
 
 ## Products
 
@@ -44,6 +45,11 @@ Download the BSP, root filesystem, and kernel source tarballs (one time):
 ```
 
 ### 2. Build
+R39 requires the Noble ARK-OS package. Until a matching release asset is
+published, build the pinned package once with `./scripts/build_ark_os_noble.sh /tmp/ark-os-noble-build`;
+provisioning uses the result in `downloads/`. See
+[JetPack 7 provisioning](docs/jetpack7_provisioning.md).
+
 ```
 ./build.sh PAB
 ```
@@ -85,7 +91,9 @@ ssh jetson@jetson.local
 
 ## Cameras
 
-Every carrier ships with an IMX219 overlay already selected, so cameras work out of the box: the quad overlay on **PAB**, the dual overlay on **JAJ** and **PAB_V3**. To use a different camera, select an overlay with NVIDIA's `jetson-io` tool. List what's available:
+Every carrier selects an IMX219 overlay by default: the quad overlay on **PAB**, the dual overlay on **JAJ** and **PAB_V3**. Camera capture on R39 remains unvalidated; the test JAJ has no camera attached. See the [JetPack 7.2.1 validation record](docs/jetpack7_validation.md).
+
+To use a different camera, select an overlay with NVIDIA's `jetson-io` tool. List what's available:
 ```
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
 ```

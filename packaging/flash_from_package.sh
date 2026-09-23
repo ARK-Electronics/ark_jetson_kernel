@@ -666,12 +666,10 @@ else
     fi
 fi
 
-# ── Wait for the flashed image to finish its first boot ─────────────────────
-# The image ships no SSH host keys: /etc/systemd/nvfb.sh generates them on the
-# first boot, and nvfb.service is ordered Before=ssh.service, so an answering
-# port 22 proves the board is past the window where losing power strands it. A
-# key truncated by a power cut is skipped forever afterwards — openssh's
-# create_key() guards on existence, not size — and sshd then never starts.
+# ── Wait for SSH during the flashed image's first boot ──────────────────────
+# The image ships no SSH host keys. R39 generates them with the native
+# nvfb-ssh-keygen.service; R36 uses nvfb.service. SSH's identification banner
+# proves the daemon has started; a socket listener alone does not.
 # The board serves 192.168.55.1 over the cable it was just flashed on.
 # Keep in sync with the copy in flash.sh.
 
@@ -692,12 +690,22 @@ jetson_usb_interface() {
     return 1
 }
 
+ssh_banner_ready() {
+    # Noble socket activation can open port 22 before sshd has usable host keys.
+    # Require sshd's identification, rather than only a successful TCP connect.
+    timeout 3 bash -c '
+        exec 3<>"/dev/tcp/$1/$2"
+        IFS= read -r -t 2 banner <&3
+        [[ "$banner" == SSH-2.0-* || "$banner" == SSH-1.99-* ]]
+    ' -- "$1" "${2:-22}" 2>/dev/null
+}
+
 wait_for_first_boot() {
     local start elapsed announced interface addresses
     start=$(date +%s)
     announced=0
     echo ""
-    echo "Waiting for the Jetson to finish its first boot — leave it powered and connected."
+    echo "Waiting for SSH on the Jetson — leave it powered and connected."
     while :; do
         elapsed=$(( $(date +%s) - start ))
         [ "$elapsed" -lt "$FIRST_BOOT_TIMEOUT" ] || break
@@ -711,8 +719,8 @@ wait_for_first_boot() {
                 *"inet 192.168.55."*) ;;
                 *) sudo ip addr add 192.168.55.100/24 dev "$interface" 2>/dev/null || true ;;
             esac
-            if timeout 2 bash -c "exec 3<>/dev/tcp/$JETSON_USB_ADDRESS/22" 2>/dev/null; then
-                echo "First boot complete after ${elapsed}s — sshd is up on $JETSON_USB_ADDRESS. Safe to power off."
+            if ssh_banner_ready "$JETSON_USB_ADDRESS"; then
+                echo "SSH ready after ${elapsed}s on $JETSON_USB_ADDRESS. Use normal shutdown before removing power."
                 return 0
             fi
         fi
@@ -724,7 +732,7 @@ wait_for_first_boot() {
     done
     echo "" >&2
     echo "ERROR: no sshd on $JETSON_USB_ADDRESS:22 within ${FIRST_BOOT_TIMEOUT}s — the first boot did not finish." >&2
-    echo "       Keep it powered and cabled; check its console: systemctl status nvfb ssh" >&2
+    echo "       Keep it powered and cabled; check its console: systemctl status nvfb-ssh-keygen ssh" >&2
     echo "       Removing power now can leave a unit whose sshd never starts." >&2
     return 1
 }

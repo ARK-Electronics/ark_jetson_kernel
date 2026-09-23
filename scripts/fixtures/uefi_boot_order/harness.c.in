@@ -1,0 +1,155 @@
+/* Host mocks for the actual patched NVIDIA functions. SPDX-License-Identifier: MIT */
+#include <assert.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <wchar.h>
+#define STATIC static
+#define CONST const
+#define VOID void
+#define EFIAPI
+#define IN
+#define UINTN size_t
+#define INTN ptrdiff_t
+#include <stddef.h>
+typedef uint16_t UINT16;
+typedef uint32_t UINT32;
+typedef uint8_t UINT8;
+typedef wchar_t CHAR16;
+typedef uintptr_t EFI_STATUS;
+typedef void *EFI_HANDLE;
+typedef UINT32 EFI_STATUS_CODE_TYPE;
+typedef UINT32 EFI_STATUS_CODE_VALUE;
+typedef struct { UINT8 bytes[16]; } EFI_GUID;
+typedef struct { UINT16 HeaderSize, Size; EFI_GUID Type; } EFI_STATUS_CODE_DATA;
+typedef struct { EFI_STATUS_CODE_DATA DataHeader; EFI_STATUS ReturnStatus; } EFI_RETURN_STATUS_EXTENDED_DATA;
+#define EFI_STATUS_CODE_SPECIFIC_DATA_GUID {{1}}
+#define EFI_SUCCESS 0
+#define EFI_LOAD_ERROR 1
+#define EFI_OUT_OF_RESOURCES 9
+#define EFI_NOT_FOUND 14
+#define EFI_WRITE_PROTECTED 8
+#define EFI_COMPROMISED_DATA 33
+#define EFI_ERROR(x) ((x) != EFI_SUCCESS)
+#define EFI_VARIABLE_BOOTSERVICE_ACCESS 2
+#define EFI_VARIABLE_RUNTIME_ACCESS 4
+#define EFI_VARIABLE_NON_VOLATILE 1
+#define EFI_STATUS_CODE_TYPE_MASK 0xff
+#define EFI_ERROR_CODE 1
+#define EFI_PROGRESS_CODE 2
+#define EFI_SOFTWARE_DXE_BS_DRIVER 0x10000
+#define EFI_SW_DXE_BS_EC_BOOT_OPTION_LOAD_ERROR 0x12
+#define EFI_SW_DXE_BS_EC_BOOT_OPTION_FAILED 0x13
+#define EFI_SOFTWARE_EFI_BOOT_SERVICE 0x20000
+#define EFI_SW_BS_PC_EXIT_BOOT_SERVICES 0x20
+#define MAX_UINTN SIZE_MAX
+#define LoadOptionNumberUnassigned SIZE_MAX
+#define LoadOptionTypeBoot 0
+#define LOAD_OPTION_ACTIVE 1
+#define ZeroMem(p,n) memset((p),0,(n))
+#define CopyMem(d,s,n) memmove((d),(s),(n))
+#define FreePool(p) free(p)
+#define ASSERT(x) assert(x)
+static int assertion_errors;
+#define ASSERT_EFI_ERROR(x) do { if (EFI_ERROR(x)) assertion_errors++; } while (0)
+typedef int EFI_BOOT_MANAGER_LOAD_OPTION_TYPE;
+typedef struct { int dummy; } EFI_DEVICE_PATH_PROTOCOL;
+typedef EFI_DEVICE_PATH_PROTOCOL MEDIA_FW_VOL_FILEPATH_DEVICE_PATH;
+typedef struct { EFI_HANDLE DeviceHandle; } EFI_LOADED_IMAGE_PROTOCOL;
+typedef struct { UINTN OptionNumber; } EFI_BOOT_MANAGER_LOAD_OPTION;
+static EFI_GUID gEfiGlobalVariableGuid, gEfiLoadedImageProtocolGuid;
+static EFI_HANDLE gImageHandle;
+static EFI_DEVICE_PATH_PROTOCOL device_path;
+static EFI_LOADED_IMAGE_PROTOCOL loaded_image;
+static UINT16 order[16];
+static UINTN count, raw_size;
+static EFI_STATUS get_error, set_error;
+static int writes, diagnostics, deadloops;
+static EFI_STATUS last_failure;
+static EFI_STATUS SetVariable(CHAR16 *name, EFI_GUID *guid, UINT32 attrs, UINTN size, void *data) {
+    assert(wcscmp(name,L"BootOrder")==0 && guid==&gEfiGlobalVariableGuid && attrs==7);
+    assert(size==count*sizeof(UINT16));
+    writes++;
+    if (set_error) return set_error;
+    memcpy(order,data,size);
+    return EFI_SUCCESS;
+}
+static struct { EFI_STATUS (*SetVariable)(CHAR16*,EFI_GUID*,UINT32,UINTN,void*); } runtime = {SetVariable}, *gRT=&runtime;
+static EFI_STATUS GetEfiGlobalVariable2(CHAR16 *name, void **data, UINTN *size) {
+    assert(wcscmp(name,L"BootOrder")==0);
+    if (get_error) return get_error;
+    *size=raw_size;
+    *data=malloc(raw_size ? raw_size : 1);
+    memcpy(*data,order,raw_size);
+    return EFI_SUCCESS;
+}
+static EFI_STATUS HandleProtocol(EFI_HANDLE handle, EFI_GUID *guid, void **out) {
+    (void)handle;(void)guid;*out=&loaded_image;return EFI_SUCCESS;
+}
+static struct { EFI_STATUS (*HandleProtocol)(EFI_HANDLE,EFI_GUID*,void**); } boot={HandleProtocol}, *gBS=&boot;
+static void EfiInitializeFwVolDevicepathNode(MEDIA_FW_VOL_FILEPATH_DEVICE_PATH *node, const EFI_GUID *guid) {(void)node;(void)guid;}
+static EFI_DEVICE_PATH_PROTOCOL *DevicePathFromHandle(EFI_HANDLE handle) {(void)handle;return &device_path;}
+static EFI_DEVICE_PATH_PROTOCOL *AppendDevicePathNode(EFI_DEVICE_PATH_PROTOCOL *a, EFI_DEVICE_PATH_PROTOCOL *b) {(void)a;(void)b;return malloc(sizeof(*a));}
+static EFI_STATUS EfiBootManagerInitializeLoadOption(EFI_BOOT_MANAGER_LOAD_OPTION *o, UINTN n,int type,UINT32 attr,CHAR16 *desc,EFI_DEVICE_PATH_PROTOCOL *path,UINT8 *data,UINT32 size) {
+    (void)type;(void)attr;(void)desc;(void)path;(void)data;(void)size;o->OptionNumber=n;return EFI_SUCCESS;
+}
+static EFI_BOOT_MANAGER_LOAD_OPTION *EfiBootManagerGetLoadOptions(UINTN *n,int type) {
+    (void)type;*n=count;
+    EFI_BOOT_MANAGER_LOAD_OPTION *p=calloc(count ? count : 1,sizeof(*p));
+    for (UINTN i=0;i<count;i++) p[i].OptionNumber=order[i];
+    return p;
+}
+static INTN EfiBootManagerFindLoadOption(EFI_BOOT_MANAGER_LOAD_OPTION *o,EFI_BOOT_MANAGER_LOAD_OPTION *p,UINTN n) {
+    (void)o;for (UINTN i=0;i<n;i++) if (p[i].OptionNumber==9) return i;return -1;
+}
+static EFI_STATUS EfiBootManagerAddLoadOptionVariable(EFI_BOOT_MANAGER_LOAD_OPTION *o,UINTN pos) {
+    if (pos>count) pos=count;
+    memmove(order+pos+1,order+pos,(count-pos)*sizeof(UINT16));
+    order[pos]=9;o->OptionNumber=9;count++;raw_size=count*sizeof(UINT16);return EFI_SUCCESS;
+}
+static void EfiBootManagerFreeLoadOption(EFI_BOOT_MANAGER_LOAD_OPTION *o) {(void)o;}
+static void EfiBootManagerFreeLoadOptions(EFI_BOOT_MANAGER_LOAD_OPTION *o,UINTN n) {(void)n;free(o);}
+static void Print(const CHAR16 *format,...) {
+    diagnostics++;
+    if (wcsstr(format,L"Single boot failure:")) {
+        va_list args;va_start(args,format);(void)va_arg(args,UINT32);last_failure=va_arg(args,EFI_STATUS);va_end(args);
+    }
+}
+static int CompareGuid(const EFI_GUID *a,const EFI_GUID *b) {return memcmp(a,b,sizeof(*a))==0;}
+static void CpuDeadLoop(void) {deadloops++;}
+static struct { void (*Unregister)(void*); } *mRscHandler;
+@@FUNCTIONS@@
+static void reset(const UINT16 *values,UINTN n) {
+    memcpy(order,values,n*sizeof(UINT16));count=n;raw_size=n*sizeof(UINT16);
+    get_error=set_error=0;writes=diagnostics=deadloops=assertion_errors=0;
+}
+static void expect(const UINT16 *values,UINTN n) {assert(count==n && memcmp(order,values,n*sizeof(UINT16))==0);}
+int main(void) {
+    const UINT16 stock[]={1,2,3}, appended[]={1,2,3,9}, promoted[]={9,1,2,3};
+    reset(stock,3);PlatformRegisterFvBootOption(&gEfiGlobalVariableGuid,L"app",1,LoadOptionTypeBoot,0);expect(promoted,4);
+    reset(stock,3);PlatformRegisterFvBootOption(&gEfiGlobalVariableGuid,L"normal",1,LoadOptionTypeBoot,MAX_UINTN);expect(appended,4);
+    reset(appended,4);PlatformRegisterFvBootOption(&gEfiGlobalVariableGuid,L"app",1,LoadOptionTypeBoot,0);expect(promoted,4);assert(writes==1);
+    reset(promoted,4);PlatformRegisterFvBootOption(&gEfiGlobalVariableGuid,L"app",1,LoadOptionTypeBoot,0);expect(promoted,4);assert(writes==0);
+    reset(appended,4);PlatformRegisterFvBootOption(&gEfiGlobalVariableGuid,L"normal",1,LoadOptionTypeBoot,MAX_UINTN);expect(appended,4);assert(writes==0);
+    reset(stock,0);PlatformRegisterFvBootOption(&gEfiGlobalVariableGuid,L"app",1,LoadOptionTypeBoot,0);assert(count==1 && order[0]==9);
+    reset(stock,3);assert(PlatformPromoteBootOption(9)==EFI_NOT_FOUND);expect(stock,3);assert(writes==0);
+    reset(appended,4);raw_size=3;assert(PlatformPromoteBootOption(9)==EFI_COMPROMISED_DATA);assert(writes==0);
+    reset(appended,4);raw_size=0;assert(PlatformPromoteBootOption(9)==EFI_COMPROMISED_DATA);assert(writes==0);
+    reset(appended,4);get_error=EFI_OUT_OF_RESOURCES;assert(PlatformPromoteBootOption(9)==get_error);expect(appended,4);assert(writes==0);
+    reset(appended,4);set_error=EFI_WRITE_PROTECTED;PlatformRegisterFvBootOption(&gEfiGlobalVariableGuid,L"app",1,LoadOptionTypeBoot,0);expect(appended,4);assert(writes==1 && diagnostics==1 && assertion_errors==1);
+    EFI_RETURN_STATUS_EXTENDED_DATA data={0};
+    EFI_GUID type=EFI_STATUS_CODE_SPECIFIC_DATA_GUID;
+    data.DataHeader.Type=type;data.DataHeader.HeaderSize=sizeof(EFI_STATUS_CODE_DATA);
+    data.DataHeader.Size=sizeof(data)-sizeof(data.DataHeader);data.ReturnStatus=EFI_NOT_FOUND;
+    SingleBootStatusCodeCallback(EFI_ERROR_CODE,EFI_SOFTWARE_DXE_BS_DRIVER|EFI_SW_DXE_BS_EC_BOOT_OPTION_LOAD_ERROR,0,NULL,&data.DataHeader);
+    assert(deadloops==1 && last_failure==EFI_NOT_FOUND);
+    data.DataHeader.Type.bytes[0]=99;
+    SingleBootStatusCodeCallback(EFI_ERROR_CODE,EFI_SOFTWARE_DXE_BS_DRIVER|EFI_SW_DXE_BS_EC_BOOT_OPTION_LOAD_ERROR,0,NULL,&data.DataHeader);
+    assert(deadloops==2 && last_failure==EFI_LOAD_ERROR);
+    data.DataHeader.Type=type;data.DataHeader.Size=0;
+    SingleBootStatusCodeCallback(EFI_ERROR_CODE,EFI_SOFTWARE_DXE_BS_DRIVER|EFI_SW_DXE_BS_EC_BOOT_OPTION_FAILED,0,NULL,&data.DataHeader);
+    assert(deadloops==3 && last_failure==EFI_LOAD_ERROR);
+    puts("single-boot registration, promotion, error and diagnostic cases passed");return 0;
+}

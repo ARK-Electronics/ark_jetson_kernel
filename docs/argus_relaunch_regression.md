@@ -1,5 +1,11 @@
 # JetPack 6.2.2 Argus Regression
 
+**Historical R36.5.0 / JetPack 6 record.** The current R39.2.1 / JetPack 7
+image uses its native camera packages without dependency rewriting or camera
+package holds. The R36 findings and validation below do not establish R39 camera
+behavior. See [JetPack 7 provisioning](jetpack7_provisioning.md) for the current
+package policy.
+
 Tracking doc for [issue #107](https://github.com/ARK-Electronics/ark_jetson_kernel/issues/107): camera pipelines that work on our old R36.4.3-based images misbehave on the R36.5.0 / JetPack 6.2.2 base. **Status: reproduced on the bench, root-caused to NVIDIA's closed camera userspace, and fixed in this repo by pinning that stack to the last good release (2026-07-17).** The kernel, device tree, and RCE firmware we build/flash are exonerated — nothing in the BSP side of this repo is at fault.
 
 ## Symptom
@@ -43,13 +49,13 @@ Conclusions the data forces:
 - The two failure signatures come from the same userspace: both vanish together with the version swap.
 - Partial swaps don't work: 36.4.x `nvidia-l4t-camera` alone against 36.5.0 multimedia fails with `(Argus) Error BadParameter: Invalid surface count` (NvBufSurface ABI skew). The four debs must move as a set.
 
-## The fix (shipped in this repo)
+## The historical R36 fix
 
-`--provision` now pins the camera userspace stack to `NV_CAMERA_STACK_VERSION` (versions.env, currently `36.4.4-20250616085344` = JetPack 6.2.1, the newest bench-clean release). Because the 36.4.x debs declare `nvidia-l4t-core (<< 36.5-0)` and exact-stamp deps on cuda/nvsci, provision.sh repacks them (`relax_l4t_deps`): core cap relaxed, out-of-set exact deps unversioned, in-set exact deps retargeted, and the version restamped to `NV_CAMERA_PIN_VERSION` (`36.5.99-20250616085344+ark1`). They then install as one ordinary `apt-get install --allow-downgrades` transaction — dpkg/apt state stays consistent (`apt-get check` clean) — and are `apt-mark hold` so an on-device upgrade against NVIDIA's repo can't drag them back to the regressed stamp.
+On the historical R36.5 image, `--provision` pinned the camera userspace stack to `NV_CAMERA_STACK_VERSION=36.4.4-20250616085344` (JetPack 6.2.1, the newest bench-clean release in this investigation). Because the 36.4.x debs declare `nvidia-l4t-core (<< 36.5-0)` and exact-stamp deps on cuda/nvsci, provision.sh repacks them (`relax_l4t_deps`): core cap relaxed, out-of-set exact deps unversioned, in-set exact deps retargeted, and the version restamped to `NV_CAMERA_PIN_VERSION` (`36.5.99-20250616085344+ark1`). They then install as one ordinary `apt-get install --allow-downgrades` transaction — dpkg/apt state stays consistent (`apt-get check` clean) — and are `apt-mark hold` so an on-device upgrade against NVIDIA's repo can't drag them back to the regressed stamp.
 
 Already-flashed 6.2.2.x devices can be fixed in place with the same four repacked debs: `sudo apt-get install -y --allow-downgrades ./ark1_*.deb && sudo apt-mark hold nvidia-l4t-gstreamer nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils && sudo systemctl restart nvargus-daemon`.
 
-On each BSP bump, rerun the repro below against the new stock stack; drop the pin (set `NV_CAMERA_STACK_VERSION` back to the BSP stamp) once NVIDIA ships a fixed userspace. Known tradeoff while pinned: the camera stack stops receiving NVIDIA's 36.5.x security/bug updates.
+For an R36 BSP update, rerun the repro below against the new stock stack before retiring the R36-specific workaround. R39 uses a separate native policy and still requires its own capture/relaunch validation. Known tradeoff while the R36 stack is pinned: the camera stack stops receiving NVIDIA's 36.5.x security/bug updates.
 
 ### Why the version is restamped, not just suffixed
 

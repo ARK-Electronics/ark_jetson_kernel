@@ -1,0 +1,14 @@
+# NVIDIA R39.2.1 release tags (not r39.2.1-updates).
+# Manifest: NVIDIA/edk2-edkrepo-manifest @ 51b5da39c05d21b2c1df13958364386de901737d
+# Combination: edk2-nvidia/Platform/NVIDIAPlatformsManifest.xml, r39.2.1.
+edk2 5acf429321649bc191baf19de19670216a75cfb0
+edk2-non-osi c07d24e45c87d175ad1dc5d74b2c7feed9356503
+edk2-platforms 30c062833913616d54e2101c9d3157e955de1054
+edk2-infineon ce1af51fc4585ef4b0ae30dfeafeae572c89389a
+edk2-redfish-client 478e249e8b9526b3fe668d4bfaf590f37777629c
+edk2-nvidia 7e9f9ec4de8d979807683a7b4605a15ec3299b89
+edk2-nvidia-non-osi a7f635e781e067613b5080da22bd563072718cb6
+
+# AvbLib is referenced by Tegra, but its checkout is omitted by this combination.
+# Pin the same android-platform-14.0.0_r5 used by this manifest's Android builds.
+edk2-nvidia/Silicon/NVIDIA/Library/AvbLib/libavb 386fb90492db3bd6bc484a579bcde5b43a2a0292 https://android.googlesource.com/platform/external/avb

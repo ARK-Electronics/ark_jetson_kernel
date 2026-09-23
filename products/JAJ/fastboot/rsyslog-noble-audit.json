@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "ubuntu_version": "24.04",
+  "l4t_release": "39.2.1",
+  "configs": {
+    "etc/rsyslog.conf": "2efb050aaf43676fab0b7e940b5eba193f451360a8f4c7972a01c308f1445d7d",
+    "etc/rsyslog.d/50-default.conf": "41c17b77c5b3bc4b2c18dd495d0078268091d67d11ce2cc694b1bc83ca3bae80",
+    "etc/logrotate.d/rsyslog": "1e493ae5151c429d214d2f43e69da4431e6293abf755a7b3d367f7180f3f005e",
+    "etc/systemd/journald.conf": "6af661145728f9aa26b8f83a2fb21f6e0ccb871f28dc6250eb13b47d97ccf270",
+    "usr/lib/rsyslog/reload-apparmor-profile": "eec0bf16836e34f166fb5da22836bd65676e5b670152a00c257f24d4176b2cac",
+    "usr/lib/systemd/journald.conf.d/syslog.conf": "ee200674b7f89baf8f543ec2a6df954395577b8724a99ab6a99acf3c11ddc344",
+    "etc/rsyslog.d/21-cloudinit.conf": "98a31a4c66e573885df151fefceb38273000a4126618c8733a39ae2a9a9a0cdf",
+    "usr/lib/systemd/system/systemd-journald.service.d/nice.conf": "200fa6d390295aba030295ff1bd0d37090c9bb1903641d6d6df1d439592ac5a4"
+  },
+  "units": {
+    "rsyslog.service": "2728f43f3e86d6eb2480d6cbc38a977e185b369c3733351459f40a9fc7581b2c",
+    "syslog.socket": "78fc9f6b50902378345ffc4d5e2ffd50a5119932625d0c6f5c7324b0c4005bdf",
+    "systemd-journald.service": "99389b0e3329dad0828df1600cdd31ec271bcc3403bc014018903c5705ec68ef",
+    "systemd-journald.socket": "807ab9ed1e8c6bcf3c756c43f2ae3615968de6914747b35b87351cffbdaec601",
+    "systemd-journald-dev-log.socket": "9d5909c49c4da8b97df6af6273912550b4e2ebf602073ddd450092bc046c5b97",
+    "systemd-journald-audit.socket": "cb14fc47722ea950289dcbb1921d1f61724342ad3eb42f719df475fbc38a9077"
+  },
+  "apparmor": {
+    "files": {
+      "etc/apparmor.d/usr.sbin.rsyslogd": "161bd176be6bde54100423fe188e32b1b2e7510f6ae563dc9b4c44d5a9682b94",
+      "etc/apparmor.d/tunables/global": "2c1d72013b53bf103fb8abe2199ce5775f8493df1acd3ef497046156c09fdf7c",
+      "etc/apparmor.d/tunables/home": "806a4e80696e3870d46d1ae99ac7fe7099680b39040c2183094a44671d83218e",
+      "etc/apparmor.d/tunables/home.d/site.local": "f6f9d209f8015196f2e391ea02debcebecbf8022ececfee3a08e3973c3bb06d4",
+      "etc/apparmor.d/tunables/home.d/ubuntu": "e1b3a24d2ffdcf2b02f8726941f3c6c32dee3c9222553959a335147494d74a2d",
+      "etc/apparmor.d/tunables/multiarch": "0d35e0680f4dd9085a1c64911be21e95a65d12db045bde4b4ecae22915ce53ff",
+      "etc/apparmor.d/tunables/multiarch.d/site.local": "731ad52936633b9a0c738605a2a08aad2357df91ca8fbe3bd2c3427d7aac240b",
+      "etc/apparmor.d/tunables/proc": "d6a8ac6910ecdde3930916dcb44d7b3d3bf1cfe5a8f54728f1f599e32a26ece7",
+      "etc/apparmor.d/tunables/alias": "e7b8b278db3f7aca74e0176f22cbd3adc3c89212cc9e66a90a2787b3ceee8030",
+      "etc/apparmor.d/tunables/kernelvars": "a2fa754e93a435722ea4b8b03e2bdf52bf4c029c66397b773f5e4321d6f66ea5",
+      "etc/apparmor.d/tunables/system": "84dfeb5a2239e9cb7626b8008275c5aa0602d671303f4b43b7db0eff4688b828",
+      "etc/apparmor.d/tunables/xdg-user-dirs": "1d92b108e04a4067333224c4dbfd19df8ca0f0deef7a28b153995e22fe8cedb7",
+      "etc/apparmor.d/tunables/xdg-user-dirs.d/site.local": "d9705b1ab368e32f4cce94f2242c6947b8624985b9c6de2ab4ee01b398dc4703",
+      "etc/apparmor.d/tunables/share": "5389ddceeb78d2012f528037e5c8205535f145c906cf6266ba400d9bafea26b7",
+      "etc/apparmor.d/tunables/etc": "4211a2db7a81c3edea6a657f8eacdae4322235c1d766ac95a592cb6f1b43f7ee",
+      "etc/apparmor.d/tunables/run": "cbe2d9c99a82124d6206bfdd377895fa3dec48ee255923d2c31b71be53ab9bdd",
+      "etc/apparmor.d/abstractions/base": "bd5e82954361fb71ac6a41ed85c329e65610cb6f2c07a46151ac7a6a9660657b",
+      "etc/apparmor.d/abstractions/crypto": "40f5b40b043144fa6d5af50a57967115f36bea47c9fa27f6d4e5b00716298c40",
+      "etc/apparmor.d/abstractions/openssl": "d4622d9de854fd68e870232aad98d4491e7e401cf9fb833566d3b28b16b4bf66",
+      "etc/apparmor.d/abstractions/nameservice": "18f6327cb843079d18828f0d6693cfeea1f04ca1132450f732b0081539070780",
+      "etc/apparmor.d/abstractions/nis": "920b31479a4b735b1a416790692c481829a7ba2aa20355d33a292bb56d12db05",
+      "etc/apparmor.d/abstractions/ldapclient": "8f89e367342affc5b096390886aacef98ca02af6e8472018485d0bee66452e71",
+      "etc/apparmor.d/abstractions/ssl_certs": "719005856dd42c37fbcd4305962d44e9a4f0dc4fcf55ba806d45023ec50f583f",
+      "etc/apparmor.d/abstractions/winbind": "7b8d0d4be6b424813feb37b119243cb125837acad63941386e1f9dda6f2ee704",
+      "etc/apparmor.d/abstractions/likewise": "ec7a4c5c6310e15350dbb15bab345afab3ad9f01dbbca9185c56ffa6c8be3938",
+      "etc/apparmor.d/abstractions/mdns": "f8b039ce5ebed7dbffdce062f6c1a9306d4946cca0a647d310643c491ec5628e",
+      "etc/apparmor.d/abstractions/kerberosclient": "20a69d2b402a5670e2a43e9648bafecec6919288c921665f083a7571a0f6c5f3",
+      "etc/apparmor.d/abstractions/nss-systemd": "3c3a8615b2023b47643f8864d0cf3a55fd4088fe45c0342d46d03944b2f36005",
+      "etc/apparmor.d/abstractions/dbus-strict": "1c6023fa3ab21b9792a513161869ac8209de9ad1b34cc7fcba2c02dd6b1c3a89",
+      "etc/apparmor.d/rsyslog.d/README": "1255f6311ba489918c292e38c9dea0d2c9a498f65d091d80965b200b3c355396",
+      "etc/apparmor.d/local/usr.sbin.rsyslogd": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "directories": {
+      "etc/apparmor.d/tunables/home.d": [
+        "site.local",
+        "ubuntu"
+      ],
+      "etc/apparmor.d/tunables/multiarch.d": [
+        "site.local"
+      ],
+      "etc/apparmor.d/tunables/xdg-user-dirs.d": [
+        "site.local"
+      ],
+      "etc/apparmor.d/rsyslog.d": [
+        "README"
+      ]
+    },
+    "absent": [
+      "etc/apparmor.d/tunables/proc.d",
+      "etc/apparmor.d/tunables/alias.d",
+      "etc/apparmor.d/tunables/kernelvars.d",
+      "etc/apparmor.d/tunables/system.d",
+      "etc/apparmor.d/tunables/share.d",
+      "etc/apparmor.d/tunables/etc.d",
+      "etc/apparmor.d/tunables/run.d",
+      "etc/apparmor.d/tunables/global.d",
+      "etc/apparmor.d/abstractions/openssl.d",
+      "etc/apparmor.d/abstractions/crypto.d",
+      "etc/apparmor.d/abstractions/base.d",
+      "etc/apparmor.d/abstractions/nis.d",
+      "etc/apparmor.d/abstractions/ssl_certs.d",
+      "etc/apparmor.d/abstractions/ldapclient.d",
+      "etc/apparmor.d/abstractions/winbind.d",
+      "etc/apparmor.d/abstractions/likewise.d",
+      "etc/apparmor.d/abstractions/mdns.d",
+      "etc/apparmor.d/abstractions/kerberosclient.d",
+      "etc/apparmor.d/abstractions/nss-systemd.d",
+      "etc/apparmor.d/abstractions/dbus-strict.d",
+      "etc/apparmor.d/abstractions/nameservice.d"
+    ]
+  },
+  "unit_dropin_directories": {
+    "usr/lib/systemd/system/systemd-journald.service.d": [
+      "nice.conf"
+    ]
+  },
+  "optional_journal_dropins": {
+    "etc/systemd/journald.conf.d/10-ark-os.conf": "0d095c83e3334d0e79f5ae4dc5a83c1217f0db9633fc3513ab452e99c8ca0f99"
+  }
+}

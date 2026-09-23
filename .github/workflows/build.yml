@@ -14,7 +14,62 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
+  validation:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validation tools
+        run: sudo apt-get update -qq && sudo apt-get install -y device-tree-compiler gcc patch
+      - name: Validate build and fast-boot helpers
+        run: sudo python3 -m unittest discover -s scripts -p 'test_*.py'
+
+  ark_os_noble:
+    # Only release tags provision an application; ordinary PR/main builds keep
+    # their kernel-only path. Native ARM64 avoids a multi-hour emulated build.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Free application build space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Build pinned Noble application natively
+        run: |
+          test "$(uname -m)" = aarch64
+          ./scripts/build_ark_os_noble.sh "$RUNNER_TEMP/ark-os-noble-build"
+
+      - name: Share Noble package and build provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: ark-os-noble
+          path: |
+            downloads/ark-os-jetson-noble_*_arm64.deb
+            downloads/ark-os-jetson-noble_*_arm64.build.json
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+
   build:
+    needs: [validation, ark_os_noble]
+    # Validation gates every build. A skipped release-only application job must
+    # not skip PR/main compile checks; releases also require that artifact.
+    if: ${{ !cancelled() && needs.validation.result == 'success' && (!startsWith(github.ref, 'refs/tags/') || needs.ark_os_noble.result == 'success') }}
     runs-on: ubuntu-22.04
     # Kernel build alone is ~70 min on a cold ccache; leave headroom for packaging
     # (tar + parallel compress of the rootfs) and the multi-GB release upload.
@@ -22,6 +77,8 @@ jobs:
     permissions:
       contents: write
     env:
+      # Keep the /mnt staging symlink reachable after R39 container handoff.
+      ARK_STAGING_MOUNT: /mnt/staging
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # Above one build's object set (~1 GB) so ccache doesn't evict its own hits;
       # the rotating ccache is the natural LRU victim under the repo's 10 GB budget.
@@ -29,7 +86,7 @@ jobs:
       # Fresh checkouts reset mtimes and a few kernel files embed __DATE__/__TIME__;
       # ignore those so they don't force misses.
       CCACHE_SLOPPINESS: time_macros,include_file_ctime,include_file_mtime
-      # The bootlin toolchain is restored from its own cache each run with fresh
+      # The cross toolchain is restored from its own cache each run with fresh
       # mtimes; ccache's default compiler check is the compiler's mtime, so that alone
       # invalidated the entire cache (observed ~1% hit rate). Hash the compiler's
       # contents instead so hits survive a toolchain cache restore.
@@ -47,9 +104,11 @@ jobs:
             jaj-*)    PRODUCT="jaj";    VERSION="${TAG#jaj-}";    TARGET="JAJ" ;;
             *) echo "::error::Unrecognized tag format: $TAG"; exit 1 ;;
           esac
-          echo "product=$PRODUCT" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "target=$TARGET"   >> "$GITHUB_OUTPUT"
+          {
+            echo "product=$PRODUCT"
+            echo "version=$VERSION"
+            echo "target=$TARGET"
+          } >> "$GITHUB_OUTPUT"
           echo "Parsed tag: product=$PRODUCT version=$VERSION target=$TARGET"
 
       - uses: actions/checkout@v4
@@ -96,7 +155,7 @@ jobs:
           echo "bsp=${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}" >> "$GITHUB_OUTPUT"
           echo "toolchain=$(basename "$TOOLCHAIN_URL")" >> "$GITHUB_OUTPUT"
 
-      - name: Cache bootlin toolchain
+      - name: Cache cross toolchain
         uses: actions/cache@v4
         with:
           path: ~/l4t-gcc
@@ -120,6 +179,32 @@ jobs:
           restore-keys: |
             ccache-${{ steps.cachekeys.outputs.bsp }}-
 
+      - name: Download Noble application artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/download-artifact@v5
+        with:
+          name: ark-os-noble
+          path: downloads
+
+      - name: Verify Noble application provenance
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          source versions.env
+          python3 - "$ARK_OS_VERSION" "$ARK_OS_SOURCE_COMMIT" <<'PYTHON'
+          import hashlib, json, pathlib, sys
+          package = pathlib.Path("downloads") / f"ark-os-jetson-noble_{sys.argv[1]}_arm64.deb"
+          metadata = json.loads(package.with_suffix(".build.json").read_text())
+          digest = hashlib.sha256()
+          with package.open("rb") as stream:
+              for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                  digest.update(chunk)
+          if metadata["package"] != package.name or metadata["source_commit"] != sys.argv[2]:
+              raise SystemExit("Noble artifact does not match the pinned source/version")
+          if metadata["sha256"] != digest.hexdigest():
+              raise SystemExit("Noble artifact checksum mismatch")
+          print(f"Verified {package.name}: {digest.hexdigest()}")
+          PYTHON
+
       - name: Download BSP
         run: ./setup.sh --force
 
@@ -127,12 +212,11 @@ jobs:
         run: ccache -z
 
       - name: Build kernel
-        # Provisioning (ARK-OS + the pinned camera stack) is the build default now;
-        # tag builds keep --provision explicit for clarity. provision.sh falls back
-        # loudly to the newest published (pre)release if the pin isn't published. The
-        # draft release ships a flashable, provisioned image; promoting it to published
-        # is a GitHub toggle with no rebuild. PR/main builds only compile-check, so
-        # --no-provision skips the ~6 min provision and its NVIDIA/GitHub network deps.
+        # Release tags consume the pinned Noble artifact built above, then
+        # provision ARK-OS and the native R39 camera stack into the image. Missing
+        # or incompatible artifacts fail; no other release or OS is substituted.
+        # The draft release ships the resulting provisioned image. PR/main builds
+        # use --no-provision to retain the existing kernel compile-check path.
         run: |
           if [ -n "${{ steps.tag.outputs.target }}" ]; then
             ./build.sh ${{ steps.tag.outputs.target }} --provision
