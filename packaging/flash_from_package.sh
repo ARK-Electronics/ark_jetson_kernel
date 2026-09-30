@@ -17,10 +17,16 @@
 # needs an account with read access to the repo.
 #
 # --encrypt flashes the rootfs to a LUKS partition that the module unlocks by itself
-# at boot and that the SSD alone cannot open (docs/disk_encryption.md). It needs a
-# package that bundles ark_disk_encryption/, always regenerates the images (they are
-# bound to one module and one key), and generates a random disk key under
-# ~/.ark-jetson-keys/ unless --disk-key names one.
+# at boot and that the SSD alone cannot open (docs/disk_encryption.md). It generates a
+# random disk key under ~/.ark-jetson-keys/ unless --disk-key names one.
+#
+# --uefi-secure-boot KEYS enables UEFI Secure Boot with a key directory from
+# scripts/secure_boot/gen_secure_boot_keys.sh; --secure-boot KEYS also signs and
+# encrypts the boot chain, for a module fused with that directory's fuses.xml
+# (docs/secure_boot.md).
+#
+# Both need a package that bundles the ark/ helpers, and always regenerate the images:
+# encrypted ones are bound to one module and one disk key, signed ones to one key set.
 #
 # Usage:
 #   ./flash_from_package.sh <tag>             # specific release (e.g. pab-6.2.1.1); auto-detects a draft of that tag
@@ -28,6 +34,8 @@
 #   ./flash_from_package.sh <product> --draft # latest DRAFT release for a product (needs gh read access)
 #   ./flash_from_package.sh <tag> --full      # regenerate images even if cached ones match
 #   ./flash_from_package.sh <product> --encrypt [--disk-key FILE]  # encrypted rootfs
+#   ./flash_from_package.sh <product> --secure-boot KEYS           # signed boot chain + UEFI Secure Boot
+#   ./flash_from_package.sh <product> --uefi-secure-boot KEYS      # UEFI Secure Boot only, no fuses
 #   ./flash_from_package.sh --clean           # remove all cached data
 
 set -euo pipefail
@@ -47,6 +55,8 @@ usage() {
     echo "  $(basename "$0") pab --full      Regenerate flash images even if cached ones match"
     echo "  $(basename "$0") jaj --encrypt   Encrypt the rootfs; the module unlocks it at boot"
     echo "      [--disk-key FILE]            Use this 16-byte hex disk key instead of a new one"
+    echo "  $(basename "$0") jaj --secure-boot KEYS       Sign the boot chain (fused module) + UEFI Secure Boot"
+    echo "  $(basename "$0") jaj --uefi-secure-boot KEYS  UEFI Secure Boot only (no fuses)"
     echo "  $(basename "$0") --clean         Remove all cached data"
     echo ""
     echo "Note: PAB Rev3 is not the same as PAB_V3. PAB_V3 is a separate product."
@@ -66,6 +76,9 @@ FORCE_FULL=0
 WANT_DRAFT=0
 ENCRYPT=0
 DISK_KEY=""
+SECURE_BOOT_MODE=""
+SECURE_BOOT_KEYS=""
+SB_FLASH_ARGS=()
 args=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -76,6 +89,12 @@ while [ $# -gt 0 ]; do
             [ -n "${2:-}" ] || { echo "ERROR: --disk-key needs a key file." >&2; exit 1; }
             ENCRYPT=1
             DISK_KEY="$2"
+            shift ;;
+        --secure-boot|--uefi-secure-boot)
+            [ -n "${2:-}" ] || { echo "ERROR: $1 needs a key directory." >&2; exit 1; }
+            [ -z "$SECURE_BOOT_MODE" ] || { echo "ERROR: give one of --secure-boot and --uefi-secure-boot." >&2; exit 1; }
+            if [ "$1" = --secure-boot ]; then SECURE_BOOT_MODE=full; else SECURE_BOOT_MODE=uefi; fi
+            SECURE_BOOT_KEYS="$2"
             shift ;;
         *)         args+=("$1") ;;
     esac
@@ -121,6 +140,10 @@ FLASH_PREREQS=(abootimg binfmt-support binutils cpio cpp curl
 # tool is Python. Only --encrypt asks for them, so a plain flash needs nothing new.
 if [ "$ENCRYPT" = 1 ]; then
     FLASH_PREREQS+=(cryptsetup python3-cryptography)
+fi
+# UEFI payload signing (sbsign), and the EKB tool for a K1-fused module.
+if [ -n "$SECURE_BOOT_MODE" ]; then
+    FLASH_PREREQS+=(sbsigntool python3-cryptography)
 fi
 
 missing=()
@@ -521,18 +544,26 @@ if [ -f "$L4T_DIR/ark_flash.conf" ]; then
     source "$L4T_DIR/ark_flash.conf"
 fi
 
-# The encryption helper travels with the package, like ark_flash.conf, so it always
-# matches the BSP it drives.
+# The encryption and secure boot helpers travel with the package, like ark_flash.conf,
+# so they always match the BSP they drive.
 DISK_KEY_FILE=""
-if [ "$ENCRYPT" = 1 ]; then
-    DISK_ENC_HELPER="$L4T_DIR/ark_disk_encryption/disk_encryption.sh"
-    if ! sudo test -f "$DISK_ENC_HELPER"; then
-        echo "ERROR: $RELEASE_TAG predates encrypted flashing (no ark_disk_encryption/ in the" >&2
-        echo "       package). Flash a newer release, or build from source: ./flash.sh <TARGET> --encrypt" >&2
+if [ "$ENCRYPT" = 1 ] || [ -n "$SECURE_BOOT_MODE" ]; then
+    if ! sudo test -f "$L4T_DIR/ark/disk_encryption/disk_encryption.sh" || \
+       ! sudo test -f "$L4T_DIR/ark/secure_boot/secure_boot.sh"; then
+        echo "ERROR: $RELEASE_TAG predates encrypted and secure boot flashing (no ark/ helpers in" >&2
+        echo "       the package). Flash a newer release, or build from source with ./flash.sh." >&2
         exit 1
     fi
-    # shellcheck disable=SC1090
-    source "$DISK_ENC_HELPER"
+fi
+if [ -n "$SECURE_BOOT_MODE" ]; then
+    # shellcheck disable=SC1091
+    source "$L4T_DIR/ark/secure_boot/secure_boot.sh"
+    sb_check_host
+    sb_load "$SECURE_BOOT_MODE" "$SECURE_BOOT_KEYS"
+fi
+if [ "$ENCRYPT" = 1 ]; then
+    # shellcheck disable=SC1091
+    source "$L4T_DIR/ark/disk_encryption/disk_encryption.sh"
     disk_enc_check_host
     if [ -n "$DISK_KEY" ]; then
         DISK_KEY_FILE="$(disk_enc_key_file "$DISK_KEY" "$RELEASE_TAG")"
@@ -586,9 +617,10 @@ echo ""
 # to full regeneration.
 GEN_MARKER="$L4T_DIR/.ark-flash-gen"
 REPLAY=0
-if [ "$ENCRYPT" = "1" ]; then
-    # Encrypted images are bound to the module's ECID and to this flash's disk key.
-    echo "--encrypt: generating images for this module."
+if [ "$ENCRYPT" = "1" ] || [ -n "$SECURE_BOOT_MODE" ]; then
+    # Encrypted images are bound to the module's ECID and this flash's disk key, signed
+    # ones to this key set.
+    echo "Encrypted or signed flash: generating images for this module."
 elif [ "$FORCE_FULL" = "1" ]; then
     echo "--full: regenerating flash images."
 elif [ -f "$GEN_MARKER" ] && [ -f tools/kernel_flash/initrdflashparam.txt ] && [ -d tools/kernel_flash/images ]; then
@@ -684,15 +716,16 @@ else
     if [ -n "$ADDITIONAL_DTB_OVERLAY" ]; then
         echo "Baking default device-tree overlay(s) into the image: $ADDITIONAL_DTB_OVERLAY"
     fi
-    if [ "$ENCRYPT" = "1" ]; then
-        # No replay marker afterwards: the images left behind belong to this module alone.
-        if [ -z "$DISK_KEY_FILE" ]; then
-            DISK_KEY_FILE="$(disk_enc_key_file "" "$RELEASE_TAG")"
-            echo "Generated disk key $DISK_KEY_FILE"
+    if [ "$ENCRYPT" = "1" ] && [ -z "$DISK_KEY_FILE" ]; then
+        DISK_KEY_FILE="$(disk_enc_key_file "" "$RELEASE_TAG")"
+        echo "Generated disk key $DISK_KEY_FILE"
+    fi
+    generate_and_flash() {
+        if [ "$ENCRYPT" = "1" ]; then
+            disk_enc_flash "$L4T_DIR" "$DISK_KEY_FILE" "$FLASH_TARGET" "$STORAGE_DEV" \
+                "$QSPI_CFG" "$ADDITIONAL_DTB_OVERLAY" "$RELEASE_TAG"
+            return
         fi
-        disk_enc_flash "$L4T_DIR" "$DISK_KEY_FILE" "$FLASH_TARGET" "$STORAGE_DEV" \
-            "$QSPI_CFG" "$ADDITIONAL_DTB_OVERLAY" "$RELEASE_TAG"
-    else
         # The initrd flasher reads the connected module's EEPROM and picks the matching
         # bootloader + SDRAM config, so one package flashes any Orin Nano/NX variant. It
         # writes the QSPI bootloader (-p) and the rootfs to the external device (-c) in
@@ -700,23 +733,32 @@ else
         # overlay(s) into the DTB during image generation; the --flash-only replay
         # above needs no equivalent because its images already contain the merged DTB.
         # dtbo basenames carry no spaces, so the unquoted ${var:+NAME=$var} prefix
-        # passes cleanly as a single sudo environment assignment.
+        # passes cleanly as a single sudo environment assignment. SB_FLASH_ARGS is
+        # empty unless sb_run filled it.
         sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY_OPT=$ADDITIONAL_DTB_OVERLAY} \
-            ./tools/kernel_flash/l4t_initrd_flash.sh \
+            ./tools/kernel_flash/l4t_initrd_flash.sh "${SB_FLASH_ARGS[@]}" \
             --external-device "$STORAGE_DEV" \
             -p "-c ./$QSPI_CFG" \
             -c "./$EXTERNAL_CFG" \
             --showlogs --network usb0 \
             "$FLASH_TARGET" "$STORAGE_DEV"
+    }
+    if [ -n "$SECURE_BOOT_MODE" ]; then
+        sb_run "$L4T_DIR" generate_and_flash
+    else
+        generate_and_flash
+    fi
 
-        # Key the cache off the EEPROM dump the generation step itself read, not the
-        # probe, so the marker always describes what the images were built for.
-        if MODULE_KEY=$(module_key); then
-            echo "$MODULE_KEY" | sudo tee "$GEN_MARKER" > /dev/null
-            echo "Recorded module info: same-variant reflashes will skip image generation."
-        else
-            echo "WARNING: could not read the module EEPROM dump; the next flash will regenerate images."
-        fi
+    # Key the cache off the EEPROM dump the generation step itself read, not the
+    # probe, so the marker always describes what the images were built for. No marker
+    # for encrypted or signed images: they belong to one module or one key set.
+    if [ "$ENCRYPT" = "1" ] || [ -n "$SECURE_BOOT_MODE" ]; then
+        :
+    elif MODULE_KEY=$(module_key); then
+        echo "$MODULE_KEY" | sudo tee "$GEN_MARKER" > /dev/null
+        echo "Recorded module info: same-variant reflashes will skip image generation."
+    else
+        echo "WARNING: could not read the module EEPROM dump; the next flash will regenerate images."
     fi
 fi
 

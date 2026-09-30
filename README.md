@@ -75,6 +75,7 @@ By default `flash.sh` targets NVMe. Other storage layouts:
 ./flash.sh PAB --sdcard     # SD card (NVIDIA dev kit modules)
 ./flash.sh PAB --usb        # USB thumb drive
 ./flash.sh PAB --encrypt    # NVMe, rootfs encrypted (docs/disk_encryption.md)
+./flash.sh PAB --uefi-secure-boot KEYS   # UEFI Secure Boot; --secure-boot KEYS for fused modules (docs/secure_boot.md, draft)
 ```
 
 When flashing completes, SSH in over Micro USB or WiFi:
@@ -119,5 +120,6 @@ See [docs/cameras.md](docs/cameras.md) for supported sensors and how to verify a
 - [docs/share_wifi.md](docs/share_wifi.md) — share the host PC's WiFi with the Jetson over USB
 - [docs/power.md](docs/power.md) — power modes, clock speeds, and measured power draw
 - [docs/disk_encryption.md](docs/disk_encryption.md) — encrypted rootfs that unlocks itself at boot, and what it does and doesn't protect
+- [docs/secure_boot.md](docs/secure_boot.md) — (draft) signed boot chain and UEFI Secure Boot, and the one-way fuse step
 - [docs/kernel_development.md](docs/kernel_development.md) — manual kernel builds and device tree changes
 - [docs/build_host.md](docs/build_host.md) — why the build pins to Ubuntu 22.04

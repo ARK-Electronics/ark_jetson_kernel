@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # Usage: ./flash.sh <TARGET> [--sdcard] [--usb] [--encrypt [--disk-key FILE]]
+#                   [--secure-boot KEYS | --uefi-secure-boot KEYS]
 #
 # TARGET: PAB | JAJ | PAB_V3
 #
@@ -10,6 +11,11 @@
 # --encrypt puts the rootfs on a LUKS partition that the module unlocks by itself at
 # boot and that the SSD alone cannot open (NVMe only; docs/disk_encryption.md). It
 # generates a random disk key under ~/.ark-jetson-keys/, or uses the one --disk-key names.
+#
+# --uefi-secure-boot KEYS enables UEFI Secure Boot with the key directory that
+# scripts/secure_boot/gen_secure_boot_keys.sh makes; it needs no fuses and a plain
+# reflash undoes it. --secure-boot KEYS also signs and encrypts the boot chain, for a
+# module already fused with that directory's fuses.xml (NVMe only; docs/secure_boot.md).
 
 # ── Argument parsing ────────────────────────────────────────────────────────
 
@@ -19,7 +25,10 @@ FLASH_TARGET="jetson-orin-nano-devkit-super"
 TARGET=""
 ENCRYPT=false
 DISK_KEY=""
-USAGE="Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--encrypt [--disk-key FILE]]"
+SECURE_BOOT_MODE=""
+SECURE_BOOT_KEYS=""
+SB_FLASH_ARGS=()
+USAGE="Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--encrypt [--disk-key FILE]] [--secure-boot KEYS | --uefi-secure-boot KEYS]"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -41,6 +50,12 @@ while [[ $# -gt 0 ]]; do
             ENCRYPT=true
             DISK_KEY="$2"
             shift 2 ;;
+        --secure-boot|--uefi-secure-boot)
+            [ -n "$2" ] || { echo "ERROR: $1 needs a key directory." >&2; exit 1; }
+            [ -z "$SECURE_BOOT_MODE" ] || { echo "ERROR: give one of --secure-boot and --uefi-secure-boot." >&2; exit 1; }
+            if [ "$1" = --secure-boot ]; then SECURE_BOOT_MODE=full; else SECURE_BOOT_MODE=uefi; fi
+            SECURE_BOOT_KEYS="$2"
+            shift 2 ;;
         *)
             echo "Unknown option: $1" >&2
             echo "$USAGE" >&2
@@ -48,8 +63,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ "$ENCRYPT" = true ] && [ "$STORAGE_DEV" != "nvme0n1p1" ]; then
-    echo "ERROR: --encrypt supports the NVMe SSD only, not --sdcard or --usb." >&2
+if { [ "$ENCRYPT" = true ] || [ -n "$SECURE_BOOT_MODE" ]; } && [ "$STORAGE_DEV" != "nvme0n1p1" ]; then
+    echo "ERROR: --encrypt and secure boot support the NVMe SSD only, not --sdcard or --usb." >&2
     exit 1
 fi
 
@@ -96,6 +111,12 @@ if [ ! -f "$L4T_DIR/kernel/Image" ]; then
     echo "ERROR: Kernel Image not found in staging/$TARGET/." >&2
     echo "       Run ./build.sh $TARGET first." >&2
     exit 1
+fi
+
+if [ -n "$SECURE_BOOT_MODE" ]; then
+    source "$SCRIPT_DIR/scripts/secure_boot/secure_boot.sh"
+    sb_check_host || exit 1
+    sb_load "$SECURE_BOOT_MODE" "$SECURE_BOOT_KEYS" || exit 1
 fi
 
 DISK_KEY_FILE=""
@@ -151,6 +172,10 @@ echo "  Board:    $FLASH_TARGET"
 if [ "$ENCRYPT" = true ]; then
     echo "  Encrypt:  rootfs, disk key ${DISK_KEY_FILE:-new, in $ARK_DISK_KEY_DIR/}"
 fi
+case "$SECURE_BOOT_MODE" in
+    full) echo "  Secure:   boot chain signed and encrypted + UEFI Secure Boot, keys $SB_KEYS_DIR" ;;
+    uefi) echo "  Secure:   UEFI Secure Boot, keys $SB_KEYS_DIR" ;;
+esac
 echo "========================================="
 
 read -p "Flash $TARGET? (y/N): " confirm
@@ -253,28 +278,39 @@ if [ -n "$ADDITIONAL_DTB_OVERLAY" ]; then
     echo "Baking default device-tree overlay(s) into the image: $ADDITIONAL_DTB_OVERLAY"
 fi
 
+if [ "$ENCRYPT" = true ] && [ -z "$DISK_KEY_FILE" ]; then
+    DISK_KEY_FILE="$(disk_enc_key_file "" "$TARGET")" || exit 1
+    echo "Generated disk key $DISK_KEY_FILE"
+fi
+
 # dtbo basenames carry no spaces, so the unquoted ${var:+NAME=$var} prefix passes
 # cleanly as a single sudo environment assignment (and expands to nothing when no
-# product default is set).
-if [ "$ENCRYPT" = true ]; then
-    if [ -z "$DISK_KEY_FILE" ]; then
-        DISK_KEY_FILE="$(disk_enc_key_file "" "$TARGET")" || exit 1
-        echo "Generated disk key $DISK_KEY_FILE"
+# product default is set). SB_FLASH_ARGS is empty unless secure boot is on, when
+# sb_run fills it (and the encrypted flash's equivalent) before calling this.
+flash_images() {
+    if [ "$ENCRYPT" = true ]; then
+        disk_enc_flash "$L4T_DIR" "$DISK_KEY_FILE" "$FLASH_TARGET" "$STORAGE_DEV" \
+            bootloader/generic/cfg/flash_t234_qspi.xml "$ADDITIONAL_DTB_OVERLAY" "$TARGET"
+    elif [ "$USE_INITRD" = true ]; then
+        # l4t_initrd_flash reads ADDITIONAL_DTB_OVERLAY_OPT and forwards it to flash.sh.
+        sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY_OPT=$ADDITIONAL_DTB_OVERLAY} \
+            ./tools/kernel_flash/l4t_initrd_flash.sh "${SB_FLASH_ARGS[@]}" \
+            --external-device "$STORAGE_DEV" \
+            -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" \
+            -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml \
+            --showlogs --network usb0 \
+            "$FLASH_TARGET" "$STORAGE_DEV"
+    else
+        # Classic flash.sh reads ADDITIONAL_DTB_OVERLAY directly.
+        sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY=$ADDITIONAL_DTB_OVERLAY} \
+            ./flash.sh "$FLASH_TARGET" "$STORAGE_DEV"
     fi
-    disk_enc_flash "$L4T_DIR" "$DISK_KEY_FILE" "$FLASH_TARGET" "$STORAGE_DEV" \
-        bootloader/generic/cfg/flash_t234_qspi.xml "$ADDITIONAL_DTB_OVERLAY" "$TARGET"
-elif [ "$USE_INITRD" = true ]; then
-    # l4t_initrd_flash reads ADDITIONAL_DTB_OVERLAY_OPT and forwards it to flash.sh.
-    sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY_OPT=$ADDITIONAL_DTB_OVERLAY} \
-        ./tools/kernel_flash/l4t_initrd_flash.sh --external-device "$STORAGE_DEV" \
-        -p "-c ./bootloader/generic/cfg/flash_t234_qspi.xml" \
-        -c ./tools/kernel_flash/flash_l4t_t234_nvme.xml \
-        --showlogs --network usb0 \
-        "$FLASH_TARGET" "$STORAGE_DEV"
+}
+
+if [ -n "$SECURE_BOOT_MODE" ]; then
+    sb_run "$L4T_DIR" flash_images
 else
-    # Classic flash.sh reads ADDITIONAL_DTB_OVERLAY directly.
-    sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY=$ADDITIONAL_DTB_OVERLAY} \
-        ./flash.sh "$FLASH_TARGET" "$STORAGE_DEV"
+    flash_images
 fi
 flash_status=$?
 
