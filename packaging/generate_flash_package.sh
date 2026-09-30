@@ -110,6 +110,11 @@ EXTERNAL_CFG="tools/kernel_flash/flash_l4t_t234_nvme.xml"
 ADDITIONAL_DTB_OVERLAY="$ADDITIONAL_DTB_OVERLAY"
 EOF
 
+# flash_from_package.sh --encrypt sources this helper from the package, so the copy
+# that drives a BSP is always the one released with it.
+sudo rm -rf "$L4T_DIR/ark_disk_encryption"
+sudo cp -r "$ROOT_DIR/scripts/disk_encryption" "$L4T_DIR/ark_disk_encryption"
+
 sudo tee "$L4T_DIR/BUILD_INFO.txt" >/dev/null <<EOF
 ark_jetson_kernel flash package
 ===============================

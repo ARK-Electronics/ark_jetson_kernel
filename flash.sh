@@ -1,11 +1,15 @@
 #!/bin/bash
 
-# Usage: ./flash.sh <TARGET> [--sdcard] [--usb]
+# Usage: ./flash.sh <TARGET> [--sdcard] [--usb] [--encrypt [--disk-key FILE]]
 #
 # TARGET: PAB | JAJ | PAB_V3
 #
 # Flashes a previously-built target directly from its staging directory.
 # The device must be in USB recovery mode before running this script.
+#
+# --encrypt puts the rootfs on a LUKS partition that the module unlocks by itself at
+# boot and that the SSD alone cannot open (NVMe only; docs/disk_encryption.md). It
+# generates a random disk key under ~/.ark-jetson-keys/, or uses the one --disk-key names.
 
 # ── Argument parsing ────────────────────────────────────────────────────────
 
@@ -13,6 +17,9 @@ STORAGE_DEV="nvme0n1p1"
 USE_INITRD=true
 FLASH_TARGET="jetson-orin-nano-devkit-super"
 TARGET=""
+ENCRYPT=false
+DISK_KEY=""
+USAGE="Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb] [--encrypt [--disk-key FILE]]"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -26,12 +33,25 @@ while [[ $# -gt 0 ]]; do
         --usb)
             STORAGE_DEV="sda"
             shift ;;
+        --encrypt)
+            ENCRYPT=true
+            shift ;;
+        --disk-key)
+            [ -n "$2" ] || { echo "ERROR: --disk-key needs a key file." >&2; exit 1; }
+            ENCRYPT=true
+            DISK_KEY="$2"
+            shift 2 ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
+            echo "$USAGE" >&2
             exit 1 ;;
     esac
 done
+
+if [ "$ENCRYPT" = true ] && [ "$STORAGE_DEV" != "nvme0n1p1" ]; then
+    echo "ERROR: --encrypt supports the NVMe SSD only, not --sdcard or --usb." >&2
+    exit 1
+fi
 
 if [ -z "$TARGET" ]; then
     if [ -t 0 ]; then
@@ -48,7 +68,7 @@ if [ -z "$TARGET" ]; then
         esac
     else
         echo "ERROR: target required (PAB | JAJ | PAB_V3) when running non-interactively." >&2
-        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
+        echo "$USAGE" >&2
         exit 1
     fi
 fi
@@ -76,6 +96,15 @@ if [ ! -f "$L4T_DIR/kernel/Image" ]; then
     echo "ERROR: Kernel Image not found in staging/$TARGET/." >&2
     echo "       Run ./build.sh $TARGET first." >&2
     exit 1
+fi
+
+DISK_KEY_FILE=""
+if [ "$ENCRYPT" = true ]; then
+    source "$SCRIPT_DIR/scripts/disk_encryption/disk_encryption.sh"
+    disk_enc_check_host || exit 1
+    if [ -n "$DISK_KEY" ]; then
+        DISK_KEY_FILE="$(disk_enc_key_file "$DISK_KEY" "$TARGET")" || exit 1
+    fi
 fi
 
 # ── Resolve product default device-tree overlay(s) to bake into the image ────
@@ -119,6 +148,9 @@ echo "========================================="
 echo "  Target:   $TARGET"
 echo "  Storage:  $STORAGE_DEV"
 echo "  Board:    $FLASH_TARGET"
+if [ "$ENCRYPT" = true ]; then
+    echo "  Encrypt:  rootfs, disk key ${DISK_KEY_FILE:-new, in $ARK_DISK_KEY_DIR/}"
+fi
 echo "========================================="
 
 read -p "Flash $TARGET? (y/N): " confirm
@@ -224,7 +256,14 @@ fi
 # dtbo basenames carry no spaces, so the unquoted ${var:+NAME=$var} prefix passes
 # cleanly as a single sudo environment assignment (and expands to nothing when no
 # product default is set).
-if [ "$USE_INITRD" = true ]; then
+if [ "$ENCRYPT" = true ]; then
+    if [ -z "$DISK_KEY_FILE" ]; then
+        DISK_KEY_FILE="$(disk_enc_key_file "" "$TARGET")" || exit 1
+        echo "Generated disk key $DISK_KEY_FILE"
+    fi
+    disk_enc_flash "$L4T_DIR" "$DISK_KEY_FILE" "$FLASH_TARGET" "$STORAGE_DEV" \
+        bootloader/generic/cfg/flash_t234_qspi.xml "$ADDITIONAL_DTB_OVERLAY" "$TARGET"
+elif [ "$USE_INITRD" = true ]; then
     # l4t_initrd_flash reads ADDITIONAL_DTB_OVERLAY_OPT and forwards it to flash.sh.
     sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY_OPT=$ADDITIONAL_DTB_OVERLAY} \
         ./tools/kernel_flash/l4t_initrd_flash.sh --external-device "$STORAGE_DEV" \
