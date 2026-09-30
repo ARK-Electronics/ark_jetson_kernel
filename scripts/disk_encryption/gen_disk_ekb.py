@@ -2,17 +2,22 @@
 """Build or inspect a T234 EKB (bootloader/eks_t234.img) that carries a disk encryption key.
 
     gen_disk_ekb.py --disk-key disk.key --out eks_t234.img     # EKB holding just the disk key
-    gen_disk_ekb.py --dump eks_t234.img                        # verify the MAC and list the entries
+    gen_disk_ekb.py --oem-k1 k1.key --auth-key auth.key [--disk-key disk.key] --out eks_t234.img
+                                                               # for a module with OEM_K1 burned
+    gen_disk_ekb.py --dump eks_t234.img [--oem-k1 k1.key]      # verify the MAC and list the entries
 
 OP-TEE's luks-srv TA derives each LUKS passphrase from the EKB's disk encryption key (tag 2), so an
 image encrypted with `flash.sh -i disk.key` only unlocks on a module whose EKS partition carries that
 same key. The BSP's own eks_t234.img carries no entries at all, so without this nothing unlocks.
 
 This writes the layout NVIDIA's gen_ekb.py (OP-TEE samples/hwkey-agent/host/tool/gen_ekb) produces,
-EKB v2.0, with the disk key as its only entry, the same entries as the stock EKB plus that one. It
-exists because gen_ekb.py is not in the BSP or in ARK's flash packages, needs pycryptodome, and stops at
-an interactive prompt when no UEFI variable authentication key is given. The EKB root key comes from
-OEM_K1, which is all zeros on a module whose fuses have not been burned; pass --oem-k1 on a fused one.
+EKB v2.0, holding only the keys asked for: none of them are in the stock EKB. It exists because
+gen_ekb.py is not in the BSP or in ARK's flash packages, needs pycryptodome, and stops at an
+interactive prompt when no UEFI variable authentication key is given.
+
+The EKB root key comes from OEM_K1, which is all zeros on a module whose fuses have not been burned.
+Once OEM_K1 is burned the EKB must be built with it (--oem-k1), and must also carry the UEFI variable
+authentication key (--auth-key): NVIDIA's UEFI refuses to boot a K1-fused module without one.
 """
 import argparse
 import os
@@ -28,6 +33,7 @@ CONTENT_MAGIC = b"EEKB"
 VERSION = (2, 0)
 MIN_SIZE = 1024
 TAG_DISK_ENCRYPTION = 2
+TAG_UEFI_VAR_AUTH = 4
 TAG_NAMES = {1: "UEFI payload encryption", 2: "disk encryption", 4: "UEFI variable authentication"}
 
 
@@ -62,11 +68,13 @@ def read_hex_key(path, size):
     return key
 
 
-def build(disk_key, oem_k1):
+def build(entries, oem_k1):
     fv = os.urandom(16)
     iv = os.urandom(16)
     encryption_key, authentication_key = ekb_keys(oem_k1, fv)
-    content = struct.pack("<II", TAG_DISK_ENCRYPTION, len(disk_key)) + disk_key + b"\0" * 8
+    # gen_ekb.py's entry order: kernel (1), disk (2), UEFI variable authentication (4).
+    content = b"".join(struct.pack("<II", tag, len(key)) + key for tag, key in sorted(entries.items()))
+    content += b"\0" * 8
     if len(content) % 16:
         pad = 16 - len(content) % 16
         content += bytes([pad]) * pad  # PKCS#7, only when unaligned, as gen_ekb.py pads
@@ -115,6 +123,7 @@ def dump(path, oem_k1):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--disk-key", help="16-byte disk encryption key, hex (the key flash.sh -i takes)")
+    parser.add_argument("--auth-key", help="16-byte UEFI variable authentication key, hex")
     parser.add_argument("--out", help="EKB image to write")
     parser.add_argument("--dump", metavar="EKB", help="verify and list an existing EKB instead")
     parser.add_argument("--oem-k1", help="32-byte OEM_K1 fuse key, hex (default: all zeros, an unfused module)")
@@ -123,12 +132,16 @@ def main():
     oem_k1 = read_hex_key(args.oem_k1, 32) if args.oem_k1 else bytes(32)
     if args.dump:
         dump(args.dump, oem_k1)
-    elif args.disk_key and args.out:
-        blob = build(read_hex_key(args.disk_key, 16), oem_k1)
+    elif args.out and (args.disk_key or args.auth_key):
+        entries = {}
+        if args.disk_key:
+            entries[TAG_DISK_ENCRYPTION] = read_hex_key(args.disk_key, 16)
+        if args.auth_key:
+            entries[TAG_UEFI_VAR_AUTH] = read_hex_key(args.auth_key, 16)
         with open(args.out, "wb") as out:
-            out.write(blob)
+            out.write(build(entries, oem_k1))
     else:
-        parser.error("give --disk-key and --out, or --dump")
+        parser.error("give --out and at least one of --disk-key and --auth-key, or --dump")
 
 
 if __name__ == "__main__":

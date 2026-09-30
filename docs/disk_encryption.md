@@ -18,7 +18,7 @@ or from a source build:
 ./flash.sh JAJ --encrypt
 ```
 
-Bench-validated on a JAJ with an Orin Nano 4GB. `PAB` / `pab` and `PAB_V3` / `pab-v3` take the same flag through the same code, but have not been flashed encrypted yet. It needs an NVMe SSD (not `--sdcard` or `--usb`) and, on the host, `cryptsetup` and `python3-cryptography`: `flash_from_package.sh` installs them, and `flash.sh` names them if they are missing. `flash_from_package.sh --encrypt` needs a release that bundles `ark_disk_encryption/`; older ones refuse with a message.
+Bench-validated on a JAJ with an Orin Nano 4GB. `PAB` / `pab` and `PAB_V3` / `pab-v3` take the same flag through the same code, but have not been flashed encrypted yet. It needs an NVMe SSD (not `--sdcard` or `--usb`) and, on the host, `cryptsetup` and `python3-cryptography`: `flash_from_package.sh` installs them, and `flash.sh` names them if they are missing. `flash_from_package.sh --encrypt` needs a release that bundles the `ark/` helpers; older ones refuse with a message.
 
 An encrypted flash takes longer than a plain one: the image is built in three passes (QSPI, encrypted NVMe, write), and the rootfs is encrypted on the host. The board resets itself between passes; no extra button presses are needed.
 
@@ -48,12 +48,12 @@ Set `ARK_DISK_KEY_DIR` to keep keys and records somewhere other than `~/.ark-jet
 | --- | --- |
 | SSD removed and read on another computer | Yes |
 | SSD moved into another Jetson | Yes: it does not unlock there |
-| Jetson module and SSD taken together | **No**, unless the module's fuses are burned (below) |
+| Jetson module and SSD taken together | **No**, unless the module's fuses are burned ([secure_boot.md](secure_boot.md)) |
 | Someone with a login on the running Jetson | No: the disk is unlocked while it runs |
 
 The unlock passphrase is derived inside the module's secure world (OP-TEE) from three things: the disk key, which lives in the module's QSPI flash, not on the SSD; the module's unique chip ID (ECID); and the partition's UUID. After the initrd unlocks the rootfs it shuts that service down until the next reset, so nothing that runs later, including a root shell, can ask for the passphrase again.
 
-That is what the SSD-removal case needs. It is not full-device protection. On a module whose fuses are not burned, the QSPI's key store is encrypted with an all-zero fuse key, and the kernel and initrd on the SSD's unencrypted `/boot` partition are not signature-checked. So someone holding both the module and the SSD can read the disk key back, or boot a modified initrd. Closing that takes NVIDIA's [Secure Boot](https://docs.nvidia.com/jetson/archives/r36.5/DeveloperGuide/SD/Security/SecureBoot.html) plus a burned OEM_K1 key. Burning fuses is irreversible and is not part of this flow. A fused module also needs its EKB built with that key: `scripts/disk_encryption/gen_disk_ekb.py --oem-k1`.
+That is what the SSD-removal case needs. It is not full-device protection. On a module whose fuses are not burned, the QSPI's key store is encrypted with an all-zero fuse key, and the kernel and initrd on the SSD's unencrypted `/boot` partition are not signature-checked. So someone holding both the module and the SSD can read the disk key back, or boot a modified initrd. Closing that takes secure boot with burned fuses, which is irreversible and not part of `--encrypt`: see [secure_boot.md](secure_boot.md), whose `--secure-boot` also builds the EKB with the burned OEM_K1.
 
 ## What changes on the SSD
 

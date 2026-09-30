@@ -1,7 +1,7 @@
 # Encrypted-rootfs flashing for ARK Jetson carriers (Orin Nano / Orin NX on NVMe).
 #
 # Sourced by flash.sh, and by packaging/flash_from_package.sh from the copy that
-# generate_flash_package.sh bundles into each package as Linux_for_Tegra/ark_disk_encryption/.
+# generate_flash_package.sh bundles into each package under Linux_for_Tegra/ark/.
 # Needs sudo, cryptsetup and python3-cryptography on the host.
 #
 # NVIDIA's reference flow (Jetson Linux Developer Guide, Security > Disk Encryption), and why
@@ -26,6 +26,12 @@
 
 ARK_DISK_ENC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARK_DISK_KEY_DIR="${ARK_DISK_KEY_DIR:-$HOME/.ark-jetson-keys}"
+# Set by scripts/secure_boot/secure_boot.sh when the flash is also signed: extra
+# l4t_initrd_flash.sh arguments for the two generating passes (-u, -v, --uefi-keys), and
+# extra EKB entries for a module whose OEM_K1 is burned (--oem-k1, --auth-key).
+# Initialised only when unset, so sourcing this again keeps what secure_boot.sh set.
+[ -n "${DISK_ENC_SIGN_ARGS+set}" ] || DISK_ENC_SIGN_ARGS=()
+[ -n "${DISK_ENC_EKB_ARGS+set}" ] || DISK_ENC_EKB_ARGS=()
 ARK_DISK_ENC_LAYOUT="tools/kernel_flash/ark_flash_l4t_t234_nvme_rootfs_enc.xml"
 ARK_GROW_UNIT="ark-grow-encrypted-root.service"
 
@@ -75,17 +81,37 @@ disk_enc_image_size() {
     echo "$(( (used * 5 / 4 + 400 * 1024 * 1024) / (1024 * 1024 * 1024) + 2 ))GiB"
 }
 
-disk_enc_prepare_tree() {
-    local l4t="$1" key="$2" eks="$1/bootloader/eks_t234.img"
-
+# Replace the tree's EKB with one built from gen_disk_ekb.py arguments (--disk-key,
+# --auth-key, --oem-k1), and verify it under the same OEM_K1. ark_ekb_restore puts the
+# stock one back.
+ark_ekb_install() {
+    local l4t="$1" eks="$1/bootloader/eks_t234.img" oem_k1=() previous="" arg
+    shift
     # Keep the stock EKB aside. A copy already there means an earlier run died before
     # putting it back, so the file in place is that run's key, not NVIDIA's. The tree is
     # root-owned and not always readable, so every look inside it goes through sudo.
     if ! sudo test -f "$eks.stock"; then
         sudo cp -p "$eks" "$eks.stock" || return 1
     fi
-    sudo python3 "$ARK_DISK_ENC_DIR/gen_disk_ekb.py" --disk-key "$key" --out "$eks" || return 1
-    sudo python3 "$ARK_DISK_ENC_DIR/gen_disk_ekb.py" --dump "$eks" || return 1
+    for arg in "$@"; do
+        [ "$previous" = "--oem-k1" ] && oem_k1=(--oem-k1 "$arg")
+        previous="$arg"
+    done
+    sudo python3 "$ARK_DISK_ENC_DIR/gen_disk_ekb.py" --out "$eks" "$@" || return 1
+    sudo python3 "$ARK_DISK_ENC_DIR/gen_disk_ekb.py" --dump "$eks" "${oem_k1[@]}" || return 1
+}
+
+ark_ekb_restore() {
+    local eks="$1/bootloader/eks_t234.img"
+    if sudo test -f "$eks.stock"; then
+        sudo mv -f "$eks.stock" "$eks"
+    fi
+}
+
+disk_enc_prepare_tree() {
+    local l4t="$1" key="$2"
+
+    ark_ekb_install "$l4t" --disk-key "$key" "${DISK_ENC_EKB_ARGS[@]}" || return 1
 
     # 0x808 is the plain layout's APP attribute: the flasher stretches that partition to
     # the end of the device (l4t_flash_from_kernel.sh "expand").
@@ -159,7 +185,8 @@ EOF
 # Undo disk_enc_prepare_tree, so a plain flash from the same tree is exactly what it was.
 disk_enc_restore_tree() {
     local l4t="$1" stock
-    for stock in bootloader/eks_t234.img tools/kernel_flash/l4t_flash_from_kernel.sh \
+    ark_ekb_restore "$l4t"
+    for stock in tools/kernel_flash/l4t_flash_from_kernel.sh \
                  tools/disk_encryption/disk_encryption_helper.func; do
         if sudo test -f "$l4t/$stock.stock"; then
             sudo mv -f "$l4t/$stock.stock" "$l4t/$stock"
@@ -214,11 +241,11 @@ disk_enc_flash() {
 
         echo "Encrypted flash 1/3: QSPI images, EKB carrying the disk key"
         sudo ${overlays:+ADDITIONAL_DTB_OVERLAY_OPT=$overlays} ./tools/kernel_flash/l4t_initrd_flash.sh \
-            --no-flash -p "-c ./$qspi_cfg" --showlogs --network usb0 "$board" internal || exit 1
+            --no-flash "${DISK_ENC_SIGN_ARGS[@]}" -p "-c ./$qspi_cfg" --showlogs --network usb0 "$board" internal || exit 1
 
         echo "Encrypted flash 2/3: encrypted $device images (rootfs image $size, grown to fill the SSD)"
         sudo ROOTFS_ENC=1 ${overlays:+ADDITIONAL_DTB_OVERLAY_OPT=$overlays} ./tools/kernel_flash/l4t_initrd_flash.sh \
-            --no-flash --external-device "$device" -S "$size" -c "./$ARK_DISK_ENC_LAYOUT" \
+            --no-flash "${DISK_ENC_SIGN_ARGS[@]}" --external-device "$device" -S "$size" -c "./$ARK_DISK_ENC_LAYOUT" \
             --external-only --append -i "$key" --showlogs --network usb0 "$board" external 2>&1 | tee "$log"
         [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
         record=$(disk_enc_write_record "$PWD" "$key" "$target" "$log") || exit 1
