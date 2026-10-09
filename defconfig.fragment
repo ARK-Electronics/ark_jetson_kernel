@@ -1,6 +1,10 @@
 # Shared kernel config additions applied to all ARK products.
 # Appended to NVIDIA's base defconfig before building.
 
+# USB storage. UAS built in: the boot initrd never loads uas.ko, and built-in
+# usb-storage declines UAS-capable drives, so a USB rootfs on one never mounts.
+CONFIG_USB_UAS=y
+
 # USB modem / cellular
 CONFIG_USB_WDM=y
 CONFIG_USB_NET_DRIVERS=y
