@@ -48,3 +48,5 @@ gh release edit jaj-6.2.2.7 --draft=false
 ```
 
 Same artifact, same tag — no rebuild, no rename. Publish all three products together so `flash_from_package.sh <product>` doesn't hand out a mixed fleet.
+
+Publishing triggers `publish_downloads.yml`, which puts each package on `https://downloads.arkelectron.com/jetson/<product>/<version>/` as one file and points `jetson/<product>/latest/` at it. For a release published before the workflow existed: `gh workflow run publish_downloads.yml -f tag=<tag>`.
