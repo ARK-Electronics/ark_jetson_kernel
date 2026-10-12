@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Flash a Jetson from a prebuilt ARK flash package.
-# Downloads the package from GitHub Releases and flashes the QSPI bootloader plus
+# Downloads the package from downloads.arkelectron.com (GitHub Releases for drafts
+# and releases the site doesn't have) and flashes the QSPI bootloader plus
 # the rootfs to NVMe. NVIDIA's initrd flasher reads the connected module's EEPROM
 # and selects the matching bootloader/SDRAM config, so one package flashes any
 # Orin Nano/NX variant (4GB/8GB/16GB).
@@ -27,6 +28,7 @@ set -euo pipefail
 
 REPO="ARK-Electronics/ark_jetson_kernel"
 API_URL="https://api.github.com/repos/$REPO/releases"
+SITE_URL="https://downloads.arkelectron.com/jetson"
 CACHE_BASE="$HOME/.ark-jetson-cache"
 
 usage() {
@@ -142,21 +144,27 @@ if is_product_name "$INPUT"; then
         echo "Latest draft: $RELEASE_TAG"
     else
         echo "Finding latest $INPUT release..."
-        releases_json=$(curl -sfL "${API_URL}?per_page=100")
+        # The site's latest/ moves on every publish, so it names the same release
+        # as the API without spending the API's 60-requests-per-hour limit.
+        if site_version=$(curl -sfL "$SITE_URL/$INPUT/latest/VERSION"); then
+            RELEASE_TAG="$INPUT-$site_version"
+        else
+            releases_json=$(curl -sfL "${API_URL}?per_page=100")
 
-        RELEASE_TAG=$(echo "$releases_json" \
-            | grep -o '"tag_name": *"[^"]*"' \
-            | sed 's/"tag_name": *"//;s/"//' \
-            | grep "^${INPUT}-[0-9]" \
-            | sort -V \
-            | tail -1)
+            RELEASE_TAG=$(echo "$releases_json" \
+                | grep -o '"tag_name": *"[^"]*"' \
+                | sed 's/"tag_name": *"//;s/"//' \
+                | grep "^${INPUT}-[0-9]" \
+                | sort -V \
+                | tail -1)
 
-        if [ -z "$RELEASE_TAG" ]; then
-            echo "ERROR: No releases found for product '$INPUT'"
-            echo ""
-            echo "Available releases:"
-            echo "$releases_json" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/"//' | head -10
-            exit 1
+            if [ -z "$RELEASE_TAG" ]; then
+                echo "ERROR: No releases found for product '$INPUT'"
+                echo ""
+                echo "Available releases:"
+                echo "$releases_json" | grep -o '"tag_name": *"[^"]*"' | sed 's/"tag_name": *"//;s/"//' | head -10
+                exit 1
+            fi
         fi
         echo "Latest: $RELEASE_TAG"
     fi
@@ -244,6 +252,45 @@ download_draft() {
         echo "  Confirm access with: gh release view $RELEASE_TAG -R $REPO" >&2
         exit 1
     fi
+    echo ""
+}
+
+# Downloads a published release's package from the site as one file and checks
+# it against the version folder's SHA256SUMS. Fails, so the caller falls back to
+# GitHub, when the site doesn't have the release: drafts, and releases published
+# before the site existed.
+download_from_site() {
+    local product version base sums expected name actual
+    case "$RELEASE_TAG" in
+        pab-v3-[0-9]*) product=pab-v3 ;;
+        pab-[0-9]*) product=pab ;;
+        jaj-[0-9]*) product=jaj ;;
+        *) return 1 ;;
+    esac
+    version=${RELEASE_TAG#"$product"-}
+    base="$SITE_URL/$product/$version"
+    sums=$(curl -sfL "$base/SHA256SUMS") || return 1
+
+    echo ""
+    echo "Downloading $RELEASE_TAG from $base/ to $CACHE_DIR ..."
+    while read -r expected name; do
+        # A version folder is never rewritten, so an interrupted .tmp is still a
+        # prefix of the file and -C - resumes it. This runs as an if condition, so
+        # set -e is off: a dropped connection has to stop here, before the check
+        # below deletes the .tmp.
+        if ! curl -fL --progress-bar -C - -o "$CACHE_DIR/$name.tmp" "$base/$name"; then
+            echo "ERROR: downloading $name failed; rerun to resume it." >&2
+            exit 1
+        fi
+        echo "  Verifying $name..."
+        actual=$(sha256sum "$CACHE_DIR/$name.tmp" | cut -d' ' -f1)
+        if [ "$actual" != "$expected" ]; then
+            rm -f "$CACHE_DIR/$name.tmp"
+            echo "ERROR: $name does not match $base/SHA256SUMS; rerun to download it again." >&2
+            exit 1
+        fi
+        mv "$CACHE_DIR/$name.tmp" "$CACHE_DIR/$name"
+    done <<< "$sums"
     echo ""
 }
 
@@ -361,6 +408,8 @@ else
 
         if [ "$IS_DRAFT" = 1 ]; then
             download_draft
+        elif download_from_site; then
+            :
         else
             echo "Fetching release $RELEASE_TAG..."
             release_json=$(curl -sL "$API_URL/tags/$RELEASE_TAG")
