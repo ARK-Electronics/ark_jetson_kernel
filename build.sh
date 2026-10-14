@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# Usage: ./build.sh <PAB|JAJ|PAB_V3|all> [--fast] [--no-provision]
+# Usage: ./build.sh <PAB|JAJ|PAB_V3|all> [--fast] [--no-provision] [--precompute-initrd]
 #   (default)             wipe staging/{TARGET}/, re-stage, provision, then build
 #   --fast                reuse the existing staged tree — recompile the kernel/DT
 #                         only, no re-stage and no re-provision (needs a prior build)
 #   --no-provision        re-stage and build a bare image, skipping provisioning
+#   --precompute-initrd   regenerate boot module indexes before flashing (all targets)
 #   --clean, --provision  accepted but redundant now — they are the default
 #
 # A full build (the default) stages the L4T tree under its own staging/{TARGET}/,
@@ -23,6 +24,7 @@ source "$SCRIPT_DIR/scripts/check_bsp.sh"
 CLEAN=1
 PROVISION=1
 FAST=0
+PRECOMPUTE_INITRD=0
 TARGET=""
 
 for arg in "$@"; do
@@ -30,12 +32,13 @@ for arg in "$@"; do
         PAB|JAJ|PAB_V3) TARGET="$arg" ;;
         all)            TARGET="all" ;;
         --fast)         FAST=1 ;;
+        --precompute-initrd) PRECOMPUTE_INITRD=1 ;;
         --no-provision) PROVISION=0 ;;
         --clean)        CLEAN=1 ;;      # the default now; still accepted so old commands work
         --provision)    PROVISION=1 ;;  # the default now; still accepted so old commands work
         *)
             echo "Invalid argument: $arg" >&2
-            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision]" >&2
+            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision] [--precompute-initrd]" >&2
             exit 1
             ;;
     esac
@@ -63,7 +66,7 @@ if [ -z "$TARGET" ]; then
         esac
     else
         echo "ERROR: target required (PAB | JAJ | PAB_V3 | all) when running non-interactively." >&2
-        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision]" >&2
+        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision] [--precompute-initrd]" >&2
         exit 1
     fi
 fi
@@ -114,6 +117,7 @@ if [ "$TARGET" = "all" ]; then
         echo "  Building $t"
         echo "========================================="
         ARGS=("$t")
+        [ "$PRECOMPUTE_INITRD" -eq 1 ] && ARGS+=("--precompute-initrd")
         [ "$FAST" -eq 1 ] && ARGS+=("--fast")
         [ "$FAST" -eq 0 ] && [ "$PROVISION" -eq 0 ] && ARGS+=("--no-provision")
         "$0" "${ARGS[@]}" || exit $?
@@ -127,6 +131,7 @@ export TARGET
 # doesn't re-prompt.
 if needs_container; then
     CONTAINER_ARGS=("$TARGET")
+    [ "$PRECOMPUTE_INITRD" -eq 1 ] && CONTAINER_ARGS+=("--precompute-initrd")
     [ "$FAST" -eq 1 ] && CONTAINER_ARGS+=("--fast")
     [ "$FAST" -eq 0 ] && [ "$PROVISION" -eq 0 ] && CONTAINER_ARGS+=("--no-provision")
     run_in_container "$0" "${CONTAINER_ARGS[@]}"
@@ -326,6 +331,33 @@ fi
 
 require_bsp_staging "$STAGING_DIR"
 
+# A reused staged tree may contain the optional, separately built UEFI profile.
+# Validate it before changing the kernel tree, and retain its owned overlay
+# during stale kernel-overlay cleanup. An incomplete stage must fail closed.
+STAGED_FAST_BOOT_FIRMWARE=0
+if [ -e "$L4T_DIR/ark-fast-boot.json" ] || [ -L "$L4T_DIR/ark-fast-boot.json" ] || \
+   [ -e "$L4T_DIR/ark-fast-boot.in-progress.json" ] || [ -L "$L4T_DIR/ark-fast-boot.in-progress.json" ]; then
+    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" --l4t-dir "$L4T_DIR" --verify --product "$TARGET"
+    STAGED_FAST_BOOT_FIRMWARE=1
+fi
+
+# The initrd updater below always chroots into the ARM rootfs, including --fast
+# builds that skip l4t_flash_prerequisites.sh. Check before a lengthy compile.
+if ! dpkg -s qemu-user-static >/dev/null 2>&1; then
+    echo "ERROR: initrd refresh requires qemu-user-static and working AArch64 binfmt." >&2
+    echo "       Install qemu-user-static binfmt-support on Ubuntu 22.04, or rebuild" >&2
+    echo "       docker/Dockerfile and rerun through the build container wrapper." >&2
+    exit 1
+fi
+
+# Fail before rebuilding an already optimized staged image. NVIDIA's updater
+# preserves /init; silently feeding it our patched script would retain an old
+# optimization even when --precompute-initrd was omitted on this invocation.
+if [ "$FAST" -eq 1 ]; then
+    python3 "$SCRIPT_DIR/scripts/check_initrd_source.py" --target "$TARGET" \
+        "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+fi
+
 # ── Layer ARK's device-tree delta onto the stock BSP ─────────────────────────
 # products/<target>/device_tree/ carries ONLY ARK's delta: the BCT pinmux/gpio
 # files, the per-product ark-<target>-overrides.dtsi fragment, and any product-
@@ -521,6 +553,14 @@ elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
     exit 1
 fi
 
+# All ARK Orin carriers share this audited R36.5.0 BPMP driver. The opt-in
+# worker leaves hardware setup unchanged; its parameter remains false unless
+# jaj_fastboot.bpmp_debugfs_async=1 is requested (the namespace is shared).
+# Each target has its own source tree. Refuse changed BSP sources rather than
+# applying a fuzzy source modification, and keep board DT/pinmux deltas intact.
+python3 "$SCRIPT_DIR/scripts/patch_bpmp_debugfs.py" \
+    --kernel-dir "$SOURCE_DIR/kernel/kernel-jammy-src" --mode apply
+
 # ccache wraps the cross-compiler for the kernel proper only (kernel C rarely changes → warm
 # hits). The OOT NVIDIA modules build without it on purpose: their conftest/version steps
 # regenerate headers and ccache direct-mode can serve a stale object across that — a silent
@@ -612,6 +652,12 @@ done
 for dir in "$L4T_DIR/rootfs/boot" "$L4T_DIR/kernel/dtb"; do
     for f in "$dir"/tegra*.dtbo "$dir"/ark_*.dtbo; do
         [ -e "$f" ] || continue
+        # This firmware-owned overlay was checksum-verified above; it is not
+        # built by the kernel overlay Makefile and must survive --fast reuse.
+        if [ "$STAGED_FAST_BOOT_FIRMWARE" -eq 1 ] && \
+           [ "$f" = "$L4T_DIR/kernel/dtb/ark_fast_boot.dtbo" ]; then
+            continue
+        fi
         filename=$(basename "$f")
         found=false
         for src in "${source_dtbos[@]}"; do
@@ -674,6 +720,48 @@ sudo tee "$L4T_DIR/rootfs/etc/sysctl.d/99-ark-console-quiet.conf" >/dev/null <<'
 kernel.printk = 4 4 1 7
 EOF
 
+# Refresh both the production initramfs and NVIDIA's saved flashing copy only
+# after the final Image and in-tree/out-of-tree modules have been installed.
+# Otherwise a custom kernel build or a later flash can use stale boot modules.
+echo "Refreshing the production initramfs from the installed kernel modules..."
+cmp "$L4T_DIR/kernel/Image" "$L4T_DIR/rootfs/boot/Image"
+python3 "$SCRIPT_DIR/scripts/check_initrd_source.py" --target "$TARGET" \
+    "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+sudo "$L4T_DIR/tools/l4t_update_initrd.sh" -l "$L4T_DIR"
+# Audit the updater's result before recording an unoptimized build or passing it
+# to the optimizer. Its rootfs and bootloader-side outputs must also agree.
+python3 "$SCRIPT_DIR/scripts/check_initrd_source.py" --target "$TARGET" \
+    "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+cmp "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+
+if [ "$PRECOMPUTE_INITRD" -eq 1 ]; then
+    echo "Precomputing $TARGET initramfs module dependency indexes..."
+    INITRD_WORK=$(mktemp -d)
+    if ! sudo python3 "$SCRIPT_DIR/scripts/optimize_initrd.py" \
+        --input "$L4T_DIR/rootfs/boot/initrd" \
+        --output "$INITRD_WORK/initrd" \
+        --l4t-release "$L4T_DIR/rootfs/etc/nv_tegra_release" \
+        --kernel-image "$L4T_DIR/rootfs/boot/Image"; then
+        sudo rm -rf "$INITRD_WORK"
+        exit 1
+    fi
+    # Save the freshly refreshed, matching unoptimized image before promotion.
+    # A later --fast build requires restoring these sources explicitly first.
+    sudo cp -p "$L4T_DIR/bootloader/l4t_initrd.img" \
+        "$L4T_DIR/bootloader/l4t_initrd.before-precompute.img"
+    # NVIDIA flash.sh restores its saved copy into rootfs/boot/initrd, so both
+    # must contain the same validated optimized image.
+    sudo install -m 0644 "$INITRD_WORK/initrd" "$L4T_DIR/rootfs/boot/initrd"
+    sudo install -m 0644 "$INITRD_WORK/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+    cmp "$L4T_DIR/rootfs/boot/initrd" "$L4T_DIR/bootloader/l4t_initrd.img"
+    sudo rm -rf "$INITRD_WORK"
+fi
+
+# Kernel installation must leave every previously staged firmware file intact.
+if [ "$STAGED_FAST_BOOT_FIRMWARE" -eq 1 ]; then
+    python3 "$SCRIPT_DIR/scripts/stage_fast_boot_firmware.py" --l4t-dir "$L4T_DIR" --verify --product "$TARGET"
+fi
+
 # ── Record build metadata ───────────────────────────────────────────────────
 
 BUILD_COMMIT=$ARK_BUILD_COMMIT
@@ -685,6 +773,7 @@ commit=$BUILD_COMMIT
 date=$BUILD_DATE
 build_os=$ARK_BUILD_OS
 target=$TARGET
+precomputed_initrd=$PRECOMPUTE_INITRD
 EOF
 
 # ── Done ────────────────────────────────────────────────────────────────────

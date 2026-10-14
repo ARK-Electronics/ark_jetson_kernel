@@ -1,0 +1,59 @@
+--- a/Silicon/NVIDIA/Drivers/PcieDWControllerDxe/PcieControllerDxe.c
++++ b/Silicon/NVIDIA/Drivers/PcieDWControllerDxe/PcieControllerDxe.c
+@@ -1604,0 +1605,51 @@
++// Applied only by the explicit JAJ --skip-uefi-ffc-pcie experiment.
++// Linux still receives the unchanged enabled FFC controller node.
++STATIC
++EFI_STATUS
++JajPcieFfcBootSupported (
++  IN CONST NVIDIA_DEVICE_TREE_NODE_PROTOCOL  *DeviceTreeNode
++  )
++{
++  CONST VOID  *Controller;
++  INT32       PropertySize;
++  UINT32      ControllerId;
++
++  if ((TegraGetChipID () != T234_CHIP_ID) ||
++      (DeviceTreeNode == NULL) ||
++      (DeviceTreeNode->DeviceTreeBase == NULL) ||
++      (DeviceTreeNode->NodeOffset < 0))
++  {
++    return EFI_SUCCESS;
++  }
++
++  // Follow the driver's valid controller-id precedence. Unknown/malformed
++  // identities retain its original behavior; skip only a positive C7 ID.
++  Controller = fdt_getprop (
++                 DeviceTreeNode->DeviceTreeBase,
++                 DeviceTreeNode->NodeOffset,
++                 "nvidia,controller-id",
++                 &PropertySize
++                 );
++  if (Controller != NULL) {
++    if (PropertySize != 2 * sizeof (UINT32)) {
++      return EFI_SUCCESS;
++    }
++
++    Controller = (CONST UINT8 *)Controller + sizeof (UINT32);
++  } else {
++    Controller = fdt_getprop (
++                   DeviceTreeNode->DeviceTreeBase,
++                   DeviceTreeNode->NodeOffset,
++                   "linux,pci-domain",
++                   &PropertySize
++                   );
++    if ((Controller == NULL) || (PropertySize != sizeof (UINT32))) {
++      return EFI_SUCCESS;
++    }
++  }
++
++  CopyMem (&ControllerId, Controller, sizeof (ControllerId));
++  ControllerId = SwapBytes32 (ControllerId);
++  return (ControllerId == 7) ? EFI_UNSUPPORTED : EFI_SUCCESS;
++}
++
+@@ -1656,0 +1708,4 @@
++    case DeviceDiscoveryDeviceTreeCompatibility:
++      // Filter before handle creation; rejected nodes are normal nonmatches.
++      return JajPcieFfcBootSupported (DeviceTreeNode);
++

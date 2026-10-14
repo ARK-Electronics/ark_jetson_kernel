@@ -1,0 +1,14 @@
+# NVIDIA R36.5 release tags (not r36.5-updates).
+# Manifest: NVIDIA/edk2-edkrepo-manifest @ 51b5da39c05d21b2c1df13958364386de901737d
+# Combination r36.5 incorrectly calls these refs branches; they are tags.
+edk2 30419afc4a6ea666434f9275057f579b46a07a5f
+edk2-non-osi 889f9c90de53e7c8729d1f449b8781a5477f0df4
+edk2-platforms 0dbe07c94b64c9ae8680637cf2302cadbf04bfb9
+edk2-infineon a192e8ab5aff82d9bde920b63be0dd00feac1bbf
+edk2-redfish-client d66810c7af9112b062a2e011610084fa3f1c4be4
+edk2-nvidia 79ad0c17aa4f13fdd5164d5b026fa49436b34891
+edk2-nvidia-non-osi d311b96b3867901325b7228cc374090d23750cd0
+
+# R36.5 references AvbLib but omits it from its manifest combination.
+# Same manifest pins libavb to android-platform-14.0.0_r5 for other builds.
+edk2-nvidia/Silicon/NVIDIA/Library/AvbLib/libavb 386fb90492db3bd6bc484a579bcde5b43a2a0292 https://android.googlesource.com/platform/external/avb
