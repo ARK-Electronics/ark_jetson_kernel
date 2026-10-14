@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Bench helper for a Jetson carrier in the loop: Rigol DP712 power, debug UART, USB and SSH.
+"""Bench helper for a Jetson carrier in the loop: Rigol DP712/DP800 power, debug UART, USB and SSH.
 
     jetson_hil.py ports                                  # what is attached: serial devices, Jetson USB state, gadget NICs
     jetson_hil.py ports --identify                       # also ask each FTDI cable *IDN? to find the DP712
+                                                         # (USB-TMC supplies are always asked: it types into nothing)
     jetson_hil.py psu PORT status                        # identity, setpoints, measured V/A, output state
     jetson_hil.py psu PORT set --volts 16 --amps 3       # setpoints only; the output state is left alone
     jetson_hil.py psu PORT on|off
@@ -10,12 +11,14 @@
     jetson_hil.py wait-ssh [--host 192.168.55.1] [--timeout 180]
 
 --cycle-psu turns the output off, waits --off-seconds, turns it on and captures from that instant, so
-the timestamps are time since OUTP ON. Needs pyserial.
+the timestamps are time since OUTP ON. A PSU PORT is either the DP712's FT232 tty or a DP800-series
+supply's kernel USB-TMC node (/dev/usbtmcN, group dialout). Needs pyserial.
 """
 import argparse
 import glob
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -35,8 +38,6 @@ PSU_OPEN_SETTLE = 0.2
 PSU_COMMAND_GAP = 0.1
 PSU_QUERY_ATTEMPTS = 3
 
-SSH = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
-       "-o", "ConnectTimeout=3", "-o", "LogLevel=ERROR"]
 
 
 def sysfs_usb_attr(device_dir, name):
@@ -90,20 +91,39 @@ def gadget_nics():
 
 class Psu:
     def __init__(self, port):
+        # A DP800 on USB-TMC is a message device, not a byte stream: one write is one command and one read
+        # is one whole reply, and a query to a channel the model lacks times out (ETIMEDOUT) instead of
+        # answering. A DP811 has CH1 only.
+        self.tmc = os.path.basename(port).startswith("usbtmc")
+        if self.tmc:
+            self.fd = os.open(port, os.O_RDWR)
+            return
         self.dev = serial.Serial(port, PSU_BAUD, timeout=1)
         time.sleep(PSU_OPEN_SETTLE)
         self.dev.reset_input_buffer()
 
     def write(self, command):
-        self.dev.write((command + "\n").encode())
-        self.dev.flush()
+        if self.tmc:
+            os.write(self.fd, (command + "\n").encode())
+        else:
+            self.dev.write((command + "\n").encode())
+            self.dev.flush()
         time.sleep(PSU_COMMAND_GAP)
+
+    def read_reply(self):
+        if not self.tmc:
+            return self.dev.readline().decode(errors="replace").strip()
+        try:
+            return os.read(self.fd, 4096).decode(errors="replace").strip()
+        except TimeoutError:
+            return ""
 
     def query(self, command):
         for _ in range(PSU_QUERY_ATTEMPTS):
-            self.dev.reset_input_buffer()
+            if not self.tmc:
+                self.dev.reset_input_buffer()
             self.write(command)
-            reply = self.dev.readline().decode(errors="replace").strip()
+            reply = self.read_reply()
             if reply:
                 return reply
         raise RuntimeError(f"no reply to {command!r}")
@@ -117,7 +137,10 @@ class Psu:
         raise RuntimeError(f"output did not read back {want}")
 
     def close(self):
-        self.dev.close()
+        if self.tmc:
+            os.close(self.fd)
+        else:
+            self.dev.close()
 
 
 def cmd_ports(args):
@@ -131,6 +154,17 @@ def cmd_ports(args):
                 psu.close()
             except (RuntimeError, serial.SerialException) as error:
                 line += f"  -> no *IDN? reply ({error}); likely a console"
+        print(line)
+    print("USB-TMC instruments:")
+    for node in sorted(glob.glob("/dev/usbtmc*")) or ["none"]:
+        line = f"  {node}"
+        if node != "none":
+            try:
+                psu = Psu(node)
+                line += f"  -> {psu.query('*IDN?')}"
+                psu.close()
+            except (OSError, RuntimeError) as error:
+                line += f"  -> no *IDN? reply ({error})"
         print(line)
     print("NVIDIA USB devices:")
     for bus_id, pid, state in jetson_usb_devices() or [("", "", "none")]:
@@ -194,14 +228,26 @@ def cmd_console(args):
     return 0
 
 
+def ssh_banner(host, timeout=3):
+    """sshd's greeting, or None. Needs no key: a freshly flashed board has none installed yet."""
+    try:
+        with socket.create_connection((host, 22), timeout=timeout) as conn:
+            conn.settimeout(timeout)
+            banner = conn.recv(64).decode(errors="replace").strip()
+            return banner if banner.startswith("SSH-") else None
+    except OSError:
+        return None
+
+
 def cmd_wait_ssh(args):
     deadline = time.monotonic() + args.timeout
     while time.monotonic() < deadline:
-        if subprocess.run(SSH + [f"{args.user}@{args.host}", "true"], capture_output=True).returncode == 0:
-            print(f"ssh {args.user}@{args.host} up after {args.timeout - (deadline - time.monotonic()):.0f} s")
+        banner = ssh_banner(args.host)
+        if banner:
+            print(f"sshd on {args.host} up after {args.timeout - (deadline - time.monotonic()):.0f} s ({banner})")
             return 0
-        time.sleep(2)
-    print(f"ssh {args.user}@{args.host} not reachable in {args.timeout} s", file=sys.stderr)
+        time.sleep(1)
+    print(f"sshd on {args.host} not answering in {args.timeout} s", file=sys.stderr)
     return 1
 
 
@@ -233,7 +279,6 @@ def main():
 
     wait = sub.add_parser("wait-ssh")
     wait.add_argument("--host", default="192.168.55.1")
-    wait.add_argument("--user", default="jetson")
     wait.add_argument("--timeout", type=float, default=180)
     wait.set_defaults(func=cmd_wait_ssh)
 

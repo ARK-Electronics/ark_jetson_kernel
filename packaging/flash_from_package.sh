@@ -17,11 +17,18 @@
 # product. Drafts are invisible to the public API, so that path uses the gh CLI and
 # needs an account with read access to the repo.
 #
+# --encrypt flashes the rootfs to a LUKS partition that the module unlocks by itself
+# at boot and that the SSD alone cannot open (docs/disk_encryption.md). It needs a
+# package that bundles ark_disk_encryption/, always regenerates the images (they are
+# bound to one module and one key), and generates a random disk key under
+# ~/.ark-jetson-keys/ unless --disk-key names one.
+#
 # Usage:
 #   ./flash_from_package.sh <tag>             # specific release (e.g. pab-6.2.1.1); auto-detects a draft of that tag
 #   ./flash_from_package.sh <product>         # latest published release for a product (pab, jaj, pab-v3)
 #   ./flash_from_package.sh <product> --draft # latest DRAFT release for a product (needs gh read access)
 #   ./flash_from_package.sh <tag> --full      # regenerate images even if cached ones match
+#   ./flash_from_package.sh <product> --encrypt [--disk-key FILE]  # encrypted rootfs
 #   ./flash_from_package.sh --clean           # remove all cached data
 
 set -euo pipefail
@@ -40,6 +47,8 @@ usage() {
     echo "  $(basename "$0") pab-v3          Flash the latest PAB_V3 release"
     echo "  $(basename "$0") pab-v3 --draft  Flash the latest PAB_V3 DRAFT (needs gh read access)"
     echo "  $(basename "$0") pab --full      Regenerate flash images even if cached ones match"
+    echo "  $(basename "$0") jaj --encrypt   Encrypt the rootfs; the module unlocks it at boot"
+    echo "      [--disk-key FILE]            Use this 16-byte hex disk key instead of a new one"
     echo "  $(basename "$0") --clean         Remove all cached data"
     echo ""
     echo "Note: PAB Rev3 is not the same as PAB_V3. PAB_V3 is a separate product."
@@ -57,13 +66,22 @@ is_product_name() {
 
 FORCE_FULL=0
 WANT_DRAFT=0
+ENCRYPT=0
+DISK_KEY=""
 args=()
-for arg in "$@"; do
-    case "$arg" in
-        --full)  FORCE_FULL=1 ;;
-        --draft) WANT_DRAFT=1 ;;
-        *)       args+=("$arg") ;;
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --full)    FORCE_FULL=1 ;;
+        --draft)   WANT_DRAFT=1 ;;
+        --encrypt) ENCRYPT=1 ;;
+        --disk-key)
+            [ -n "${2:-}" ] || { echo "ERROR: --disk-key needs a key file." >&2; exit 1; }
+            ENCRYPT=1
+            DISK_KEY="$2"
+            shift ;;
+        *)         args+=("$1") ;;
     esac
+    shift
 done
 set -- "${args[@]}"
 
@@ -101,6 +119,11 @@ FLASH_PREREQS=(abootimg binfmt-support binutils cpio cpp curl
     netcat-openbsd nfs-kernel-server openssl
     parted python3-yaml qemu-user-static rsync sshpass
     udev usbutils uuid-runtime whois xmlstarlet xxd zstd zlib1g)
+# An encrypted image is built through dm-crypt on this host, and NVIDIA's LUKS passphrase
+# tool is Python. Only --encrypt asks for them, so a plain flash needs nothing new.
+if [ "$ENCRYPT" = 1 ]; then
+    FLASH_PREREQS+=(cryptsetup python3-cryptography)
+fi
 
 missing=()
 for pkg in "${FLASH_PREREQS[@]}"; do
@@ -547,6 +570,24 @@ if [ -f "$L4T_DIR/ark_flash.conf" ]; then
     source "$L4T_DIR/ark_flash.conf"
 fi
 
+# The encryption helper travels with the package, like ark_flash.conf, so it always
+# matches the BSP it drives.
+DISK_KEY_FILE=""
+if [ "$ENCRYPT" = 1 ]; then
+    DISK_ENC_HELPER="$L4T_DIR/ark_disk_encryption/disk_encryption.sh"
+    if ! sudo test -f "$DISK_ENC_HELPER"; then
+        echo "ERROR: $RELEASE_TAG predates encrypted flashing (no ark_disk_encryption/ in the" >&2
+        echo "       package). Flash a newer release, or build from source: ./flash.sh <TARGET> --encrypt" >&2
+        exit 1
+    fi
+    # shellcheck disable=SC1090
+    source "$DISK_ENC_HELPER"
+    disk_enc_check_host
+    if [ -n "$DISK_KEY" ]; then
+        DISK_KEY_FILE="$(disk_enc_key_file "$DISK_KEY" "$RELEASE_TAG")"
+    fi
+fi
+
 # --- Display package build info ---
 
 BUILD_INFO=$(sudo find "$EXTRACT_DIR" -maxdepth 3 -name "BUILD_INFO.txt" 2>/dev/null | head -1 || true)
@@ -594,7 +635,10 @@ echo ""
 # to full regeneration.
 GEN_MARKER="$L4T_DIR/.ark-flash-gen"
 REPLAY=0
-if [ "$FORCE_FULL" = "1" ]; then
+if [ "$ENCRYPT" = "1" ]; then
+    # Encrypted images are bound to the module's ECID and to this flash's disk key.
+    echo "--encrypt: generating images for this module."
+elif [ "$FORCE_FULL" = "1" ]; then
     echo "--full: regenerating flash images."
 elif [ -f "$GEN_MARKER" ] && [ -f tools/kernel_flash/initrdflashparam.txt ] && [ -d tools/kernel_flash/images ]; then
     CACHED_KEY=$(cat "$GEN_MARKER")
@@ -689,29 +733,39 @@ else
     if [ -n "$ADDITIONAL_DTB_OVERLAY" ]; then
         echo "Baking default device-tree overlay(s) into the image: $ADDITIONAL_DTB_OVERLAY"
     fi
-    # The initrd flasher reads the connected module's EEPROM and picks the matching
-    # bootloader + SDRAM config, so one package flashes any Orin Nano/NX variant. It
-    # writes the QSPI bootloader (-p) and the rootfs to the external device (-c) in
-    # a single pass. ADDITIONAL_DTB_OVERLAY_OPT merges the product's default
-    # overlay(s) into the DTB during image generation; the --flash-only replay
-    # above needs no equivalent because its images already contain the merged DTB.
-    # dtbo basenames carry no spaces, so the unquoted ${var:+NAME=$var} prefix
-    # passes cleanly as a single sudo environment assignment.
-    sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY_OPT=$ADDITIONAL_DTB_OVERLAY} \
-        ./tools/kernel_flash/l4t_initrd_flash.sh \
-        --external-device "$STORAGE_DEV" \
-        -p "-c ./$QSPI_CFG" \
-        -c "./$EXTERNAL_CFG" \
-        --showlogs --network usb0 \
-        "$FLASH_TARGET" "$STORAGE_DEV"
-
-    # Key the cache off the EEPROM dump the generation step itself read, not the
-    # probe, so the marker always describes what the images were built for.
-    if MODULE_KEY=$(module_key); then
-        echo "$MODULE_KEY" | sudo tee "$GEN_MARKER" > /dev/null
-        echo "Recorded module info: same-variant reflashes will skip image generation."
+    if [ "$ENCRYPT" = "1" ]; then
+        # No replay marker afterwards: the images left behind belong to this module alone.
+        if [ -z "$DISK_KEY_FILE" ]; then
+            DISK_KEY_FILE="$(disk_enc_key_file "" "$RELEASE_TAG")"
+            echo "Generated disk key $DISK_KEY_FILE"
+        fi
+        disk_enc_flash "$L4T_DIR" "$DISK_KEY_FILE" "$FLASH_TARGET" "$STORAGE_DEV" \
+            "$QSPI_CFG" "$ADDITIONAL_DTB_OVERLAY" "$RELEASE_TAG"
     else
-        echo "WARNING: could not read the module EEPROM dump; the next flash will regenerate images."
+        # The initrd flasher reads the connected module's EEPROM and picks the matching
+        # bootloader + SDRAM config, so one package flashes any Orin Nano/NX variant. It
+        # writes the QSPI bootloader (-p) and the rootfs to the external device (-c) in
+        # a single pass. ADDITIONAL_DTB_OVERLAY_OPT merges the product's default
+        # overlay(s) into the DTB during image generation; the --flash-only replay
+        # above needs no equivalent because its images already contain the merged DTB.
+        # dtbo basenames carry no spaces, so the unquoted ${var:+NAME=$var} prefix
+        # passes cleanly as a single sudo environment assignment.
+        sudo ${ADDITIONAL_DTB_OVERLAY:+ADDITIONAL_DTB_OVERLAY_OPT=$ADDITIONAL_DTB_OVERLAY} \
+            ./tools/kernel_flash/l4t_initrd_flash.sh \
+            --external-device "$STORAGE_DEV" \
+            -p "-c ./$QSPI_CFG" \
+            -c "./$EXTERNAL_CFG" \
+            --showlogs --network usb0 \
+            "$FLASH_TARGET" "$STORAGE_DEV"
+
+        # Key the cache off the EEPROM dump the generation step itself read, not the
+        # probe, so the marker always describes what the images were built for.
+        if MODULE_KEY=$(module_key); then
+            echo "$MODULE_KEY" | sudo tee "$GEN_MARKER" > /dev/null
+            echo "Recorded module info: same-variant reflashes will skip image generation."
+        else
+            echo "WARNING: could not read the module EEPROM dump; the next flash will regenerate images."
+        fi
     fi
 fi
 
