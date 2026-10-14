@@ -685,6 +685,7 @@ commit=$BUILD_COMMIT
 date=$BUILD_DATE
 build_os=$ARK_BUILD_OS
 target=$TARGET
+fast_boot=$([ -f "$STAGING_DIR/.fast-boot" ] && echo 1 || echo 0)
 EOF
 
 # ── Done ────────────────────────────────────────────────────────────────────

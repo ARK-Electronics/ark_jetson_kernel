@@ -1,0 +1,11 @@
+# Bench marker: fires when systemd starts a plain multi-user unit, i.e. when a
+# user application's service would be running. No After=, on purpose.
+[Unit]
+Description=Boot-time marker: user service started
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo "ARK_BOOT_STARTED $(cut -d" " -f1 /proc/uptime)" > /dev/ttyTCU0'
+
+[Install]
+WantedBy=multi-user.target

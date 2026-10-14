@@ -115,5 +115,6 @@ See [docs/cameras.md](docs/cameras.md) for supported sensors and how to verify a
 - [docs/10gbe_ethernet.md](docs/10gbe_ethernet.md) — Auvidea M20E 10GbE adapter
 - [docs/share_wifi.md](docs/share_wifi.md) — share the host PC's WiFi with the Jetson over USB
 - [docs/power.md](docs/power.md) — power modes, clock speeds, and measured power draw
+- [docs/fast_boot.md](docs/fast_boot.md) — opt-in reduced UEFI and silent early firmware for faster cold boot
 - [docs/kernel_development.md](docs/kernel_development.md) — manual kernel builds and device tree changes
 - [docs/build_host.md](docs/build_host.md) — why the build pins to Ubuntu 22.04
