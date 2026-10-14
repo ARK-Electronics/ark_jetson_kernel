@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./build.sh <PAB|JAJ|PAB_V3|all> [--fast] [--no-provision]
+# Usage: ./build.sh <PAB|JAJ|PAB_V3|PAB_CAN|all> [--fast] [--no-provision]
 #   (default)             wipe staging/{TARGET}/, re-stage, provision, then build
 #   --fast                reuse the existing staged tree — recompile the kernel/DT
 #                         only, no re-stage and no re-provision (needs a prior build)
@@ -27,7 +27,7 @@ TARGET=""
 
 for arg in "$@"; do
     case "$arg" in
-        PAB|JAJ|PAB_V3) TARGET="$arg" ;;
+        PAB|JAJ|PAB_V3|PAB_CAN) TARGET="$arg" ;;
         all)            TARGET="all" ;;
         --fast)         FAST=1 ;;
         --no-provision) PROVISION=0 ;;
@@ -35,7 +35,7 @@ for arg in "$@"; do
         --provision)    PROVISION=1 ;;  # the default now; still accepted so old commands work
         *)
             echo "Invalid argument: $arg" >&2
-            echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision]" >&2
+            echo "Usage: $0 <PAB | JAJ | PAB_V3 | PAB_CAN | all> [--fast] [--no-provision]" >&2
             exit 1
             ;;
     esac
@@ -52,18 +52,20 @@ if [ -z "$TARGET" ]; then
         echo "1) PAB"
         echo "2) JAJ"
         echo "3) PAB_V3"
-        echo "4) all"
-        read -p "Enter your choice (1-4): " choice
+        echo "4) PAB_CAN"
+        echo "5) all"
+        read -p "Enter your choice (1-5): " choice
         case $choice in
-            1|PAB)    TARGET="PAB" ;;
-            2|JAJ)    TARGET="JAJ" ;;
-            3|PAB_V3) TARGET="PAB_V3" ;;
-            4|all)    TARGET="all" ;;
+            1|PAB)     TARGET="PAB" ;;
+            2|JAJ)     TARGET="JAJ" ;;
+            3|PAB_V3)  TARGET="PAB_V3" ;;
+            4|PAB_CAN) TARGET="PAB_CAN" ;;
+            5|all)     TARGET="all" ;;
             *) echo "Invalid choice. Exiting."; exit 1 ;;
         esac
     else
-        echo "ERROR: target required (PAB | JAJ | PAB_V3 | all) when running non-interactively." >&2
-        echo "Usage: $0 <PAB | JAJ | PAB_V3 | all> [--fast] [--no-provision]" >&2
+        echo "ERROR: target required (PAB | JAJ | PAB_V3 | PAB_CAN | all) when running non-interactively." >&2
+        echo "Usage: $0 <PAB | JAJ | PAB_V3 | PAB_CAN | all> [--fast] [--no-provision]" >&2
         exit 1
     fi
 fi
@@ -108,7 +110,7 @@ sudo -v
 
 if [ "$TARGET" = "all" ]; then
     trap 'echo ""; echo "Aborted."; exit 130' INT
-    for t in PAB JAJ PAB_V3; do
+    for t in PAB JAJ PAB_V3 PAB_CAN; do
         echo ""
         echo "========================================="
         echo "  Building $t"

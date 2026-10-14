@@ -2,7 +2,7 @@
 
 # Usage: ./flash.sh <TARGET> [--sdcard] [--usb]
 #
-# TARGET: PAB | JAJ | PAB_V3
+# TARGET: PAB | JAJ | PAB_V3 | PAB_CAN
 #
 # Flashes a previously-built target directly from its staging directory.
 # The device must be in USB recovery mode before running this script.
@@ -16,7 +16,7 @@ TARGET=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        PAB|JAJ|PAB_V3)
+        PAB|JAJ|PAB_V3|PAB_CAN)
             TARGET="$1"
             shift ;;
         --sdcard)
@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
             shift ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
+            echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3 | PAB_CAN> [--sdcard] [--usb]" >&2
             exit 1 ;;
     esac
 done
@@ -39,16 +39,18 @@ if [ -z "$TARGET" ]; then
         echo "1) PAB"
         echo "2) JAJ"
         echo "3) PAB_V3"
-        read -p "Enter your choice (1-3): " choice
+        echo "4) PAB_CAN"
+        read -p "Enter your choice (1-4): " choice
         case $choice in
             1) TARGET="PAB" ;;
             2) TARGET="JAJ" ;;
             3) TARGET="PAB_V3" ;;
+            4) TARGET="PAB_CAN" ;;
             *) echo "Invalid choice. Exiting."; exit 1 ;;
         esac
     else
-        echo "ERROR: target required (PAB | JAJ | PAB_V3) when running non-interactively." >&2
-        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3> [--sdcard] [--usb]" >&2
+        echo "ERROR: target required (PAB | JAJ | PAB_V3 | PAB_CAN) when running non-interactively." >&2
+        echo "Usage: ./flash.sh <PAB | JAJ | PAB_V3 | PAB_CAN> [--sdcard] [--usb]" >&2
         exit 1
     fi
 fi

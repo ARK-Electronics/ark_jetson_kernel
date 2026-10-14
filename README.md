@@ -18,6 +18,7 @@ Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an AR
 | `PAB` | ARK Jetson PAB Carrier | [docs](https://docs.arkelectron.com/products/flight-controller/jetson-pabs/ark-jetson-pab-carrier) |
 | `JAJ` | ARK Just a Jetson Carrier | [docs](https://docs.arkelectron.com/products/embedded-computers/ark-just-a-jetson) |
 | `PAB_V3` | ARK Jetson PAB V3 Carrier | [docs](https://docs.arkelectron.com/products/flight-controller/jetson-pabs/ark-jetson-pab-carrier-v3) |
+| `PAB_CAN` | ARK PAB CAN Jetson Carrier | |
 
 > **Note:** PAB Rev3 is a hardware revision of the PAB and uses `PAB`. PAB_V3 is a separate product.
 
@@ -28,7 +29,7 @@ Just want the stock image? Each [release](https://github.com/ARK-Electronics/ark
 ```
 curl -LO https://raw.githubusercontent.com/ARK-Electronics/ark_jetson_kernel/main/packaging/flash_from_package.sh
 chmod +x flash_from_package.sh
-./flash_from_package.sh pab        # or jaj / pab-v3, or a specific tag like pab-6.2.2.4
+./flash_from_package.sh pab        # or jaj / pab-v3 / pab-can, or a specific tag like pab-6.2.2.4
 ```
 
 No build tools or kernel source needed. Flashes the QSPI bootloader and the rootfs to NVMe; one package covers every Orin Nano/NX module variant. See [packaging/README.md](packaging/README.md) for details.
@@ -47,7 +48,7 @@ Download the BSP, root filesystem, and kernel source tarballs (one time):
 ```
 ./build.sh PAB
 ```
-- Targets are `PAB`, `JAJ`, `PAB_V3`, or `all`.
+- Targets are `PAB`, `JAJ`, `PAB_V3`, `PAB_CAN`, or `all`.
 - By default a build re-stages `staging/{TARGET}/` from scratch and provisions the image — it preinstalls [ARK-OS](https://github.com/ARK-Electronics/ARK-OS) and tooling. To bake in your own packages, edit [`provision.sh`](provision.sh).
 - `--fast` reuses the existing staged tree and just recompiles the kernel/device tree, for quick iteration after a full build.
 - `--no-provision` builds a bare image (no ARK-OS). `--clean` and `--provision` are still accepted but are the default now.
@@ -85,7 +86,7 @@ ssh jetson@jetson.local
 
 ## Cameras
 
-Every carrier ships with an IMX219 overlay already selected, so cameras work out of the box: the quad overlay on **PAB**, the dual overlay on **JAJ** and **PAB_V3**. To use a different camera, select an overlay with NVIDIA's `jetson-io` tool. List what's available:
+Every carrier ships with an IMX219 overlay already selected, so cameras work out of the box: the quad overlay on **PAB**, the dual overlay on **JAJ**, **PAB_V3**, and **PAB_CAN**. To use a different camera, select an overlay with NVIDIA's `jetson-io` tool. List what's available:
 ```
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
 ```

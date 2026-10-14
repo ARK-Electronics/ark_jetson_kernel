@@ -1,6 +1,6 @@
 # I2C on ARK Jetson Carriers
 
-Orin Nano / NX, all ARK carriers (JAJ / PAB / PAB_V3).
+Orin Nano / NX, all ARK carriers (JAJ / PAB / PAB_V3 / PAB_CAN).
 
 ## Scan a bus
 
