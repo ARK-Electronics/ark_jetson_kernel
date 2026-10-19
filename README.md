@@ -23,7 +23,7 @@ Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an AR
 
 ## Flash a Prebuilt Image
 
-Just want the stock image? Each [release](https://github.com/ARK-Electronics/ark_jetson_kernel/releases) ships a ready-to-flash package per carrier — the same image bundles ship with. On a Debian/Ubuntu host, with the Jetson connected over USB and booted into recovery (hold the Force Recovery button while powering on):
+Just want the stock image? Each [release](https://downloads.arkelectron.com/jetson/) ships a ready-to-flash package per carrier — the same image bundles ship with. On a Debian/Ubuntu host, with the Jetson connected over USB and booted into recovery (hold the Force Recovery button while powering on):
 
 ```
 curl -LO https://raw.githubusercontent.com/ARK-Electronics/ark_jetson_kernel/main/packaging/flash_from_package.sh

@@ -1,0 +1,65 @@
+# Releases a bench-validated draft: copies dev/jetson/<product>/<version>/ byte for byte
+# into the product's release folder, points latest/ at it and publishes the product's
+# changelog as of the tag. Promote all three products of a version together.
+
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Draft tag to release, e.g. jaj-6.2.2.7
+        required: true
+
+concurrency:
+  group: promote-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-22.04
+    environment: downloads
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ARK-Electronics/downloads
+          path: ark-downloads
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-west-1
+          mask-aws-account-id: true
+
+      - name: Promote
+        env:
+          DOWNLOADS_BUCKET: ${{ vars.DOWNLOADS_BUCKET }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          # pab-v3- before pab-, as in build.yml
+          case "$TAG" in
+            pab-v3-[0-9]*) product=pab-v3 target=PAB_V3 ;;
+            pab-[0-9]*) product=pab target=PAB ;;
+            jaj-[0-9]*) product=jaj target=JAJ ;;
+            *) echo "::error::$TAG is not a release tag"; exit 1 ;;
+          esac
+          version=${TAG#"$product"-}
+
+          # A rerun after a later step failed finds the release folder already written
+          if ! aws s3api head-object --bucket "$DOWNLOADS_BUCKET" --key "jetson/$product/$version/SHA256SUMS" >/dev/null 2>&1; then
+            ark-downloads/downloads.py release "dev/jetson/$product/$version" "jetson/$product/$version"
+          fi
+          ark-downloads/downloads.py promote "jetson/$product/$version" "jetson/$product/latest"
+          ark-downloads/downloads.py put "products/$target/CHANGELOG.md" "jetson/$product/CHANGELOG.md"
+          ark-downloads/downloads.py index
+
+          echo "Released https://downloads.arkelectron.com/jetson/$product/$version/" >> "$GITHUB_STEP_SUMMARY"
