@@ -19,8 +19,11 @@ jobs:
     # Kernel build alone is ~70 min on a cold ccache; leave headroom for packaging
     # (tar + parallel compress of the rootfs) and the multi-GB release upload.
     timeout-minutes: 180
+    # Only tag builds publish; the environment admits release tags and main, so a PR build must not ask for it
+    environment: ${{ startsWith(github.ref, 'refs/tags/') && 'downloads' || '' }}
     permissions:
-      contents: write
+      contents: read
+      id-token: write
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # Above one build's object set (~1 GB) so ccache doesn't evict its own hits;
@@ -54,6 +57,20 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # Before the ~70 min build: a release without its changelog section never gets a draft
+      - name: Extract changelog
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          CHANGELOG: products/${{ steps.tag.outputs.target }}/CHANGELOG.md
+        run: |
+          awk -v version="$VERSION" '/^## /{in_section = ($2 == version)} in_section' "$CHANGELOG" > "$RUNNER_TEMP/CHANGELOG.md"
+          if [ ! -s "$RUNNER_TEMP/CHANGELOG.md" ]; then
+            echo "::error::$CHANGELOG has no '## $VERSION - <date>' section"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/CHANGELOG.md"
+
       - name: Free disk space
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
         with:
@@ -69,8 +86,8 @@ jobs:
         # staging/ (extracted rootfs + massflash images + the multi-GB mfi tarball)
         # overran the ~49 GB free on / and crashed the runner with ENOSPC during
         # packaging. The ephemeral /mnt has ~65 GB free and is otherwise unused, so
-        # build there. The final package + split stay in the workspace on /, where
-        # the release step globs for them.
+        # build there. The final package stays in the workspace on /, where the
+        # publish step picks it up.
         run: |
           sudo mkdir -p /mnt/staging
           sudo chown "$(id -u):$(id -g)" /mnt/staging
@@ -130,9 +147,9 @@ jobs:
         # Provisioning (ARK-OS + the pinned camera stack) is the build default now;
         # tag builds keep --provision explicit for clarity. provision.sh falls back
         # loudly to the newest published (pre)release if the pin isn't published. The
-        # draft release ships a flashable, provisioned image; promoting it to published
-        # is a GitHub toggle with no rebuild. PR/main builds only compile-check, so
-        # --no-provision skips the ~6 min provision and its NVIDIA/GitHub network deps.
+        # draft ships a flashable, provisioned image; promote.yml releases it with no
+        # rebuild. PR/main builds only compile-check, so --no-provision skips the
+        # ~6 min provision and its NVIDIA/GitHub network deps.
         run: |
           if [ -n "${{ steps.tag.outputs.target }}" ]; then
             ./build.sh ${{ steps.tag.outputs.target }} --provision
@@ -148,65 +165,36 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: ./packaging/generate_flash_package.sh ${{ steps.tag.outputs.target }}
 
-      - name: Create release
+      - uses: actions/checkout@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          repository: ARK-Electronics/downloads
+          path: ark-downloads
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-west-1
+          mask-aws-account-id: true
+
+      # Every release is born an unlisted draft; promote.yml releases it after bench validation.
+      - name: Publish draft
         if: startsWith(github.ref, 'refs/tags/')
         env:
-          GH_TOKEN: ${{ github.token }}
+          DOWNLOADS_BUCKET: ${{ vars.DOWNLOADS_BUCKET }}
+          PRODUCT: ${{ steps.tag.outputs.product }}
+          VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          PRODUCT="${{ steps.tag.outputs.product }}"
-          VERSION="${{ steps.tag.outputs.version }}"
+          mkdir draft
+          mv ark-*.tar.gz "$RUNNER_TEMP/CHANGELOG.md" draft/
+          (cd draft && sha256sum -- * > SHA256SUMS)
+          ark-downloads/downloads.py publish draft "dev/jetson/$PRODUCT/$VERSION"
+          echo "$VERSION" > "$RUNNER_TEMP/VERSION"
+          ark-downloads/downloads.py put "$RUNNER_TEMP/VERSION" "dev/jetson/$PRODUCT/draft/VERSION"
 
-          source versions.env
-          L4T_VERSION="${EXPECTED_BSP_RELEASE}.${EXPECTED_BSP_REVISION}"
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          Draft: https://downloads.arkelectron.com/dev/jetson/$PRODUCT/$VERSION/ark-$PRODUCT-nvme-super.tar.gz
 
-          PRODUCT_UPPER=$(echo "$PRODUCT" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-
-          RELEASE_FILES=()
-          for f in ark-*.tar.gz; do
-            [ -f "$f" ] && RELEASE_FILES+=("$f")
-          done
-          for d in ark-*_split; do
-            [ -d "$d" ] || continue
-            for part in "$d"/*.part.*; do
-              [ -f "$part" ] && RELEASE_FILES+=("$part")
-            done
-          done
-          if [ ${#RELEASE_FILES[@]} -eq 0 ]; then
-            echo "::error::No flash package artifacts found (ark-*.tar.gz or ark-*_split/)"
-            exit 1
-          fi
-
-          # The flasher isn't a release asset; it's served from main (linked in the notes below).
-
-          echo "Release assets:"
-          for f in "${RELEASE_FILES[@]}"; do
-            echo "  $(basename "$f") ($(du -h "$f" | cut -f1))"
-          done
-
-          COMMIT_SHORT=$(git rev-parse --short HEAD)
-
-          cat > /tmp/release-notes.md <<EOF
-          ## ${PRODUCT_UPPER} v${VERSION}
-
-          L4T ${L4T_VERSION} (Jetpack ${JETPACK_VERSION}) | Built from \`${COMMIT_SHORT}\`
-
-          ### Flash
-
-          Fetch the flasher from the main branch (it flashes any release):
-
-          \`\`\`
-          curl -LO https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/packaging/flash_from_package.sh
-          chmod +x flash_from_package.sh
-          ./flash_from_package.sh ${TAG}
-          \`\`\`
-
-          Put the Jetson in recovery mode before running. Requires a Debian/Ubuntu host with USB connection. Supports all Orin Nano/NX module variants.
+          Flash: \`./flash_from_package.sh $GITHUB_REF_NAME\`, then after bench validation: \`gh workflow run promote.yml -f tag=$GITHUB_REF_NAME\`
           EOF
-
-          # Every release is born a hidden draft; promoting it to published is a
-          # manual GitHub toggle (same artifact, same tag — no rebuild, no rename).
-          gh release create "$TAG" --draft \
-            --title "${PRODUCT_UPPER} v${VERSION}" \
-            --notes-file /tmp/release-notes.md \
-            "${RELEASE_FILES[@]}"

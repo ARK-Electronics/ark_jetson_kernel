@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Creates a per-product release tag and pushes it. CI handles the build and
-# release creation.
+# Creates a per-product release tag and pushes it. CI builds the package and
+# publishes it as a draft on downloads.arkelectron.com.
 #
 # Usage: ./publish_release.sh <TARGET> <version>
-#   e.g. ./publish_release.sh PAB 6.2.1.1
+#   e.g. ./publish_release.sh PAB 6.2.2.7
 #
 # The resulting tag is e.g. pab-6.2.1.1
 
@@ -12,7 +12,7 @@ set -e
 
 if [ $# -lt 2 ]; then
     echo "Usage: ./publish_release.sh <PAB | JAJ | PAB_V3> <version>"
-    echo "  e.g. ./publish_release.sh PAB 6.2.1.1"
+    echo "  e.g. ./publish_release.sh PAB 6.2.2.7"
     echo ""
     echo "Creates and pushes a tag — CI handles the rest."
     exit 1
@@ -32,7 +32,7 @@ case "$TARGET" in
 esac
 
 if ! echo "$VERSION" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then
-    echo "ERROR: Version must be digits and dots (e.g. 6.2.1.1), got: $VERSION"
+    echo "ERROR: Version must be digits and dots (e.g. 6.2.2.7), got: $VERSION"
     exit 1
 fi
 
@@ -41,6 +41,11 @@ TAG="${PRODUCT}-${VERSION}"
 
 if ! git -C "$ROOT_DIR" diff-index --quiet HEAD --; then
     echo "ERROR: Working tree has uncommitted changes. Commit or stash before releasing."
+    exit 1
+fi
+
+if ! awk -v version="$VERSION" '/^## / && $2 == version {found = 1} END {exit !found}' "$ROOT_DIR/products/$TARGET/CHANGELOG.md"; then
+    echo "ERROR: products/$TARGET/CHANGELOG.md has no '## $VERSION - <date>' section. Merge it to main first."
     exit 1
 fi
 
@@ -63,6 +68,7 @@ git -C "$ROOT_DIR" tag -a "$TAG" -m "$TAG"
 git -C "$ROOT_DIR" push origin "$TAG"
 
 echo ""
-echo "Tag '$TAG' pushed. CI will build and create a hidden draft release."
-echo "Validate it on the fixture, then publish it by hand in the GitHub UI."
+echo "Tag '$TAG' pushed. CI will build it and publish an unlisted draft."
+echo "Validate it with ./packaging/flash_from_package.sh $TAG, then release it:"
+echo "  gh workflow run promote.yml -f tag=$TAG"
 echo "Monitor: https://github.com/ARK-Electronics/ark_jetson_kernel/actions"

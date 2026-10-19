@@ -175,44 +175,10 @@ if [ "$tar_rc" -gt 1 ]; then
 fi
 sudo chown "$(id -u):$(id -g)" "$OUTPUT_FILE"
 
-FILE_SIZE=$(stat -c%s "$OUTPUT_FILE")
-MAX_SIZE=$((2 * 1024 * 1024 * 1024))
-
-if [ "$FILE_SIZE" -gt "$MAX_SIZE" ]; then
-    echo ""
-    echo "Package exceeds 2GB ($(numfmt --to=iec-i --suffix=B "$FILE_SIZE")) — splitting for GitHub Releases..."
-    SPLIT_DIR="$ROOT_DIR/${PACKAGE_NAME}_split"
-    rm -rf "$SPLIT_DIR"
-    mkdir -p "$SPLIT_DIR"
-    split -b 1900m "$OUTPUT_FILE" "$SPLIT_DIR/${PACKAGE_NAME}.part."
-    SHA256=$(sha256sum "$OUTPUT_FILE" | cut -d' ' -f1)
-    rm -f "$OUTPUT_FILE"
-
-    cat > "$SPLIT_DIR/reassemble.sh" << 'EOF'
-#!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT=$(ls "$SCRIPT_DIR"/*.part.aa | sed 's/\.part\.aa$/.tar.gz/')
-echo "Reassembling parts..."
-cat "$SCRIPT_DIR"/*.part.* > "$OUTPUT"
-echo "Output: $OUTPUT"
-echo "SHA256: $(sha256sum "$OUTPUT" | cut -d' ' -f1)"
-EOF
-    chmod +x "$SPLIT_DIR/reassemble.sh"
-
-    echo ""
-    echo "========================================="
-    echo "  Package split into parts:"
-    echo "  Directory: $SPLIT_DIR"
-    ls -lh "$SPLIT_DIR"/
-    echo ""
-    echo "  Original SHA256: $SHA256"
-    echo "========================================="
-else
-    echo ""
-    echo "========================================="
-    echo "  Flash package generated successfully"
-    echo "  File: $OUTPUT_FILE"
-    echo "  Size: $(numfmt --to=iec-i --suffix=B "$FILE_SIZE")"
-    echo "  SHA256: $(sha256sum "$OUTPUT_FILE" | cut -d' ' -f1)"
-    echo "========================================="
-fi
+echo ""
+echo "========================================="
+echo "  Flash package generated successfully"
+echo "  File: $OUTPUT_FILE"
+echo "  Size: $(numfmt --to=iec-i --suffix=B "$(stat -c%s "$OUTPUT_FILE")")"
+echo "  SHA256: $(sha256sum "$OUTPUT_FILE" | cut -d' ' -f1)"
+echo "========================================="
