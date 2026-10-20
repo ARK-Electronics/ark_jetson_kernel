@@ -52,7 +52,7 @@ Each tag build takes about 70 minutes and publishes:
 | `dev/jetson/<product>/<version>/` | The draft: package, its `CHANGELOG.md` section, `SHA256SUMS` |
 | `dev/jetson/<product>/draft/VERSION` | The newest draft's version |
 
-Drafts are unlisted and expire 90 days after the build.
+Drafts are unlisted and expire 90 days after the build. `dev/` has no folder pages, so a folder URL returns Access Denied; open a file by name, e.g. `https://downloads.arkelectron.com/dev/jetson/pab/6.2.2.7/ark-pab-nvme-super.tar.gz`.
 
 ### Promoting
 
