@@ -1,0 +1,14 @@
+# edk2 sources for the reduced UEFI: NVIDIA's r36.5 release tags, pinned by commit
+# so a moved tag cannot change the firmware. <repo> <commit> [url]; the url
+# defaults to https://github.com/NVIDIA/<repo>.git.
+edk2 30419afc4a6ea666434f9275057f579b46a07a5f
+edk2-non-osi 889f9c90de53e7c8729d1f449b8781a5477f0df4
+edk2-platforms 0dbe07c94b64c9ae8680637cf2302cadbf04bfb9
+edk2-infineon a192e8ab5aff82d9bde920b63be0dd00feac1bbf
+edk2-redfish-client d66810c7af9112b062a2e011610084fa3f1c4be4
+edk2-nvidia 79ad0c17aa4f13fdd5164d5b026fa49436b34891
+edk2-nvidia-non-osi d311b96b3867901325b7228cc374090d23750cd0
+
+# r36.5's AvbLib references a libavb checkout its manifest omits; this is the
+# revision the same manifest pins for its other builds.
+edk2-nvidia/Silicon/NVIDIA/Library/AvbLib/libavb 386fb90492db3bd6bc484a579bcde5b43a2a0292 https://android.googlesource.com/platform/external/avb

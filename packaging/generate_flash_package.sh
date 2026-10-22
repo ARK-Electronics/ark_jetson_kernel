@@ -77,6 +77,18 @@ if [ -f "$DEFAULT_OVERLAYS_FILE" ]; then
     done < "$DEFAULT_OVERLAYS_FILE"
 fi
 
+# A fast-boot tree (scripts/enable_fast_boot.sh) carries the reduced UEFI, which
+# needs BootOrderNvme.dtbo last in the overlay list; see flash.sh.
+FAST_BOOT=no
+if [ -f "$ROOT_DIR/staging/$TARGET/.fast-boot" ]; then
+    FAST_BOOT=yes
+    if [ ! -f "$L4T_DIR/kernel/dtb/BootOrderNvme.dtbo" ]; then
+        echo "ERROR: BootOrderNvme.dtbo missing from staging/$TARGET/Linux_for_Tegra/kernel/dtb/" >&2
+        exit 1
+    fi
+    ADDITIONAL_DTB_OVERLAY="${ADDITIONAL_DTB_OVERLAY:+$ADDITIONAL_DTB_OVERLAY,}BootOrderNvme.dtbo"
+fi
+
 GIT_COMMIT=$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
 GIT_DESCRIBE=$(git -C "$ROOT_DIR" describe --always --dirty --tags 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git -C "$ROOT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
@@ -124,6 +136,7 @@ Target:          $TARGET
 Flash target:    $FLASH_TARGET
 Storage:         $STORAGE_DEV
 Default overlays: ${ADDITIONAL_DTB_OVERLAY:-none}
+Fast boot:       $FAST_BOOT
 Package name:    ${PACKAGE_NAME}.tar.gz
 Module variants: auto-detected at flash time (Orin Nano/NX 4/8/16GB)
 EOF
