@@ -9,8 +9,9 @@ Tested camera sensors, overlay names as they appear to jetson-io, verification c
 | IMX219 | 2     | 3280x2464  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 | IMX477 | 2     | 4056x3040  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 | IMX708 | 2     | 4608x2592  | dual (JAJ/PAB_V3), quad (PAB) | Working |
+| OV64B40 (FLIR Hadron EO) | 4 or 2 | 9248x6944 | one per CSI port | No driver yet |
 
-Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports). The image already includes every overlay for that product; switch with `jetson-io` (details in [camera_overlays.md](camera_overlays.md)). Each carrier also bakes an IMX219 overlay at flash time so cameras work on first boot without a jetson-io step (quad on PAB, dual on JAJ and PAB_V3).
+Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports). The FLIR Hadron EO is the exception: it is one camera, so it ships one overlay per port. The image already includes every overlay for that product; switch with `jetson-io` (details in [camera_overlays.md](camera_overlays.md)). Each carrier also bakes an IMX219 overlay at flash time so cameras work on first boot without a jetson-io step (quad on PAB, dual on JAJ and PAB_V3).
 
 ## IMX219 (Sony, 8MP)
 
@@ -55,6 +56,35 @@ Driver is RidgeRun's `nv_imx708`, vendored under `kernel_overlay/`. One 10-bit m
 |---------|----------|-------|
 | Dual    | `tegra234-p3767-camera-p3768-imx708-dual.dtbo` | CAM0 + CAM1 (JAJ/PAB_V3) |
 | Quad    | `tegra234-p3767-camera-p3768-imx708-quad.dtbo` | All 4 ports (PAB) |
+
+## FLIR Hadron EO (OmniVision OV64B40, 64MP)
+
+The visible camera of the FLIR Hadron 640R / 640R+, connected through the ARK Hadron Adapter. The Hadron's Boson thermal camera is separate: it enumerates over USB as a UVC device (`09cb:4007`) and needs no overlay.
+
+**Status: overlays only.** Nothing binds `ovti,ov64b40` yet, so selecting an overlay creates the device-tree nodes but no `/dev/video*` and no Argus sensor.
+
+TODO(driver): L4T has no OV64B40 driver and its register tables are not public. FLIR's Jetson package is ticket-only and targets the Jetson Nano through an ISP board. A tegracam driver under `kernel_overlay/` needs the init and mode tables from FLIR or OmniVision. Once those exist, reconcile the provisional mode values in `tegra234-camera-hadron-eo.dtsi`: `line_length`, exposure and gain limits, `pixel_phase` and `discontinuous_clk`. Also confirm that the sensor supports the 2-lane modes, or drop them.
+
+### Overlays
+
+| Carrier | Port | Lanes | Overlay name | Notes |
+|---------|------|-------|--------------|-------|
+| JAJ | CAM0 (J28) | 2 | Camera FLIR Hadron EO CAM0 2-lane | CSI0_CLK is not connected, and L4T runs x4 only on CSI0_CLK or CSI2_CLK. |
+| JAJ | CAM1 (J25) | 4 | Camera FLIR Hadron EO CAM1 4-lane | |
+| PAB_V3 | CAM0 (J28) | 4 | Camera FLIR Hadron EO CAM0 4-lane | |
+| PAB_V3 | CAM1 (J25) | 4 | Camera FLIR Hadron EO CAM1 4-lane | |
+| PAB | CAM0–CAM3 | 2 | Camera FLIR Hadron EO CAM*n* 2-lane | 15-pin connectors: needs a 22-to-15-pin FFC adapter. |
+
+Filenames are `tegra234-p3767-camera-p3768-hadron-eo-cam<n>.dtbo`. The 4-lane overlays carry the four modes ModalAI runs on VOXL2: 4624x3472@30 (4-cell binned), 3840x2160@60, 1920x1080@30, and 9248x6944@10. The 2-lane overlays run the same per-lane rates at half the frame rate.
+
+### Hardware notes
+
+Bench-verified on JAJ CAM0 and CAM1 with `i2c-tools`:
+
+- **I2C:** the sensor is at 7-bit `0x36`, with a second SCCB ID at `0x21`. Its chip ID, read 24-bit from `0x300a`, is `0x566442`. `I2C_CAM` also carries the Boson CCI at `0x6a` and EEPROMs at `0x50`/`0x51`, which answer even while the sensor is held in reset.
+- **Reset:** the carrier's `CAMn_PWDN` drives Hadron `/HADRON_RST` through the adapter. High releases the sensor. FLIR says this line also resets the Boson, but a 1 s low pulse did not drop the Boson off USB.
+- **No MCLK:** the Hadron connector has no clock pin, because the EO has its own oscillator. The adapter routes the carrier's `CAMn_MCLK` to Hadron pin 43 `EXT_VSYNC`, so the overlays declare no clocks. Keep the port's extperiph clock off.
+- **Adapter I2C:** the adapter's ICM-45686 IMU (`0x68`) and the Hadron's internal IMU (`0x28`) are on the Hadron control I2C (JAJ J36, module I2C0), not on the camera bus.
 
 ## Selecting an overlay (runtime)
 
