@@ -1,0 +1,186 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026, ARK Electronics.
+
+/*
+ * FLIR Hadron 640R visible (EO) camera, through the ARK Hadron Adapter.
+ *
+ * Sensor: OmniVision OV64B40, 9248x6944, 0.701 um, RAW10, 4-lane MIPI
+ * D-PHY up to 3.0 Gbps/lane. The Hadron has no MCLK pin: the EO has its
+ * own oscillator. The adapter routes the carrier's camera MCLK net to
+ * Hadron pin 43 EXT_VSYNC, so the sensor node has no clocks and the
+ * extperiph clock for the port must stay off.
+ *
+ * This file is the port-independent part of every Hadron EO overlay:
+ * the VI / NVCSI graph, the lens, tegra-camera-platform, and the mode
+ * table. Each per-port .dts defines the macros below, includes this file
+ * at the top level, wires the I2C mux and reset, and includes
+ * tegra234-camera-hadron-eo-sensor.dtsi inside its sensor node.
+ *
+ *   HADRON_EO_PORT_INDEX      CSI port (0..3)
+ *   HADRON_EO_LANES           2 or 4
+ *   HADRON_EO_SINTERFACE      "serial_a" .. "serial_d"
+ *   HADRON_EO_LANE_POLARITY   "6" on CSI0/1 (module-internal swaps), "0" on CSI2/3
+ *   HADRON_EO_SENSOR_SYSFS    /sys/firmware/devicetree/base path of the sensor node
+ */
+
+#include <dt-bindings/gpio/tegra234-gpio.h>
+
+#if !defined(HADRON_EO_PORT_INDEX) || !defined(HADRON_EO_LANES) || \
+	!defined(HADRON_EO_SINTERFACE) || !defined(HADRON_EO_LANE_POLARITY) || \
+	!defined(HADRON_EO_SENSOR_SYSFS)
+#error "define the HADRON_EO_* port macros before including tegra234-camera-hadron-eo.dtsi"
+#endif
+
+#if HADRON_EO_LANES == 4
+/* kpixel/s at the fastest x4 mode's pixel clock */
+#define HADRON_EO_MAX_PIXEL_RATE	1000320
+#elif HADRON_EO_LANES == 2
+#define HADRON_EO_MAX_PIXEL_RATE	500160
+#else
+#error "HADRON_EO_LANES must be 2 or 4"
+#endif
+
+#define HADRON_EO_STR_(x)	#x
+#define HADRON_EO_STR(x)	HADRON_EO_STR_(x)
+
+/*
+ * One sensor mode. framerate is fps x 1000000, max_exp in us.
+ *
+ * TODO(driver): line_length, the exposure and gain limits, pixel_phase and
+ * discontinuous_clk are provisional. They must be made to match the OV64B40
+ * register tables once a driver exists (HTS/VTS, PLL, MIPI 0x4800 clock
+ * gating, and the Bayer order of a captured frame). line_length is sized
+ * for VTS = active_h + 32 at the mode's pixel clock. mclk_khz is nominal:
+ * the host supplies no clock and FLIR does not publish the EO oscillator's.
+ */
+#define HADRON_EO_MODE(name, w, h, pclk, ll, mult, fps, max_exp)	\
+	name {								\
+		mclk_khz = "24000";					\
+		num_lanes = HADRON_EO_STR(HADRON_EO_LANES);		\
+		tegra_sinterface = HADRON_EO_SINTERFACE;		\
+		phy_mode = "DPHY";					\
+		discontinuous_clk = "no";				\
+		dpcm_enable = "false";					\
+		cil_settletime = "0";					\
+		lane_polarity = HADRON_EO_LANE_POLARITY;		\
+		active_w = #w;						\
+		active_h = #h;						\
+		mode_type = "bayer";					\
+		pixel_phase = "bggr";					\
+		csi_pixel_bit_depth = "10";				\
+		readout_orientation = "0";				\
+		line_length = #ll;					\
+		inherent_gain = "1";					\
+		mclk_multiplier = #mult;				\
+		pix_clk_hz = #pclk;					\
+		gain_factor = "16";					\
+		framerate_factor = "1000000";				\
+		exposure_factor = "1000000";				\
+		min_gain_val = "16";					\
+		max_gain_val = "248";					\
+		step_gain_val = "1";					\
+		default_gain = "16";					\
+		min_hdr_ratio = "1";					\
+		max_hdr_ratio = "1";					\
+		min_framerate = "2000000";				\
+		max_framerate = #fps;					\
+		step_framerate = "1";					\
+		default_framerate = #fps;				\
+		min_exp_time = "13";					\
+		max_exp_time = #max_exp;				\
+		step_exp_time = "1";					\
+		default_exp_time = "10000";				\
+		embedded_metadata_height = "0";				\
+	}
+
+/ {
+	fragment-hadron-eo@0 {
+		target-path = "/";
+		__overlay__ {
+			tegra-capture-vi {
+				num-channels = <1>;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@0 {
+						reg = <0>;
+						hadron_eo_vi_in0: endpoint {
+							port-index = <HADRON_EO_PORT_INDEX>;
+							bus-width = <HADRON_EO_LANES>;
+							remote-endpoint = <&hadron_eo_csi_out0>;
+						};
+					};
+				};
+			};
+
+			bus@0 {
+				host1x@13e00000 {
+					nvcsi@15a00000 {
+						num-channels = <1>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						status = "okay";
+						channel@0 {
+							reg = <0>;
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									hadron_eo_csi_in0: endpoint@0 {
+										port-index = <HADRON_EO_PORT_INDEX>;
+										bus-width = <HADRON_EO_LANES>;
+										remote-endpoint = <&hadron_eo_out0>;
+									};
+								};
+								port@1 {
+									reg = <1>;
+									hadron_eo_csi_out0: endpoint@1 {
+										remote-endpoint = <&hadron_eo_vi_in0>;
+									};
+								};
+							};
+						};
+					};
+				};
+
+				/* FLIR Hadron 640 Engineering Datasheet R170: EFL 4.8 mm, f/2.3, 67 deg HFOV, fixed focus */
+				lens_hadron_eo@FLIR {
+					min_focus_distance = "0.0";
+					hyper_focal = "0.0";
+					focal_length = "4.80";
+					f_number = "2.30";
+					aperture = "0.0";
+				};
+			};
+
+			tegra-camera-platform {
+				compatible = "nvidia, tegra-camera-platform";
+				num_csi_lanes = <HADRON_EO_LANES>;
+				/* the fastest modes run at 2500.8 Mbps/lane */
+				max_lane_speed = <2500800>;
+				min_bits_per_pixel = <10>;
+				vi_peak_byte_per_pixel = <2>;
+				vi_bw_margin_pct = <25>;
+				max_pixel_rate = <HADRON_EO_MAX_PIXEL_RATE>;
+				isp_peak_byte_per_pixel = <5>;
+				isp_bw_margin_pct = <25>;
+				modules {
+					module0 {
+						badge = "ark_hadron_rear_OV64B40";
+						position = "rear";
+						orientation = "1";
+						drivernode0 {
+							pcl_id = "v4l2_sensor";
+							sysfs-device-tree = HADRON_EO_SENSOR_SYSFS;
+						};
+						drivernode1 {
+							pcl_id = "v4l2_lens";
+							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/lens_hadron_eo@FLIR";
+						};
+					};
+				};
+			};
+		};
+	};
+};

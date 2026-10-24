@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026, ARK Electronics.
+
+/*
+ * FLIR Hadron EO (OV64B40) on PAB CAM2 (J29), 2-lane:
+ * CSI2_CLK with CSI2_D0/D1. PAB's camera connectors are 15-pin and
+ * carry two lanes, so the Hadron Adapter needs a 22-to-15-pin FFC adapter
+ * and the port is x2.
+ * TCA9546 channel 2, reset CAM2_PWDN (PY.04).
+ */
+
+/dts-v1/;
+/plugin/;
+
+#define CAM2_PWDN	TEGRA234_MAIN_GPIO(Y, 4)
+#define CAMERA_I2C_MUX_BUS(x)	(0x1E + x)
+
+#define HADRON_EO_PORT_INDEX	2
+#define HADRON_EO_LANES		2
+#define HADRON_EO_SINTERFACE	"serial_c"
+#define HADRON_EO_LANE_POLARITY	"0"
+#define HADRON_EO_SENSOR_SYSFS	"/sys/firmware/devicetree/base/bus@0/i2c@3180000/tca9546@70/i2c@2/hadron_eo@36"
+
+#include <dt-bindings/tegra234-p3767-0000-common.h>
+#include "tegra234-camera-hadron-eo.dtsi"
+
+/ {
+	overlay-name = "Camera FLIR Hadron EO CAM2 2-lane";
+	jetson-header-name = "Jetson 22pin CSI Connector";
+	compatible = JETSON_COMPATIBLE_P3768;
+
+	fragment-hadron-eo-i2c@0 {
+		target-path = "/";
+		__overlay__ {
+			bus@0 {
+				i2c@3180000 {
+					tca9546@70 {
+						compatible = "nxp,pca9546";
+						reg = <0x70>;
+						i2c-parent = <&cam_i2c>;
+						skip_mux_detect = "yes";
+						status = "okay";
+						force_bus_start = <CAMERA_I2C_MUX_BUS(0)>;
+						i2c@0 {
+							status = "okay";
+							reg = <0>;
+							i2c-mux,deselect-on-exit;
+							#address-cells = <1>;
+							#size-cells = <0>;
+							/* the flash-time IMX219 default */
+							ark_imx219_a@10 {
+								status = "disabled";
+							};
+						};
+						i2c@1 {
+							status = "okay";
+							reg = <1>;
+							i2c-mux,deselect-on-exit;
+							#address-cells = <1>;
+							#size-cells = <0>;
+							ark_imx219_b@10 {
+								status = "disabled";
+							};
+						};
+						i2c@2 {
+							status = "okay";
+							reg = <2>;
+							i2c-mux,deselect-on-exit;
+							#address-cells = <1>;
+							#size-cells = <0>;
+							ark_imx219_c@10 {
+								status = "disabled";
+							};
+
+							hadron_eo@36 {
+								status = "okay";
+								reset-gpios = <&gpio CAM2_PWDN GPIO_ACTIVE_HIGH>;
+#include "tegra234-camera-hadron-eo-sensor.dtsi"
+							};
+						};
+						i2c@3 {
+							status = "okay";
+							reg = <3>;
+							i2c-mux,deselect-on-exit;
+							#address-cells = <1>;
+							#size-cells = <0>;
+							ark_imx219_d@10 {
+								status = "disabled";
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+};
