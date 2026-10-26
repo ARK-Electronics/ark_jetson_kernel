@@ -5,12 +5,8 @@
  * Body of the FLIR Hadron EO (OV64B40) sensor node. Include it inside the
  * node, after reset-gpios, once tegra234-camera-hadron-eo.dtsi is in scope.
  *
- * TODO(driver): nothing binds "ovti,ov64b40" yet. L4T has no OV64B40
- * driver and the register tables are not public (FLIR's Jetson package is
- * ticket-only and targets the Jetson Nano through an ISP board). A tegracam
- * driver under kernel_overlay/ needs the init and mode tables from FLIR or
- * OmniVision; until then the overlay describes the hardware but streams
- * nothing.
+ * Bound by kernel_overlay's nv_ov64b40 driver, whose tables are 4-lane only:
+ * it refuses to stream on the x2 ports.
  *
  * I2C_CAM also carries the Boson CCI (0x6a) and two EEPROMs (0x50, 0x51).
  * The sensor answers on its second SCCB ID, 0x21, as well.
@@ -24,32 +20,36 @@ physical_w = "6.483";
 physical_h = "4.868";
 sensor_model = "ov64b40";
 use_sensor_mode_id = "true";
+/*
+ * The EO reads out rotated 180 degrees relative to the Boson in the same
+ * housing; the driver undoes the tables' phone-module mirror and flip.
+ */
+rotation = <180>;
 
 /*
- * x4: the Hadron EO modes ModalAI runs on VOXL2 (resolution, frame rate,
- * Mbps/lane); pix_clk_hz = lane rate * 4 / 10 bpp.
- * x2: the same per-lane rates on half the lanes, so half the frame rate.
- * TODO(driver): x2 is untested on any platform; drop it if FLIR's tables
- * are 4-lane only.
+ * x4: the OV64B modes of the realme 8i / Narzo 50 (MIAMI) GPL imgsensor driver,
+ * which the driver's tables come from: 24 MHz input, 115.2 MHz system clock,
+ * D-PHY 4-lane. pix_clk_hz is the MIPI pixel rate (lane rate * 4 / 10), and
+ * line_length = pix_clk_hz * HTS / 115.2 MHz, so pix_clk_hz / line_length is the
+ * true line rate the exposure and frame-length math needs.
+ * x2: the same sizes on half the lanes at half the frame rate.
+ * TODO(driver): x2 has no register tables yet (MIAMI is 4-lane only); drop it if
+ * FLIR's tables are 4-lane only.
  */
 #if HADRON_EO_LANES == 4
-/* 4624x3472 @ 30, 4-cell binned, 1502 Mbps/lane */
-HADRON_EO_MODE(mode0, 4624, 3472, 600800000, 5715, 25.03, 30000000, 33000);
-/* 3840x2160 @ 60, 2500.8 Mbps/lane */
-HADRON_EO_MODE(mode1, 3840, 2160, 1000320000, 7605, 41.68, 60000000, 16500);
-/* 1920x1080 @ 30, 800 Mbps/lane */
-HADRON_EO_MODE(mode2, 1920, 1080, 320000000, 9592, 13.33, 30000000, 33000);
-/* 9248x6944 @ 10, full array, 2500.8 Mbps/lane */
-HADRON_EO_MODE(mode3, 9248, 6944, 1000320000, 14339, 41.68, 10000000, 99000);
+/* 4624x3468 @ 30, 4-cell binned, HTS 936, VTS 4102, 1699.2 Mbps/lane */
+HADRON_EO_MODE(mode0, 4624, 3468, 679680000, 5522, 28.32, 30000000, 33000);
+/* 3840x2160 @ 60, HTS 696, VTS 2758, 2300 Mbps/lane */
+HADRON_EO_MODE(mode1, 3840, 2160, 920000000, 5558, 38.33, 60000000, 16400);
+/* 2304x1296 @ 120, HTS 504, VTS 1904, 1699.2 Mbps/lane */
+HADRON_EO_MODE(mode2, 2304, 1296, 679680000, 2974, 28.32, 120000000, 8100);
+/* 9248x6936 @ 13.2, full array remosaic, HTS 1200, VTS 7280, 2400 Mbps/lane */
+HADRON_EO_MODE(mode3, 9248, 6936, 960000000, 10000, 40.00, 13200000, 75000);
 #else
-/* 4624x3472 @ 15, 4-cell binned, 1502 Mbps/lane */
-HADRON_EO_MODE(mode0, 4624, 3472, 300400000, 5715, 12.52, 15000000, 66000);
-/* 3840x2160 @ 30, 2500.8 Mbps/lane */
-HADRON_EO_MODE(mode1, 3840, 2160, 500160000, 7605, 20.84, 30000000, 33000);
-/* 1920x1080 @ 15, 800 Mbps/lane */
-HADRON_EO_MODE(mode2, 1920, 1080, 160000000, 9592, 6.67, 15000000, 66000);
-/* 9248x6944 @ 5, full array, 2500.8 Mbps/lane */
-HADRON_EO_MODE(mode3, 9248, 6944, 500160000, 14339, 20.84, 5000000, 198000);
+HADRON_EO_MODE(mode0, 4624, 3468, 339840000, 5522, 14.16, 15000000, 66000);
+HADRON_EO_MODE(mode1, 3840, 2160, 460000000, 5558, 19.17, 30000000, 32800);
+HADRON_EO_MODE(mode2, 2304, 1296, 339840000, 2974, 14.16, 60000000, 16200);
+HADRON_EO_MODE(mode3, 9248, 6936, 480000000, 10000, 20.00, 6600000, 150000);
 #endif
 
 ports {

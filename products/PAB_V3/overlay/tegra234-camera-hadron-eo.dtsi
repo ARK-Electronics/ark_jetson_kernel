@@ -33,9 +33,9 @@
 
 #if HADRON_EO_LANES == 4
 /* kpixel/s at the fastest x4 mode's pixel clock */
-#define HADRON_EO_MAX_PIXEL_RATE	1000320
+#define HADRON_EO_MAX_PIXEL_RATE	960000
 #elif HADRON_EO_LANES == 2
-#define HADRON_EO_MAX_PIXEL_RATE	500160
+#define HADRON_EO_MAX_PIXEL_RATE	480000
 #else
 #error "HADRON_EO_LANES must be 2 or 4"
 #endif
@@ -46,12 +46,12 @@
 /*
  * One sensor mode. framerate is fps x 1000000, max_exp in us.
  *
- * TODO(driver): line_length, the exposure and gain limits, pixel_phase and
- * discontinuous_clk are provisional. They must be made to match the OV64B40
- * register tables once a driver exists (HTS/VTS, PLL, MIPI 0x4800 clock
- * gating, and the Bayer order of a captured frame). line_length is sized
- * for VTS = active_h + 32 at the mode's pixel clock. mclk_khz is nominal:
- * the host supplies no clock and FLIR does not publish the EO oscillator's.
+ * The tables run 0x4800 = 0x64, which gates the clock lane between packets,
+ * hence discontinuous_clk. min_exp_time is the sensor's 16-line minimum at
+ * the slowest line rate. Analog gain tops out at 15.5x (0xf80 in Q8).
+ * pixel_phase is BGGR, checked with the colour-bar test pattern. mclk_khz is
+ * the EO's own oscillator (every mode runs at its designed rate); the host
+ * supplies no clock.
  */
 #define HADRON_EO_MODE(name, w, h, pclk, ll, mult, fps, max_exp)	\
 	name {								\
@@ -59,7 +59,7 @@
 		num_lanes = HADRON_EO_STR(HADRON_EO_LANES);		\
 		tegra_sinterface = HADRON_EO_SINTERFACE;		\
 		phy_mode = "DPHY";					\
-		discontinuous_clk = "no";				\
+		discontinuous_clk = "yes";				\
 		dpcm_enable = "false";					\
 		cil_settletime = "0";					\
 		lane_polarity = HADRON_EO_LANE_POLARITY;		\
@@ -86,10 +86,10 @@
 		max_framerate = #fps;					\
 		step_framerate = "1";					\
 		default_framerate = #fps;				\
-		min_exp_time = "13";					\
+		min_exp_time = "170";					\
 		max_exp_time = #max_exp;				\
 		step_exp_time = "1";					\
-		default_exp_time = "10000";				\
+		default_exp_time = "5000";				\
 		embedded_metadata_height = "0";				\
 	}
 
@@ -157,8 +157,8 @@
 			tegra-camera-platform {
 				compatible = "nvidia, tegra-camera-platform";
 				num_csi_lanes = <HADRON_EO_LANES>;
-				/* the fastest modes run at 2500.8 Mbps/lane */
-				max_lane_speed = <2500800>;
+				/* the full-array mode runs at 2400 Mbps/lane */
+				max_lane_speed = <2400000>;
 				min_bits_per_pixel = <10>;
 				vi_peak_byte_per_pixel = <2>;
 				vi_bw_margin_pct = <25>;
