@@ -18,7 +18,7 @@ Decide in order:
 2. **Always true for this carrier, and kernel-level?** → **base fragment**.
 3. **Optional or selectable?** → **overlay**.
 
-Worked example: the I2S0 connector comes up as GPIO (four outputs driven low, DIN a hi-z input). Its whole value is a known-safe level *from power-on*, so it lives in the BCT — not an overlay. See [gpio.md](gpio.md).
+Worked example: the I2S0 connector comes up as GPIO (four undriven outputs held HIGH by the carrier's pull-ups, DIN a hi-z input). Its whole value is a known-safe level *from power-on*, so it lives in the BCT — not an overlay. See [gpio.md](gpio.md).
 
 Camera overlays (jetson-io metadata, build/install, custom overlays) are documented in [camera_overlays.md](camera_overlays.md). This page only places the overlay layer in the boot stack; it does not cover writing CSI/sensor overlays.
 
