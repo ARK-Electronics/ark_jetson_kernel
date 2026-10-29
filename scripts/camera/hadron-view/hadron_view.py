@@ -5,6 +5,13 @@ EO (OV64B40 on the tegra VI) and IR (Boson over UVC) side by side, with the
 adapter's ICM-45686 plotted against the camera frame timing. Every timestamp is
 put on CLOCK_MONOTONIC so the panel shows where IMU samples land in each frame.
 
+Frame sync: while the view runs, the Boson is the Hadron's ext sync master and
+pulses pin 43 (EXT_VSYNC) at its 60 Hz core rate. The IMU's FSYNC input (R12)
+tags each pulse on the IMU's clock and the Jetson timestamps it on the carrier's
+MCLK pad, which together put the IMU samples on CLOCK_MONOTONIC. The Boson's
+smart averager sends one frame per two core frames over USB, each starting 9.5 ms
+after a pulse.
+
 The EO has no Argus ISP tuning yet, so its raw Bayer frames are rendered here:
 2x2 Bayer binning, gray-world white balance, auto exposure and a gamma LUT.
 Quit with q, Esc or a right click.
@@ -40,7 +47,9 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkX11, GLib, Gst, GstVideo, Gtk  # noqa: E402,F401
 
 import archtimer  # noqa: E402
+import boson  # noqa: E402
 from icm45686 import Icm45686  # noqa: E402
+from syncline import SyncLine  # noqa: E402
 from v4l2cap import MEMORY_USERPTR, Capture  # noqa: E402
 
 EO_W, EO_H, EO_MODE = 2304, 1296, 2     # OV64B40 sensor_mode 2
@@ -52,6 +61,8 @@ AE_TARGET = 0.14                        # mean green above black, linear
 AE_EVERY = 8                            # frames between exposure updates
 WORKERS = 4                             # threads for the EO render, which runs without the GIL
 IR_W, IR_H, IR_FPS = 640, 512, 60
+IR_CORE_FPS = 60                        # Boson core frames, one sync pulse each
+SYNC_HISTORY = 25 * IR_CORE_FPS         # pulses kept: the phase plot spans 20 s
 
 # 10-bit code to linear light; the render LUTs add white balance and gamma.
 LIN = np.clip((np.arange(1024) - BLACK) / (FULL - BLACK), 0, None).astype(np.float32)
@@ -272,6 +283,72 @@ class EoCamera(threading.Thread):
             self.exp, self.gain = exp, gain
 
 
+class FrameSync:
+    """The Hadron sync line: the Boson drives it as ext sync master, the IMU and the Jetson timestamp it."""
+
+    def __init__(self, line_name):
+        self.line = self.cam = self.imu = None
+        self.error = None
+        try:
+            # Held as an input, so the Jetson can't drive the line even under an overlay
+            # that leaves its MCLK pad an output.
+            self.line = SyncLine(line_name, history=SYNC_HISTORY)
+            self.line.start()
+        except OSError as e:
+            self.error = f"sync line {line_name}: {e}"
+            return
+        try:
+            self.cam = boson.Boson()
+            self.cam.set_ext_sync(boson.EXT_SYNC_MASTER)
+        except OSError as e:
+            self.error = f"Boson as sync master: {e}"
+            self.cam = None
+
+    def close(self):
+        if self.cam:
+            try:
+                self.cam.set_ext_sync(boson.EXT_SYNC_DISABLED)     # its power-on setting
+            except OSError as e:
+                log(f"Boson ext sync not reset: {e}")
+            self.cam.close()
+            self.cam = None
+        if self.line:
+            self.line.close()
+            self.line = None
+
+    def pulses(self):
+        """Pulse times on CLOCK_MONOTONIC: the IMU's tags once they are fitted to the Jetson's edges."""
+        if self.imu.synced or not (self.line and self.line.edges):
+            return self.imu.pulse_times()
+        return np.array(list(self.line.edges), np.float64)
+
+    @staticmethod
+    def match(ts, pulses):
+        """For each IR frame timestamp, the pulse it follows (NaN if that pulse is missing)."""
+        ts = np.asarray(ts, np.float64)
+        if not len(pulses) or not len(ts):
+            return np.full(len(ts), np.nan)
+        j = np.searchsorted(pulses, ts) - 1
+        p = np.where(j >= 0, pulses[np.maximum(j, 0)], np.nan)
+        return np.where(ts - p < 1 / IR_CORE_FPS, p, np.nan)
+
+    def status(self):
+        """One line for the panel, and whether it is a problem."""
+        if self.error:
+            return f"FSYNC off: {self.error}", True
+        edges, tags = len(self.line.edges), len(self.imu.tags)
+        if not edges and not tags:
+            return "FSYNC: no pulses on Hadron pin 43 yet", True
+        if not tags:
+            return "FSYNC: the Jetson sees pulses, the IMU tags none (R12 fitted?)", True
+        if not edges:
+            return "FSYNC: IMU tags pulses, the Jetson can't read pin 43 (overlay?)", True
+        if not self.imu.synced:
+            return "FSYNC: fitting the IMU clock to the pulses", False
+        n, std, ppm = self.imu.sync_fit
+        return f"FSYNC  IMU timed to {std * 1e6:.0f} us rms by {n} Boson pulses, clock {ppm:+.0f} ppm", False
+
+
 class SyncPanel:
     """IMU traces plus the frame/IMU timing, all on CLOCK_MONOTONIC."""
 
@@ -280,9 +357,10 @@ class SyncPanel:
     PHASE_S = 20.0      # history of the per-frame phase
     LAG_S = 0.05        # draw slightly behind now so every source has delivered
 
-    def __init__(self, imu, eo, ir_frames, latency, imu_desc):
+    def __init__(self, imu, eo, ir_frames, latency, imu_desc, sync):
         self.imu, self.eo, self.ir_frames, self.imu_desc = imu, eo, ir_frames, imu_desc
-        self.latency = latency
+        self.latency, self.sync = latency, sync
+        self.pulses = None          # sync pulses on CLOCK_MONOTONIC, taken once per draw
         self.draw_ms = 0.0
 
     def draw(self, widget, cr):
@@ -295,6 +373,7 @@ class SyncPanel:
         now = time.monotonic()
         t_end = now - self.LAG_S
         x, cw = 20 * s, w - 40 * s
+        self.pulses = self.sync.pulses() if self.sync else None
 
         imu = self.imu
         rows = imu.snapshot(self.STRIP_S + 1)
@@ -367,6 +446,9 @@ class SyncPanel:
         span = self.TIMELINE_S
         t0 = t_end - span
         self._text(cr, x, y + 17 * s, 17 * s, f"Frame timing   last {span * 1000:.0f} ms", COLOR["fg"])
+        if self.sync:
+            legend = "IR  thin: sync pulse  thick: frame"
+            self._text(cr, x + w - self._text_w(cr, 12 * s, legend), y + 17 * s, 12 * s, legend, COLOR["dim"])
         ax, aw = x + 50 * s, w - 50 * s
         eo_top, eo_h = y + 34 * s, 92 * s
         ir_y, imu_y, lane_h = y + 140 * s, y + 172 * s, 22 * s
@@ -411,9 +493,23 @@ class SyncPanel:
             cr.arc(tx(mid), eo_top + eo_h / 2, 3.5 * s, 0, 2 * math.pi)
             cr.fill()
 
-        cr.set_line_width(2 * s)
+        # IR: without sync, each delivered frame at its UVC timestamp (first USB packet);
+        # with it, every 60 Hz pulse thin and the pulse each delivered frame follows thick.
+        ir_ts = list(self.ir_frames)[-20:]
+        frames = ir_ts
+        if self.sync:
+            pulses = self.pulses
+            cr.set_line_width(1.2 * s)
+            cr.set_source_rgba(*COLOR["ir"], 0.85)
+            for t in pulses[(pulses >= t0) & (pulses <= t_end)]:
+                cr.move_to(tx(t), ir_y + lane_h * 0.35)
+                cr.line_to(tx(t), ir_y + lane_h)
+            cr.stroke()
+            matched = FrameSync.match(ir_ts, pulses)
+            frames = [p if not math.isnan(p) else t for p, t in zip(matched, ir_ts)]
+        cr.set_line_width(2.5 * s)
         cr.set_source_rgb(*COLOR["ir"])
-        for t in list(self.ir_frames)[-20:]:
+        for t in frames:
             if t0 <= t <= t_end:
                 cr.move_to(tx(t), ir_y)
                 cr.line_to(tx(t), ir_y + lane_h)
@@ -436,7 +532,12 @@ class SyncPanel:
 
     def _phase(self, cr, x, y, w, h, s, t_end):
         T = self.imu.model[1]
-        self._text(cr, x, y + 17 * s, 17 * s, "EO mid-exposure after last IMU sample", COLOR["fg"])
+        self._text(cr, x, y + 17 * s, 17 * s, "Phase after the last IMU sample", COLOR["fg"])
+        lx = x + w
+        for key, name in (("ir", "IR sync pulse"), ("eo", "EO mid-exposure"))[0 if self.sync else 1:]:
+            lx -= self._text_w(cr, 13 * s, name)
+            self._text(cr, lx, y + 17 * s, 13 * s, name, COLOR[key])
+            lx -= 14 * s
         top, ph = y + 28 * s, h - 28 * s
         ax, aw = x + 50 * s, w - 50 * s
         for frac, label in ((0, "0"), (0.5, None), (1, f"{T * 1000:.1f} ms")):
@@ -447,22 +548,26 @@ class SyncPanel:
             cr.line_to(ax + aw, py)
             cr.stroke()
             if label:
-                self._text(cr, ax + aw - self._text_w(cr, 12 * s, label), py - 4 * s, 12 * s, label, COLOR["dim"])
+                self._text(cr, ax - 8 * s - self._text_w(cr, 12 * s, label), py + 4 * s, 12 * s, label, COLOR["dim"])
         if not self.imu.samples:
             return
-        frames = np.array([(sof, exp) for _, sof, exp in self.eo.frames]) if self.eo.frames else np.zeros((0, 2))
-        if not len(frames):
-            return
-        frames = frames[frames[:, 0] >= t_end - self.PHASE_S]
-        t0 = self.imu.model[0]
-        mid = frames[:, 0] + EO_READOUT / 2 - frames[:, 1] / 2
-        phase = np.mod(mid - t0, T) / T
-        px = ax + (frames[:, 0] - (t_end - self.PHASE_S)) / self.PHASE_S * aw
+        t0, t_start = self.imu.model[0], t_end - self.PHASE_S
+        series = []
+        if self.eo.frames:
+            frames = np.array([(sof, exp) for _, sof, exp in list(self.eo.frames)])
+            frames = frames[frames[:, 0] >= t_start]
+            series.append(("eo", frames[:, 0] + EO_READOUT / 2 - frames[:, 1] / 2))
+        if self.sync:
+            ir = np.array(list(self.ir_frames), np.float64)
+            pulses = FrameSync.match(ir[ir >= t_start], self.pulses)
+            series.append(("ir", pulses[~np.isnan(pulses)]))
         d = 3.5 * s
-        for a, p in zip(px, top + ph - phase * ph):
-            cr.rectangle(a - d / 2, p - d / 2, d, d)
-        cr.set_source_rgb(*COLOR["eo"])
-        cr.fill()
+        for key, t in series:
+            phase = np.mod(t - t0, T) / T
+            for a, p in zip(ax + (t - t_start) / self.PHASE_S * aw, top + ph - phase * ph):
+                cr.rectangle(a - d / 2, p - d / 2, d, d)
+            cr.set_source_rgb(*COLOR[key])
+            cr.fill()
 
     def _stats(self, cr, x, y, s):
         eo, T = self.eo, self.imu.model[1]
@@ -475,8 +580,15 @@ class SyncPanel:
             line1 += f"  ({eo.dropped} dropped)"
         self._text(cr, x, y, 15 * s, line1 + f"     IR {ir_fps:.2f} fps", COLOR["fg"])
         lat = {k: median_ms(list(v)[-30:]) for k, v in self.latency.items()}
+        ir_from = "USB start"
+        if self.sync:
+            recent = np.array(list(self.ir_frames), np.float64)[-31:-1]     # the newest may not be tagged yet
+            lag = recent - FrameSync.match(recent, self.pulses)
+            if np.isfinite(lag).any():
+                lat["ir"] += float(np.nanmedian(lag)) * 1000
+                ir_from = "sync pulse"
         self._text(cr, x, y + 22 * s, 15 * s,
-                   f"Latency  EO {lat['eo']:.1f} ms  IR {lat['ir']:.1f} ms  (capture to display, before vsync)",
+                   f"Latency  EO {lat['eo']:.1f} ms from mid-exposure,  IR {lat['ir']:.1f} ms from {ir_from}",
                    COLOR["fg"])
         if eo.fps > 0:
             ratio = 1 / eo.fps / T
@@ -485,9 +597,12 @@ class SyncPanel:
             self._text(cr, x, y + 44 * s, 15 * s, f"{ratio:.3f} IMU samples per EO frame, {slip}", COLOR["fg"])
         if eo.error:
             self._text(cr, x, y + 66 * s, 14 * s, eo.error, COLOR["warn"])
+        elif self.sync:
+            text, problem = self.sync.status()
+            self._text(cr, x, y + 66 * s, 14 * s, text, COLOR["warn"] if problem else COLOR["dim"])
         else:
             self._text(cr, x, y + 66 * s, 14 * s,
-                       "FSYNC not fitted (R12 DNP): the IMU free-runs and is matched by timestamp", COLOR["dim"])
+                       "FSYNC off (--no-sync): IMU sample times from host reads", COLOR["dim"])
 
 
 class Viewer:
@@ -543,7 +658,14 @@ class Viewer:
             area.get_window().ensure_native()
             self.xids[name] = area.get_window().get_xid()
 
-        self.imu = Icm45686(bus=args.imu_bus, addr=args.imu_addr, odr=args.imu_odr)
+        self.sync = FrameSync(args.sync_line) if args.sync else None
+        if self.sync and self.sync.error:
+            log(self.sync.error)
+        self.imu = Icm45686(bus=args.imu_bus, addr=args.imu_addr, odr=args.imu_odr, fsync=self.sync is not None,
+                            pulses=self.sync.line.edges if self.sync and self.sync.line else None,
+                            tag_history=SYNC_HISTORY)
+        if self.sync:
+            self.sync.imu = self.imu
         # One pipeline per camera: in a shared one, the EO stream starting up (latency
         # recalculation, sink setup) could leave the running IR branch stuck flushing.
         self.pipelines = {key: Gst.parse_launch(desc) for key, desc in self._pipeline_descs().items()}
@@ -616,8 +738,9 @@ class Viewer:
                 raise SystemExit(f"{key} pipeline failed to start")
         self.eo.start()
         self.imu.start()
-        desc = f"ICM-45686  i2c-{self.args.imu_bus} 0x{self.args.imu_addr:02x}  {self.args.imu_odr} Hz FIFO"
-        self.panel = SyncPanel(self.imu, self.eo, self.ir_frames, self.latency, desc)
+        desc = (f"ICM-45686  i2c-{self.args.imu_bus} 0x{self.args.imu_addr:02x}  {self.args.imu_odr} Hz FIFO"
+                + ("  FSYNC" if self.sync else ""))
+        self.panel = SyncPanel(self.imu, self.eo, self.ir_frames, self.latency, desc, self.sync)
         self.panel_area.connect("draw", self.panel.draw)
         self.ticks = 0
         GLib.timeout_add(50, self._tick)
@@ -634,6 +757,14 @@ class Viewer:
                 f"panel {self.panel.draw_ms:.1f} ms; "
                 f"IR {ir_fps:.2f} fps; IMU {1 / self.imu.model[1]:.2f} Hz resets {self.imu.resets} "
                 f"{self.imu.error or ''}")
+            if self.sync:
+                ir = np.array(ir[-61:-1])
+                lag = ir - FrameSync.match(ir, self.sync.pulses())
+                edges = np.array(list(self.sync.line.edges), np.float64) if self.sync.line else np.zeros(0)
+                rate = (len(edges) - 1) / (edges[-1] - edges[0]) if len(edges) > 2 else 0.0
+                log(f"sync: {self.sync.status()[0]}; Jetson edges {rate:.3f} Hz, IMU tags {len(self.imu.tags)}, "
+                    f"IR UVC timestamp - pulse {np.nanmedian(lag) * 1000 if np.isfinite(lag).any() else float('nan'):.2f} ms "
+                    f"({np.isnan(lag).sum()}/{len(lag)} unmatched)")
         return True
 
     def quit(self, reason="signal"):
@@ -647,6 +778,8 @@ class Viewer:
         self.imu.stopping.set()
         for pipeline in self.pipelines.values():
             pipeline.set_state(Gst.State.NULL)
+        if self.sync:
+            self.sync.close()
         Gtk.main_quit()
         return False
 
@@ -681,6 +814,10 @@ def main():
     p.add_argument("--imu-odr", type=int, default=200, choices=(50, 100, 200, 400),
                    help="the bus runs at 100 kHz, which caps the FIFO rate")
     p.add_argument("--manual", action="store_true", help="leave EO exposure/gain alone")
+    p.add_argument("--sync-line", default="PP.01",
+                   help="GPIO line of the carrier MCLK pad wired to Hadron pin 43 (CAM1: PP.01, CAM0: PP.00)")
+    p.add_argument("--no-sync", dest="sync", action="store_false",
+                   help="leave the Boson's ext sync alone and time the IMU from host reads")
     args = p.parse_args()
     args.eo = args.eo or find_node("ov64b40")
     args.ir = args.ir or find_node("Boson")
@@ -699,6 +836,8 @@ def main():
         viewer.start()
         Gtk.main()
     finally:
+        if viewer.sync:
+            viewer.sync.close()
         os.unlink(PID_FILE)
 
 
