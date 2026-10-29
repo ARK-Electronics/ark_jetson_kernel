@@ -6,7 +6,8 @@
  * CSI0_CLK with CSI0_D0/D1. PAB's camera connectors are 15-pin and
  * carry two lanes, so the Hadron Adapter needs a 22-to-15-pin FFC adapter
  * and the port is x2.
- * TCA9546 channel 0, reset CAM0_PWDN (PH.06).
+ * TCA9546 channel 0, reset CAM0_PWDN (PH.06),
+ * EXT_VSYNC on CAM0_MCLK (PP.00).
  */
 
 /dts-v1/;
@@ -20,6 +21,7 @@
 #define HADRON_EO_SINTERFACE	"serial_a"
 #define HADRON_EO_LANE_POLARITY	"6"
 #define HADRON_EO_SENSOR_SYSFS	"/sys/firmware/devicetree/base/bus@0/i2c@3180000/tca9546@70/i2c@0/hadron_eo@36"
+#define HADRON_EO_SYNC_PAD	"extperiph1_clk_pp0"
 
 #include <dt-bindings/tegra234-p3767-0000-common.h>
 #include "tegra234-camera-hadron-eo.dtsi"

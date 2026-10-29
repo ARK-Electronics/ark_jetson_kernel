@@ -4,7 +4,8 @@
 /*
  * FLIR Hadron EO (OV64B40) on PAB_V3 CAM0 (J28), 4-lane:
  * CSI0_CLK with CSI0_D0/D1 then CSI1_D0/D1.
- * I2C mux channel 0, reset CAM0_PWDN (PH.06).
+ * I2C mux channel 0, reset CAM0_PWDN (PH.06),
+ * EXT_VSYNC on CAM0_MCLK (PP.00).
  */
 
 /dts-v1/;
@@ -18,6 +19,7 @@
 #define HADRON_EO_SINTERFACE	"serial_a"
 #define HADRON_EO_LANE_POLARITY	"6"
 #define HADRON_EO_SENSOR_SYSFS	"/sys/firmware/devicetree/base/bus@0/cam_i2cmux/i2c@0/hadron_eo@36"
+#define HADRON_EO_SYNC_PAD	"extperiph1_clk_pp0"
 
 #include <dt-bindings/tegra234-p3767-0000-common.h>
 #include "tegra234-camera-hadron-eo.dtsi"

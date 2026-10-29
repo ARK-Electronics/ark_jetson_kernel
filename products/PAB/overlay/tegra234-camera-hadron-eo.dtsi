@@ -7,8 +7,10 @@
  * Sensor: OmniVision OV64B40, 9248x6944, 0.701 um, RAW10, 4-lane MIPI
  * D-PHY up to 3.0 Gbps/lane. The Hadron has no MCLK pin: the EO has its
  * own oscillator. The adapter routes the carrier's camera MCLK net to
- * Hadron pin 43 EXT_VSYNC, so the sensor node has no clocks and the
- * extperiph clock for the port must stay off.
+ * Hadron pin 43 EXT_VSYNC, the Hadron's frame sync, which the Boson and
+ * the EO share. The sensor node therefore has no clocks, and the port's
+ * MCLK pad becomes a pulled-down input: the bootloader leaves it driving,
+ * which would fight the Boson when it is the sync master.
  *
  * This file is the port-independent part of every Hadron EO overlay:
  * the VI / NVCSI graph, the lens, tegra-camera-platform, and the mode
@@ -21,13 +23,15 @@
  *   HADRON_EO_SINTERFACE      "serial_a" .. "serial_d"
  *   HADRON_EO_LANE_POLARITY   "6" on CSI0/1 (module-internal swaps), "0" on CSI2/3
  *   HADRON_EO_SENSOR_SYSFS    /sys/firmware/devicetree/base path of the sensor node
+ *   HADRON_EO_SYNC_PAD        pinmux group of the port's MCLK pad
  */
 
 #include <dt-bindings/gpio/tegra234-gpio.h>
+#include <dt-bindings/pinctrl/pinctrl-tegra.h>
 
 #if !defined(HADRON_EO_PORT_INDEX) || !defined(HADRON_EO_LANES) || \
 	!defined(HADRON_EO_SINTERFACE) || !defined(HADRON_EO_LANE_POLARITY) || \
-	!defined(HADRON_EO_SENSOR_SYSFS)
+	!defined(HADRON_EO_SENSOR_SYSFS) || !defined(HADRON_EO_SYNC_PAD)
 #error "define the HADRON_EO_* port macros before including tegra234-camera-hadron-eo.dtsi"
 #endif
 
@@ -179,6 +183,22 @@
 							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/lens_hadron_eo@FLIR";
 						};
 					};
+				};
+			};
+		};
+	};
+
+	fragment-hadron-eo-sync@0 {
+		target = <&pinmux>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&hadron_eo_sync>;
+			hadron_eo_sync: hadron-eo-sync {
+				ext-vsync {
+					nvidia,pins = HADRON_EO_SYNC_PAD;
+					nvidia,pull = <TEGRA_PIN_PULL_DOWN>;
+					nvidia,tristate = <TEGRA_PIN_ENABLE>;
+					nvidia,enable-input = <TEGRA_PIN_ENABLE>;
 				};
 			};
 		};

@@ -120,9 +120,19 @@ Bench-verified on JAJ CAM0 and CAM1:
 
 - **I2C:** the sensor is at 7-bit `0x36`, with a second SCCB ID at `0x21`. Its chip ID, read 24-bit from `0x300a`, is `0x566442`. `I2C_CAM` also carries the Boson CCI at `0x6a` and EEPROMs at `0x50`/`0x51`, which answer even while the sensor is held in reset.
 - **Reset:** the carrier's `CAMn_PWDN` drives Hadron `/HADRON_RST` through the adapter. High releases the sensor. FLIR says this line also resets the Boson, but a 1 s low pulse did not drop the Boson off USB. The driver releases reset once and never drives it low; standby is software (`0x0100`).
-- **No MCLK:** the Hadron connector has no clock pin, because the EO has its own oscillator. The adapter routes the carrier's `CAMn_MCLK` to Hadron pin 43 `EXT_VSYNC`, so the overlays declare no clocks. Keep the port's extperiph clock off.
+- **No MCLK:** the Hadron connector has no clock pin, because the EO has its own oscillator. The adapter routes the carrier's `CAMn_MCLK` to Hadron pin 43 `EXT_VSYNC`, so the overlays declare no clocks. The bootloader leaves that pad driving as a clock output, so each overlay makes it a pulled-down input (see [Frame sync](#frame-sync)). The overlay sets this as the pinmux controller's default state, as jetson-io's 40-pin header configurations do; combined with one of those, only one of the two states applies.
 - **Orientation:** with the tables' phone-module mirror and flip, the EO reads out rotated 180° relative to the Boson in the same housing. The overlays set `rotation = <180>`, and the driver undoes both while keeping BGGR.
 - **Adapter I2C:** the adapter's ICM-45686 IMU (`0x68`) and the Hadron's internal IMU (`0x28`) are on the Hadron control I2C (JAJ J36, module I2C0), not on the camera bus.
+
+### Frame sync
+
+Hadron pin 43 `EXT_VSYNC` is one net inside the Hadron that joins the Boson's sync pin and the EO sensor's (Hadron 640R engineering datasheet, figure 7). On the ARK Hadron Adapter, R11 joins it to the carrier's `CAMn_MCLK` and R12 (not fitted by default) to the ICM-45686's FSYNC pin. Bench-verified on JAJ CAM1:
+
+- **Boson:** the ext sync mode is set over its USB serial port, and it lasts until the Hadron is power-cycled. When disabled (its power-on setting), the Boson holds the line low. As master it outputs a short high pulse for each 60 Hz core frame. As slave its frames follow pulses on the line; it has followed 60 Hz pulses from the Jetson, and it stops sending frames without them.
+- **EO:** the OV64B40's sync pin does not drive the line with these tables. The EO free-runs on its own oscillator and is not locked to the Boson.
+- **IR frames:** this Boson has its smart averager on, so USB carries 30 fps, each frame the average of two 60 Hz core frames. Each frame's UVC timestamp, at its first USB packet, comes 9.4 to 9.6 ms after every second pulse, and it moves with that pulse when the pulse moves. How old the image already is at that pulse can't be seen from timing alone.
+- **Carrier pad:** the bootloader configures `CAMn_MCLK` as a driven clock output, which would fight the Boson as master. Each overlay therefore makes the port's pad a pulled-down input: CAM0 `PP.00` and CAM1 `PP.01` on every carrier, plus PAB CAM2 `PQ.05` and CAM3 `PQ.06` (from the schematics; only JAJ CAM1 is bench-tested). The pulses can then be timestamped on that GPIO line.
+- **IMU:** with R12 fitted, the ICM-45686 tags the first sample after each pulse with the pulse-to-sample delay, at 1 µs resolution. Pin 9 then has to be switched from its power-on INT2 function to FSYNC. Over 20 s, the IMU measured the pulse spacing to 0.7 µs std; the Jetson's interrupt timestamps of the same pulses scatter by about 26 µs, with about 0.7% of them late by about 200 µs.
 
 ## Selecting an overlay (runtime)
 
