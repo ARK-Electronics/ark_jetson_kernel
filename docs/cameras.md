@@ -104,6 +104,16 @@ v4l2-ctl -d /dev/videoN --set-fmt-video=width=4624,height=3468,pixelformat=BG10 
 - **Exposure and gain:** exposure is in microseconds; gain is in units of 1/16, so 16 is 1x and 248 is 15.5x. Both can be set before streaming or while streaming.
 - **Frame rate:** each mode starts at its own rate. Change it with `frame_rate` (fps × 10^6) while streaming.
 
+### Live view
+
+`scripts/camera/hadron-view/` shows the EO and the Boson side by side, fullscreen on the Jetson's display. A panel beside them plots the adapter's ICM-45686 against the frame timing. Every timestamp is on `CLOCK_MONOTONIC`, so the panel shows where IMU samples land within each EO exposure.
+
+- **Install:** copy the directory to the Jetson (`scp -r scripts/camera/hadron-view jetson@<ip>:`). The launcher expects it at `/home/jetson/hadron-view`. Then trust the launcher: `cp ~/hadron-view/hadron-view.desktop ~/Desktop/ && gio set ~/Desktop/hadron-view.desktop metadata::trusted true`. It needs `gcc` and `xdotool`.
+- **Run:** use the desktop launcher, or `~/hadron-view/start.sh` over SSH. Quit with q, Esc or a right click; from SSH, run `stop.sh`. Status lines go to `view.log`. If the driver isn't loaded, `start.sh` loads it after a password prompt. A locally built `nv_ov64b40.ko` next to the scripts takes precedence over the installed module.
+- **EO:** mode 2 (2304x1296) at 25 fps, so each frame spans a whole number of 200 Hz IMU samples. Without ISP tuning the viewer renders the raw Bayer itself: 2x2 binning, gray-world white balance, auto exposure and gamma.
+- **Latency:** about 12 ms for the EO, from mid-exposure, and about 13 ms for the IR, from its UVC timestamp. Both are measured up to the display sink, before the wait for vsync; the panel shows them live.
+- **IMU:** polled over `i2c-1` at 200 Hz, because INT1 is not wired. FSYNC needs R12, which is not fitted, so IMU samples are matched to frames by timestamp.
+
 ### Hardware notes
 
 Bench-verified on JAJ CAM0 and CAM1:
