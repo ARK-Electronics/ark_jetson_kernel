@@ -1,5 +1,10 @@
 # Release Notes
 
+## 6.2.2.8 - 2026-10-30
+
+- The UEFI boot order is re-sorted on every boot with the NVMe first: a boot without the SSD detected no longer moves it to the end of the order, where the unit stopped in the UEFI shell instead of booting
+- A boot order changed in the UEFI menu now resets on the next boot; use the F11 boot menu for a one-time boot from another device
+
 ## 6.2.2.7 - 2026-10-19
 
 - SuperSpeed devices on J33 no longer fall back to USB 2.0: its VBUS now comes up with the USB host instead of at power-on
