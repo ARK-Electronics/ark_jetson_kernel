@@ -9,8 +9,7 @@ tegra234-p3767-camera-p3768-imx477-dual.dtbo
 tegra234-p3767-camera-p3768-imx708-dual.dtbo
 
 # FLIR Hadron EO (OV64B40) through the ARK Hadron Adapter, one overlay per CSI
-# port (driver: kernel_overlay nv_ov64b40). The driver has 4-lane tables only;
-# see docs/cameras.md.
+# port (driver: kernel_overlay nv_ov64b40); see docs/cameras.md.
 tegra234-p3767-camera-p3768-hadron-eo-cam0.dtbo
 tegra234-p3767-camera-p3768-hadron-eo-cam1.dtbo
 

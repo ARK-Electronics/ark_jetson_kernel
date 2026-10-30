@@ -82,9 +82,10 @@ TODO(driver):
 |---------|------|-------|--------------|-------|
 | JAJ | CAM0 (J28) | 2 | Camera FLIR Hadron EO CAM0 2-lane | CSI0_CLK is not connected, and L4T runs x4 only on CSI0_CLK or CSI2_CLK. Bench-tested |
 | JAJ | CAM1 (J25) | 4 | Camera FLIR Hadron EO CAM1 4-lane | Bench-tested |
-| PAB_V3 | CAM0 (J28) | 4 | Camera FLIR Hadron EO CAM0 4-lane | |
-| PAB_V3 | CAM1 (J25) | 4 | Camera FLIR Hadron EO CAM1 4-lane | |
-| PAB | CAM0–CAM3 | 2 | Camera FLIR Hadron EO CAM*n* 2-lane | 15-pin connectors: needs a 22-to-15-pin FFC adapter. |
+| PAB_V3 | CAM0 (J28) | 4 | Camera FLIR Hadron EO CAM0 4-lane | Untested on hardware |
+| PAB_V3 | CAM1 (J25) | 4 | Camera FLIR Hadron EO CAM1 4-lane | Untested on hardware |
+| PAB_CAN | CAM0 (J28), CAM1 (J25) | 4 | Camera FLIR Hadron EO CAM*n* 4-lane | PAB_V3's camera wiring, so PAB_V3's overlays. Untested on hardware |
+| PAB | CAM0–CAM3 | 2 | Camera FLIR Hadron EO CAM*n* 2-lane | 15-pin connectors: needs a 22-to-15-pin FFC adapter. Untested on hardware |
 
 Filenames are `tegra234-p3767-camera-p3768-hadron-eo-cam<n>.dtbo`.
 
