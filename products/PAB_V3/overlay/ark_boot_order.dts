@@ -7,12 +7,13 @@
 /*
  * UEFI boot order, layered over the BSP's L4TConfiguration.dtbo.
  *
- * NewDeviceHierarchy = 01 (stock) puts every newly discovered boot device at the
- * TOP of the order. UEFI's network stack auto-creates HTTPv6/HTTPv4/PXEv6/PXEv4
- * options the moment a NIC enumerates, and none of them appear in
- * DefaultBootPriority, so each counts as "new": four DHCP timeouts land ahead of
- * the SSD, and a manual reorder is undone on the next boot. 00 sends them to the
- * bottom instead.
+ * UEFI sorts BootOrder by DefaultBootPriority once, sets PlatformBootOrderSet, and
+ * never sorts again. Every option it re-discovers afterwards (the SSD after one boot
+ * without it, a NIC's four PXE/HTTP options) lands at the top or bottom per
+ * NewDeviceHierarchy, so the SSD can end up behind four DHCP timeouts and the UEFI
+ * Shell, which never returns. Locking PlatformBootOrderSet false makes UEFI re-sort
+ * on every boot. A reorder made in the UEFI menu is undone on the next boot; F11's
+ * one-time boot still works.
  *
  * DefaultBootPriority is stock apart from moving nvme ahead of usb: every product
  * flashes to NVMe, and an inserted USB stick must not outrank the installed
@@ -50,6 +51,11 @@
 
 							DefaultBootPriority {
 								data = "nvme,usb,emmc,sd,ufs";
+								locked;
+							};
+
+							PlatformBootOrderSet {
+								data = [00];
 								locked;
 							};
 						};

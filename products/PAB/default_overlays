@@ -10,5 +10,5 @@
 # PAB ships with the quad IMX219 camera enabled by default.
 tegra234-p3767-camera-p3768-imx219-quad.dtbo
 
-# UEFI boot order: network boot options behind the SSD, NVMe ahead of USB.
+# UEFI boot order: NVMe first on every boot.
 ark_boot_order.dtbo

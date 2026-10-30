@@ -70,10 +70,11 @@ To check a live board, compare `dtc -I fs -O dts /proc/device-tree` against `dtc
 |----------|-------|-----|
 | `NewDeviceHierarchy` | `[01]` — new devices go to the top of the boot order | `[00]` — bottom |
 | `DefaultBootPriority` | `usb,nvme,emmc,sd,ufs` | `nvme,usb,emmc,sd,ufs` |
+| `PlatformBootOrderSet` | set once the first boot has sorted | locked `[00]` — sort every boot |
 
-UEFI auto-creates HTTPv6/HTTPv4/PXEv6/PXEv4 boot options as soon as a NIC enumerates. None of them appear in `DefaultBootPriority`, so under `NewDeviceHierarchy = 01` all four rank as new devices and sit ahead of the SSD — and are re-promoted after any manual reorder.
+UEFI sorts BootOrder by `DefaultBootPriority` only while `PlatformBootOrderSet` is unset: on stock firmware, the first boot. Options it re-discovers later are placed by `NewDeviceHierarchy` alone. Under `01`, a NIC's four HTTP/PXE options land above the SSD; under `00`, an SSD missed for one boot comes back last, behind the UEFI Shell, which never returns. With `PlatformBootOrderSet` locked, every boot re-sorts, so the SSD is first whenever it is present and a boot order changed in the UEFI menu is undone on the next boot.
 
-`DefaultBootPriority` is `locked`: UEFI re-asserts it from the DTB every boot, so it is settable only at flash time. `NewDeviceHierarchy` is `runtime`/`non-volatile`, so a unit already in the field can be corrected without a reflash — Device Manager → NVIDIA Configuration → Boot Configuration → "Add new devices to top or bottom of boot order" → **Bottom**.
+`DefaultBootPriority` and `PlatformBootOrderSet` are `locked` and volatile: UEFI recreates them from the DTB every boot, so they change only with the QSPI bootloader (reflash or capsule update). To recover a unit on an older image whose SSD fell to the bottom, press `s` at the UEFI menu on the debug UART, then run `bcfg boot dump` and `bcfg boot mv <NVMe position> 0`.
 
 ## Updating after a BSP bump
 
