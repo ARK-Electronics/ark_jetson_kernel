@@ -1,0 +1,6 @@
+# Written next to the scripts when the viewer runs
+__pycache__/
+libeorender.so
+view.log
+view.pid
+nv_ov64b40.ko

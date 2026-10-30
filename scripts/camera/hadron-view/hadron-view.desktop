@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hadron Live View
+Comment=FLIR Hadron EO and IR cameras with the ICM-45686 frame timing (q, Esc or right click to quit)
+Exec=/home/jetson/hadron-view/start.sh
+Icon=camera-web
+Terminal=false
+Categories=AudioVideo;Video;
+StartupNotify=false

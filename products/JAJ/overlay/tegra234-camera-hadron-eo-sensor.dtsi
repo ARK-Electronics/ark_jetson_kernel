@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026, ARK Electronics.
+
+/*
+ * Body of the FLIR Hadron EO (OV64B40) sensor node. Include it inside the
+ * node, after reset-gpios, once tegra234-camera-hadron-eo.dtsi is in scope.
+ *
+ * Bound by kernel_overlay's nv_ov64b40 driver. Its tables are 4-lane; on the
+ * x2 ports it switches the sensor to two lanes and doubles HTS.
+ *
+ * I2C_CAM also carries the Boson CCI (0x6a) and two EEPROMs (0x50, 0x51).
+ * The sensor answers on its second SCCB ID, 0x21, as well.
+ */
+
+compatible = "ovti,ov64b40";
+reg = <0x36>;
+devnode = "video0";
+/* 9248 x 6944 at 0.701 um */
+physical_w = "6.483";
+physical_h = "4.868";
+sensor_model = "ov64b40";
+use_sensor_mode_id = "true";
+/*
+ * The EO reads out rotated 180 degrees relative to the Boson in the same
+ * housing; the driver undoes the tables' phone-module mirror and flip.
+ */
+rotation = <180>;
+
+/*
+ * x4: the OV64B modes of the realme 8i / Narzo 50 (MIAMI) GPL imgsensor driver,
+ * which the driver's tables come from: 24 MHz input, 115.2 MHz system clock,
+ * D-PHY 4-lane. pix_clk_hz is the MIPI pixel rate (lane rate * 4 / 10), and
+ * line_length = pix_clk_hz * HTS / 115.2 MHz, so pix_clk_hz / line_length is the
+ * true line rate the exposure and frame-length math needs.
+ * x2: the same sizes and lane rates on half the lanes. The driver doubles HTS,
+ * which halves the frame rate and doubles the line time: pix_clk_hz halves with
+ * the lane count, line_length stays.
+ */
+#if HADRON_EO_LANES == 4
+/* 4624x3468 @ 30, 4-cell binned, HTS 936, VTS 4102, 1699.2 Mbps/lane */
+HADRON_EO_MODE(mode0, 4624, 3468, 679680000, 5522, 28.32, 30000000, 33000);
+/* 3840x2160 @ 60, HTS 696, VTS 2758, 2300 Mbps/lane */
+HADRON_EO_MODE(mode1, 3840, 2160, 920000000, 5558, 38.33, 60000000, 16400);
+/* 2304x1296 @ 120, HTS 504, VTS 1904, 1699.2 Mbps/lane */
+HADRON_EO_MODE(mode2, 2304, 1296, 679680000, 2974, 28.32, 120000000, 8100);
+/* 9248x6936 @ 13.2, full array remosaic, HTS 1200, VTS 7280, 2400 Mbps/lane */
+HADRON_EO_MODE(mode3, 9248, 6936, 960000000, 10000, 40.00, 13200000, 75000);
+#else
+HADRON_EO_MODE(mode0, 4624, 3468, 339840000, 5522, 14.16, 15000000, 66000);
+HADRON_EO_MODE(mode1, 3840, 2160, 460000000, 5558, 19.17, 30000000, 32800);
+HADRON_EO_MODE(mode2, 2304, 1296, 339840000, 2974, 14.16, 60000000, 16200);
+HADRON_EO_MODE(mode3, 9248, 6936, 480000000, 10000, 20.00, 6600000, 150000);
+#endif
+
+ports {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	port@0 {
+		reg = <0>;
+		hadron_eo_out0: endpoint {
+			status = "okay";
+			port-index = <HADRON_EO_PORT_INDEX>;
+			bus-width = <HADRON_EO_LANES>;
+			remote-endpoint = <&hadron_eo_csi_in0>;
+		};
+	};
+};
