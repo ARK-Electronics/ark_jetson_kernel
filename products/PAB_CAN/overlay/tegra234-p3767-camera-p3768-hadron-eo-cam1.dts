@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026, ARK Electronics.
+
+/*
+ * FLIR Hadron EO (OV64B40) on PAB_CAN CAM1 (J25), 4-lane:
+ * CSI2_CLK with CSI2_D0/D1 then CSI3_D0/D1.
+ * I2C mux channel 1, reset CAM1_PWDN (PAC.00),
+ * EXT_VSYNC on CAM1_MCLK (PP.01).
+ */
+
+/dts-v1/;
+/plugin/;
+
+#define CAM1_PWDN	TEGRA234_MAIN_GPIO(AC, 0)
+#define CAM_I2C_MUX	TEGRA234_AON_GPIO(CC, 3)
+
+#define HADRON_EO_PORT_INDEX	2
+#define HADRON_EO_LANES		4
+#define HADRON_EO_SINTERFACE	"serial_c"
+#define HADRON_EO_LANE_POLARITY	"0"
+#define HADRON_EO_SENSOR_SYSFS	"/sys/firmware/devicetree/base/bus@0/cam_i2cmux/i2c@1/hadron_eo@36"
+#define HADRON_EO_SYNC_PAD	"extperiph2_clk_pp1"
+
+#include <dt-bindings/tegra234-p3767-0000-common.h>
+#include "tegra234-camera-hadron-eo.dtsi"
+
+/ {
+	overlay-name = "Camera FLIR Hadron EO CAM1 4-lane";
+	jetson-header-name = "Jetson 22pin CSI Connector";
+	compatible = JETSON_COMPATIBLE_P3768;
+
+	fragment-hadron-eo-i2c@0 {
+		target-path = "/";
+		__overlay__ {
+			bus@0 {
+				cam_i2cmux {
+					status = "okay";
+					compatible = "i2c-mux-gpio";
+					#address-cells = <1>;
+					#size-cells = <0>;
+					i2c-parent = <&cam_i2c>;
+					mux-gpios = <&gpio_aon CAM_I2C_MUX GPIO_ACTIVE_HIGH>;
+					i2c@0 {
+						status = "okay";
+						reg = <0>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						/* the flash-time IMX219 default */
+						rbpcv2_imx219_a@10 {
+							status = "disabled";
+						};
+					};
+					i2c@1 {
+						status = "okay";
+						reg = <1>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						rbpcv2_imx219_c@10 {
+							status = "disabled";
+						};
+						hadron_eo@36 {
+							status = "okay";
+							reset-gpios = <&gpio CAM1_PWDN GPIO_ACTIVE_HIGH>;
+#include "tegra234-camera-hadron-eo-sensor.dtsi"
+						};
+					};
+				};
+			};
+		};
+	};
+};
