@@ -376,6 +376,37 @@ static int ov64b40_apply_rotation(struct ov64b40 *priv)
 	return err;
 }
 
+/*
+ * The tables are 4-lane. Two lanes at the same lane rate carry half the data,
+ * so each line needs twice the time: double HTS, which halves the frame rate
+ * and doubles the line time (the DT's x2 modes halve pix_clk_hz to match).
+ */
+static int ov64b40_apply_two_lanes(struct ov64b40 *priv)
+{
+	struct camera_common_data *s_data = priv->s_data;
+	u8 msb, lsb;
+	u32 hts;
+	int err;
+
+	err = ov64b40_read_reg(s_data, OV64B40_LINE_LENGTH_ADDR_MSB, &msb);
+	if (!err)
+		err = ov64b40_read_reg(s_data, OV64B40_LINE_LENGTH_ADDR_LSB, &lsb);
+	if (err)
+		return err;
+
+	hts = 2 * (((u32)msb << OV64B40_BYTE_SHIFT) | lsb);
+	err = ov64b40_write_reg(s_data, OV64B40_LINE_LENGTH_ADDR_MSB,
+				hts >> OV64B40_BYTE_SHIFT);
+	if (!err)
+		err = ov64b40_write_reg(s_data, OV64B40_LINE_LENGTH_ADDR_LSB,
+					hts & OV64B40_BYTE_MASK);
+	if (!err)
+		err = ov64b40_write_reg(s_data, OV64B40_MIPI_LANES_ADDR,
+					OV64B40_MIPI_2_LANES);
+
+	return err;
+}
+
 static struct tegracam_ctrl_ops ov64b40_ctrl_ops = {
 	.numctrls = ARRAY_SIZE(ctrl_cid_list),
 	.ctrl_cid_list = ctrl_cid_list,
@@ -508,9 +539,9 @@ static int __ov64b40_set_mode(struct tegracam_device *tc_dev)
 	    s_data->mode >= ARRAY_SIZE(ov64b40_frmfmt))
 		return -EINVAL;
 
-	/* The tables drive four lanes (0x3012 = 0x41); a 2-lane port gets garbage. */
-	if (mode->signal_properties.num_lanes != 4) {
-		dev_err(tc_dev->dev, "only 4-lane register tables exist (DT asks for %u lanes)\n",
+	if (mode->signal_properties.num_lanes != 4 &&
+	    mode->signal_properties.num_lanes != 2) {
+		dev_err(tc_dev->dev, "%u lanes are not supported (2 or 4)\n",
 			mode->signal_properties.num_lanes);
 		return -EINVAL;
 	}
@@ -544,6 +575,14 @@ static int __ov64b40_set_mode(struct tegracam_device *tc_dev)
 		dev_err(tc_dev->dev, "failed writing mode %d (%d)\n",
 			s_data->mode, err);
 		return err;
+	}
+
+	if (mode->signal_properties.num_lanes == 2) {
+		err = ov64b40_apply_two_lanes(priv);
+		if (err) {
+			dev_err(tc_dev->dev, "failed switching to 2 lanes (%d)\n", err);
+			return err;
+		}
 	}
 
 	if (priv->rotate_180) {

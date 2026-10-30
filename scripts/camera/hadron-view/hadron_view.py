@@ -19,6 +19,7 @@ Quit with q, Esc or a right click.
 import argparse
 import collections
 import ctypes
+import glob
 import math
 import os
 import signal
@@ -53,8 +54,6 @@ from syncline import SyncLine  # noqa: E402
 from v4l2cap import MEMORY_USERPTR, Capture  # noqa: E402
 
 EO_W, EO_H, EO_MODE = 2304, 1296, 2     # OV64B40 sensor_mode 2
-EO_LINE_TIME = 2974 / 679.68e6          # mode 2 line_length / pix_clk from the DT
-EO_READOUT = EO_H * EO_LINE_TIME        # first to last row
 OUT_W, OUT_H = EO_W // 2, EO_H // 2     # one RGB pixel per 2x2 Bayer cell
 BLACK, FULL = 64, 1023                  # 10-bit black level and full scale
 AE_TARGET = 0.14                        # mean green above black, linear
@@ -93,6 +92,27 @@ def find_node(name_part):
         except OSError:
             continue
     raise SystemExit(f"no V4L2 device named *{name_part}*")
+
+
+def dt_string(path):
+    with open(path, "rb") as f:
+        return f.read().rstrip(b"\0").decode()
+
+
+def eo_line_time():
+    """EO_MODE's line time from the sensor's device-tree node; a 2-lane port takes twice as long per line."""
+    for node in glob.glob("/sys/bus/i2c/drivers/ov64b40/*/of_node"):
+        mode = f"{node}/mode{EO_MODE}"
+        return int(dt_string(f"{mode}/line_length")) / int(dt_string(f"{mode}/pix_clk_hz"))
+    raise SystemExit("no OV64B40 bound to the ov64b40 driver")
+
+
+def sync_pad_line():
+    """GPIO line name of the pad the overlay made the sync input (extperiph1_clk_pp0 is PP.00), or None."""
+    for pins in glob.glob("/sys/firmware/devicetree/base/bus@0/pinmux@*/hadron-eo-sync/*/nvidia,pins"):
+        port = dt_string(pins).rsplit("_", 1)[-1]
+        return f"{port[:-1].upper()}.{int(port[-1]):02d}"
+    return None
 
 
 def load_renderer():
@@ -154,6 +174,7 @@ class EoCamera(threading.Thread):
         self.exp_rng = self.gain_rng = None
         self.tsc_offset = archtimer.tsc_minus_monotonic()
         self.render = load_renderer()
+        self.readout = EO_H * eo_line_time()        # first to last row
         self.pool = ThreadPoolExecutor(WORKERS)
         edges = [round(EO_H * i / WORKERS / 2) * 2 for i in range(WORKERS + 1)]
         self.bands = list(zip(edges, edges[1:]))       # even row spans, one per worker
@@ -218,7 +239,7 @@ class EoCamera(threading.Thread):
                 cap.queue(index)
                 buf = Gst.Buffer.new_wrapped(out.tobytes())
                 # Stamped with the mid-exposure instant, so the display sink can measure latency.
-                mid = sof + EO_READOUT / 2 - exp / 2
+                mid = sof + self.readout / 2 - exp / 2
                 buf.pts = max(0, round(mid * 1e9) - self.appsrc.get_base_time())
                 self.appsrc.emit("push-buffer", buf)
                 self.work_ms = 0.95 * self.work_ms + 0.05 * (time.perf_counter() - t_work) * 1000
@@ -474,21 +495,22 @@ class SyncPanel:
             cr.set_source_rgba(*COLOR["imu"], alpha)
             cr.stroke()
 
-        # EO rolling shutter: row 0 exposes [SOF - exp, SOF], the last row EO_READOUT later.
+        # EO rolling shutter: row 0 exposes [SOF - exp, SOF], the last row one readout later.
+        readout = self.eo.readout
         for _, sof, exp in list(self.eo.frames)[-12:]:
-            if sof + EO_READOUT < t0 or sof - exp > t_end:
+            if sof + readout < t0 or sof - exp > t_end:
                 continue
             cr.move_to(tx(sof - exp), eo_top)
             cr.line_to(tx(sof), eo_top)
-            cr.line_to(tx(sof + EO_READOUT), eo_top + eo_h)
-            cr.line_to(tx(sof + EO_READOUT - exp), eo_top + eo_h)
+            cr.line_to(tx(sof + readout), eo_top + eo_h)
+            cr.line_to(tx(sof + readout - exp), eo_top + eo_h)
             cr.close_path()
             cr.set_source_rgba(*COLOR["eo"], 0.35)
             cr.fill_preserve()
             cr.set_source_rgb(*COLOR["eo"])
             cr.set_line_width(1.2 * s)
             cr.stroke()
-            mid = sof + EO_READOUT / 2 - exp / 2
+            mid = sof + readout / 2 - exp / 2
             cr.set_source_rgb(*COLOR["fg"])
             cr.arc(tx(mid), eo_top + eo_h / 2, 3.5 * s, 0, 2 * math.pi)
             cr.fill()
@@ -556,7 +578,7 @@ class SyncPanel:
         if self.eo.frames:
             frames = np.array([(sof, exp) for _, sof, exp in list(self.eo.frames)])
             frames = frames[frames[:, 0] >= t_start]
-            series.append(("eo", frames[:, 0] + EO_READOUT / 2 - frames[:, 1] / 2))
+            series.append(("eo", frames[:, 0] + self.eo.readout / 2 - frames[:, 1] / 2))
         if self.sync:
             ir = np.array(list(self.ir_frames), np.float64)
             pulses = FrameSync.match(ir[ir >= t_start], self.pulses)
@@ -814,14 +836,20 @@ def main():
     p.add_argument("--imu-odr", type=int, default=200, choices=(50, 100, 200, 400),
                    help="the bus runs at 100 kHz, which caps the FIFO rate")
     p.add_argument("--manual", action="store_true", help="leave EO exposure/gain alone")
-    p.add_argument("--sync-line", default="PP.01",
-                   help="GPIO line of the carrier MCLK pad wired to Hadron pin 43 (CAM1: PP.01, CAM0: PP.00)")
+    p.add_argument("--sync-line",
+                   help="GPIO line of the carrier MCLK pad wired to Hadron pin 43, e.g. PP.00 on JAJ CAM0 "
+                        "(default: the pad the overlay made the sync input)")
     p.add_argument("--no-sync", dest="sync", action="store_false",
                    help="leave the Boson's ext sync alone and time the IMU from host reads")
     args = p.parse_args()
     args.eo = args.eo or find_node("ov64b40")
     args.ir = args.ir or find_node("Boson")
-    log(f"EO {args.eo}, IR {args.ir}")
+    if args.sync and not args.sync_line:
+        args.sync_line = sync_pad_line()
+        if not args.sync_line:
+            log("the overlay sets up no sync pad (pass --sync-line); timing the IMU from host reads")
+            args.sync = False
+    log(f"EO {args.eo}, IR {args.ir}, sync line {args.sync_line if args.sync else 'unused'}")
 
     # The EO thread trades the GIL with the panel drawing many times a frame; the
     # default 5 ms switch interval would add up to that at every handoff.

@@ -5,8 +5,8 @@
  * Body of the FLIR Hadron EO (OV64B40) sensor node. Include it inside the
  * node, after reset-gpios, once tegra234-camera-hadron-eo.dtsi is in scope.
  *
- * Bound by kernel_overlay's nv_ov64b40 driver, whose tables are 4-lane only:
- * it refuses to stream on the x2 ports.
+ * Bound by kernel_overlay's nv_ov64b40 driver. Its tables are 4-lane; on the
+ * x2 ports it switches the sensor to two lanes and doubles HTS.
  *
  * I2C_CAM also carries the Boson CCI (0x6a) and two EEPROMs (0x50, 0x51).
  * The sensor answers on its second SCCB ID, 0x21, as well.
@@ -32,9 +32,9 @@ rotation = <180>;
  * D-PHY 4-lane. pix_clk_hz is the MIPI pixel rate (lane rate * 4 / 10), and
  * line_length = pix_clk_hz * HTS / 115.2 MHz, so pix_clk_hz / line_length is the
  * true line rate the exposure and frame-length math needs.
- * x2: the same sizes on half the lanes at half the frame rate.
- * TODO(driver): x2 has no register tables yet (MIAMI is 4-lane only); drop it if
- * FLIR's tables are 4-lane only.
+ * x2: the same sizes and lane rates on half the lanes. The driver doubles HTS,
+ * which halves the frame rate and doubles the line time: pix_clk_hz halves with
+ * the lane count, line_length stays.
  */
 #if HADRON_EO_LANES == 4
 /* 4624x3468 @ 30, 4-cell binned, HTS 936, VTS 4102, 1699.2 Mbps/lane */

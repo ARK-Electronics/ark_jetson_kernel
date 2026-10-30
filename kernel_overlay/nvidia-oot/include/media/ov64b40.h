@@ -66,6 +66,13 @@
 #define OV64B40_MAX_FRAME_LENGTH		0xfffffeU
 
 /*
+ * MIPI lane count in 0x3012 bits 7:4. The tables drive four (0x41); ov08x40,
+ * the same generation, switches to two with 0x21.
+ */
+#define OV64B40_MIPI_LANES_ADDR		0x3012
+#define OV64B40_MIPI_2_LANES		0x21
+
+/*
  * Readout orientation. 0x3820 bit 2 is vertical flip; 0x3821 bit 2 is mirror,
  * inverted (set = not mirrored). 0x3811/0x3813 are the ISP window X/Y offsets
  * and 0x383d the PD window offset, nudged by one to keep the Bayer phase.
