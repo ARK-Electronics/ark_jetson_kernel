@@ -178,7 +178,7 @@ download_from_site() {
         base="$SITE_URL/dev/jetson/$product/$version"
         if ! sums=$(curl -sfL "$base/SHA256SUMS"); then
             echo "ERROR: $RELEASE_TAG is neither a release nor a draft on $SITE_URL." >&2
-            echo "  Releases: $SITE_URL/jetson/$product/ (releases before 6.2.2.6 are on GitHub only)" >&2
+            echo "  Releases: $SITE_URL/jetson/$product/" >&2
             exit 1
         fi
         echo "$RELEASE_TAG is an unpublished draft."
