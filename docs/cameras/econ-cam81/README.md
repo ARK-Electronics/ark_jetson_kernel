@@ -157,7 +157,7 @@ gst-launch-1.0 v4l2src device=/dev/video0 num-buffers=1 ! \
 
 ## CAM0 caveat
 
-e-con's release wires the dev kit's CAM0 to `serial_b`/port-index 1 and its docs state only CAM1 (4-lane) is supported; NVIDIA's stock (and ARK's validated) JAJ overlays wire CAM0 to `serial_a`/port-index 0 with `lane_polarity 6`. The dual overlay here uses the ARK/NVIDIA wiring, which is proven for IMX219/477/708 on JAJ CAM0 — but AR0821-on-CAM0 has no prior art from e-con, so validate it on the bench before depending on it; if CAM0 yields no frames while CAM1 streams, the overlay's CAM0 `tegra_sinterface`/`port-index` (serial_a/0 vs serial_b/1) is the first knob to try.
+JAJ clocks CAM0 from CSI1_CLK, so the dual overlay puts it on `serial_b`, port-index 1, with `lane_polarity 6`. That matches e-con's dev-kit wiring and the JAJ IMX219 and IMX477 overlays. e-con's docs support only CAM1, so AR0821 on CAM0 is untested.
 
 ## Vendor documentation
 
