@@ -60,8 +60,10 @@ source "$SCRIPT_DIR/scripts/check_bsp.sh"
 L4T_DIR="$SCRIPT_DIR/staging/$TARGET/Linux_for_Tegra"
 
 # staging/ is root-owned (created by the build container), so the user can't write
-# the log here. Flashing needs root anyway: prime sudo and tee through it.
-sudo -v || { echo "ERROR: sudo is required to flash." >&2; exit 1; }
+# the log here. Flashing needs root anyway: prime sudo and tee through it. `sudo -v`
+# asks for a password unless every sudoers entry is NOPASSWD, so skip it where sudo
+# runs unprompted.
+sudo -n true 2>/dev/null || sudo -v || { echo "ERROR: sudo is required to flash." >&2; exit 1; }
 exec > >(sudo tee "$SCRIPT_DIR/staging/$TARGET/flash.log.txt") 2>&1
 
 if [ ! -d "$L4T_DIR" ]; then
@@ -127,7 +129,7 @@ if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
     exit 0
 fi
 
-sudo -v
+sudo -n true 2>/dev/null || sudo -v
 
 echo "Waiting for device in recovery mode..."
 

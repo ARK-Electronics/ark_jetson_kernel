@@ -43,7 +43,9 @@ STAGING_DIR="$ROOT_DIR/staging/$TARGET"
 L4T_DIR="$STAGING_DIR/Linux_for_Tegra"
 
 # staging/ is root-owned (created by the build container); tee the log through sudo.
-sudo -v
+# `sudo -v` asks for a password unless every sudoers entry is NOPASSWD, so skip it
+# where sudo runs unprompted.
+sudo -n true 2>/dev/null || sudo -v
 exec > >(sudo tee "$STAGING_DIR/generate_flash_package.log.txt") 2>&1
 
 if [ ! -d "$L4T_DIR" ]; then

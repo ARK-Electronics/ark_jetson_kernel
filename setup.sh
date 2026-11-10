@@ -129,7 +129,7 @@ function cleanup() {
 
 function sudo_refresh_loop() {
     while true; do
-        sudo -v
+        sudo -n true 2>/dev/null || sudo -v
         sleep 60
     done
 }
@@ -166,7 +166,9 @@ function download_with_retry() {
 
 trap cleanup EXIT
 
-sudo -v
+# `sudo -v` asks for a password unless every sudoers entry is NOPASSWD, so skip it
+# where sudo runs unprompted.
+sudo -n true 2>/dev/null || sudo -v
 sudo_refresh_loop &
 SUDO_PID=$!
 START_TIME=$(date +%s)
