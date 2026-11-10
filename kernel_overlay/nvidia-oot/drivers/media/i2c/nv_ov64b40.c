@@ -44,9 +44,6 @@ static const u32 ctrl_cid_list[] = {
 struct ov64b40 {
 	struct i2c_client *i2c_client;
 	struct v4l2_subdev *subdev;
-	u32 frame_length;
-	u32 coarse_time;
-	bool exposure_valid;
 	bool rotate_180;
 	/*
 	 * Last requested gain, exposure and frame rate; 0 means "use the mode's DT
@@ -56,7 +53,11 @@ struct ov64b40 {
 	s64 req_gain;
 	s64 req_exposure;
 	s64 req_frame_rate;
-	/* The exposure and rate the sensor runs at, which their controls have to read. */
+	/*
+	 * The gain, exposure and rate the sensor runs at. Every register group
+	 * carries all three, and the exposure and rate controls have to read theirs.
+	 */
+	s64 gain;
 	s64 exposure;
 	s64 frame_rate;
 	struct v4l2_ctrl *exposure_ctrl;
@@ -66,10 +67,10 @@ struct ov64b40 {
 	bool group_hold;
 	/*
 	 * Set between set_mode and start_streaming, where tegracam clamps the
-	 * controls to the new mode's ranges. Those writes reach the sensor but
-	 * are not userspace requests, so they must not outlive the mode.
+	 * controls to the new mode's ranges and, under override_enable, passes
+	 * their values down again. Neither is a userspace request.
 	 */
-	bool updating_ranges;
+	bool starting;
 	/* Serialises whole control, mode and stream transactions. */
 	struct mutex lock;
 	struct camera_common_data *s_data;
@@ -160,6 +161,83 @@ static int ov64b40_write_group_hold(struct camera_common_data *s_data, bool val)
 	return err;
 }
 
+/*
+ * Program frame rate, exposure and gain: VTS, the exposure lines and the gain
+ * register, eight bytes. While streaming they go out in one register group, so
+ * a frame boundary takes them whole. A new group cancels one still waiting for
+ * its boundary, so each group carries all three and not only the value that
+ * changed. A group that userspace holds is left for userspace to launch.
+ */
+static int ov64b40_write_aec(struct tegracam_device *tc_dev, s64 rate,
+			     s64 exposure, s64 gain)
+{
+	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
+	struct camera_common_data *s_data = tc_dev->s_data;
+	const struct sensor_mode_properties *mode = ov64b40_get_mode(s_data);
+	const struct sensor_control_properties *cp;
+	bool hold = priv->streaming && !priv->group_hold;
+	ov64b40_reg regs[8];
+	u32 frame_length;
+	u32 lines;
+	u16 gain_reg;
+	int end_err;
+	int err;
+
+	if (!mode || s_data->mode < 0 || s_data->mode >= s_data->numfmts)
+		return -EINVAL;
+	cp = &mode->control_properties;
+
+	/* A request can come from another mode's range. */
+	rate = clamp_t(s64, rate, cp->min_framerate, cp->max_framerate);
+	exposure = clamp_t(s64, exposure, cp->min_exp_time.val,
+			   cp->max_exp_time.val);
+	gain = clamp_t(s64, gain, cp->min_gain_val, cp->max_gain_val);
+
+	err = ov64b40_framerate_to_vts(rate,
+			mode->signal_properties.pixel_clock.val,
+			mode->image_properties.line_length,
+			cp->framerate_factor,
+			s_data->frmfmt[s_data->mode].size.height, &frame_length);
+	if (!err)
+		err = ov64b40_exposure_to_lines(exposure,
+				mode->signal_properties.pixel_clock.val,
+				mode->image_properties.line_length,
+				cp->exposure_factor, frame_length, &lines);
+	if (!err)
+		err = ov64b40_gain_to_reg(gain, cp->gain_factor, &gain_reg);
+	if (err)
+		return err;
+
+	ov64b40_get_frame_length_regs(&regs[0], frame_length);
+	ov64b40_get_exposure_regs(&regs[3], lines);
+	ov64b40_get_gain_regs(&regs[6], gain_reg);
+
+	if (hold) {
+		err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
+					OV64B40_GROUP_HOLD_START);
+		if (err)
+			return err;
+	}
+	err = ov64b40_write_regs(priv, regs, ARRAY_SIZE(regs));
+	if (hold) {
+		end_err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
+					    OV64B40_GROUP_HOLD_END);
+		if (!err)
+			err = end_err;
+		/* A group that failed is not launched, so the sensor keeps its values. */
+		if (!err)
+			err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
+						OV64B40_GROUP_HOLD_LAUNCH);
+	}
+	if (err)
+		return err;
+
+	priv->frame_rate = rate;
+	priv->exposure = exposure;
+	priv->gain = gain;
+	return 0;
+}
+
 static int ov64b40_set_group_hold(struct tegracam_device *tc_dev, bool val)
 {
 	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
@@ -167,109 +245,14 @@ static int ov64b40_set_group_hold(struct tegracam_device *tc_dev, bool val)
 
 	mutex_lock(&priv->lock);
 	err = ov64b40_write_group_hold(tc_dev->s_data, val);
-	if (!err)
+	if (!err) {
 		priv->group_hold = val;
+		/* Taking the group cancels one of ours still waiting: carry its values. */
+		if (val && priv->streaming)
+			err = ov64b40_write_aec(tc_dev, priv->frame_rate,
+						priv->exposure, priv->gain);
+	}
 	mutex_unlock(&priv->lock);
-
-	return err;
-}
-
-static int ov64b40_apply_gain(struct tegracam_device *tc_dev, s64 val)
-{
-	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
-	const struct sensor_mode_properties *mode = ov64b40_get_mode(tc_dev->s_data);
-	ov64b40_reg regs[2];
-	u16 gain;
-	int err;
-
-	if (!mode)
-		return -EINVAL;
-
-	err = ov64b40_gain_to_reg(val, mode->control_properties.gain_factor,
-				 &gain);
-	if (err)
-		return err;
-
-	ov64b40_get_gain_regs(regs, gain);
-	return ov64b40_write_regs(priv, regs, ARRAY_SIZE(regs));
-}
-
-static int ov64b40_set_gain(struct tegracam_device *tc_dev, s64 val)
-{
-	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
-	int err = 0;
-
-	mutex_lock(&priv->lock);
-	/* Before set_mode programs the sensor, only record the request. */
-	if (priv->frame_length)
-		err = ov64b40_apply_gain(tc_dev, val);
-	if (!err && !priv->updating_ranges)
-		priv->req_gain = val;
-	mutex_unlock(&priv->lock);
-
-	return err;
-}
-
-static int ov64b40_write_exposure(struct ov64b40 *priv, u32 lines)
-{
-	ov64b40_reg regs[3];
-	int err;
-
-	ov64b40_get_exposure_regs(regs, lines);
-	err = ov64b40_write_regs(priv, regs, ARRAY_SIZE(regs));
-	if (err)
-		return err;
-
-	priv->coarse_time = lines;
-	priv->exposure_valid = true;
-	return 0;
-}
-
-static int ov64b40_read_exposure(struct ov64b40 *priv)
-{
-	u8 msb, mid, lsb;
-	int err;
-
-	err = ov64b40_read_reg(priv->s_data, OV64B40_EXPOSURE_ADDR_MSB, &msb);
-	if (err)
-		return err;
-	err = ov64b40_read_reg(priv->s_data, OV64B40_EXPOSURE_ADDR_MID, &mid);
-	if (err)
-		return err;
-	err = ov64b40_read_reg(priv->s_data, OV64B40_EXPOSURE_ADDR_LSB, &lsb);
-	if (err)
-		return err;
-
-	priv->coarse_time = ov64b40_exposure_from_regs(msb, mid, lsb);
-	priv->exposure_valid = true;
-	return 0;
-}
-
-static int ov64b40_apply_exposure(struct tegracam_device *tc_dev, s64 val)
-{
-	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
-	const struct sensor_mode_properties *mode = ov64b40_get_mode(tc_dev->s_data);
-	u32 lines;
-	int err;
-
-	if (!mode)
-		return -EINVAL;
-
-	/* A request can come from another mode's range. */
-	val = clamp_t(s64, val, mode->control_properties.min_exp_time.val,
-		      mode->control_properties.max_exp_time.val);
-
-	err = ov64b40_exposure_to_lines(val,
-			mode->signal_properties.pixel_clock.val,
-			mode->image_properties.line_length,
-			mode->control_properties.exposure_factor,
-			priv->frame_length, &lines);
-	if (err)
-		return err;
-
-	err = ov64b40_write_exposure(priv, lines);
-	if (!err)
-		priv->exposure = val;
 
 	return err;
 }
@@ -291,107 +274,39 @@ static bool ov64b40_range_clamp(const struct v4l2_ctrl *ctrl)
 	return cur < ctrl->minimum || cur > ctrl->maximum;
 }
 
+/*
+ * The three setters program the sensor only while it streams. Before that
+ * they record the request, which set_mode programs after its tables.
+ */
+static int ov64b40_set_gain(struct tegracam_device *tc_dev, s64 val)
+{
+	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
+	int err = 0;
+
+	mutex_lock(&priv->lock);
+	if (priv->streaming)
+		err = ov64b40_write_aec(tc_dev, priv->frame_rate,
+					priv->exposure, val);
+	if (!err && !priv->starting)
+		priv->req_gain = val;
+	mutex_unlock(&priv->lock);
+
+	return err;
+}
+
 static int ov64b40_set_exposure(struct tegracam_device *tc_dev, s64 val)
 {
 	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
 	int err = 0;
 
 	mutex_lock(&priv->lock);
-	/* Exposure is clamped to VTS, which set_mode programs first. */
-	if (priv->frame_length)
-		err = ov64b40_apply_exposure(tc_dev, val);
-	if (!err && !priv->updating_ranges &&
+	if (priv->streaming)
+		err = ov64b40_write_aec(tc_dev, priv->frame_rate, val,
+					priv->gain);
+	if (!err && !priv->starting &&
 	    !ov64b40_range_clamp(priv->exposure_ctrl))
 		priv->req_exposure = val;
 	mutex_unlock(&priv->lock);
-
-	return err;
-}
-
-static int ov64b40_write_frame_length(struct tegracam_device *tc_dev,
-				      u32 frame_length)
-{
-	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
-	ov64b40_reg regs[3];
-	u32 lines;
-	int err;
-
-	/* Preserve the table's exposure unless the new VTS requires a clamp. */
-	lines = ov64b40_clamp_exposure(priv->coarse_time, frame_length);
-	if (lines != priv->coarse_time) {
-		/* Shorten exposure before shortening the frame. */
-		err = ov64b40_write_exposure(priv, lines);
-		if (err)
-			return err;
-	}
-
-	ov64b40_get_frame_length_regs(regs, frame_length);
-	err = ov64b40_write_regs(priv, regs, ARRAY_SIZE(regs));
-	if (err) {
-		/* VTS may be half-written: distrust it until the next set_mode. */
-		priv->frame_length = 0;
-		return err;
-	}
-
-	priv->frame_length = frame_length;
-
-	/* Re-fit the requested exposure, which may have been clamped to the old VTS. */
-	if (priv->req_exposure > 0)
-		return ov64b40_apply_exposure(tc_dev, priv->req_exposure);
-
-	return 0;
-}
-
-static int ov64b40_apply_frame_rate(struct tegracam_device *tc_dev, s64 val)
-{
-	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
-	struct camera_common_data *s_data = tc_dev->s_data;
-	const struct sensor_mode_properties *mode = ov64b40_get_mode(s_data);
-	u32 frame_length;
-	bool hold;
-	int hold_err;
-	int err;
-
-	if (!mode || s_data->mode < 0 || s_data->mode >= s_data->numfmts)
-		return -EINVAL;
-
-	/* Never run faster than the mode's table timing (its VTS) allows. */
-	val = clamp_t(s64, val, mode->control_properties.min_framerate,
-		      mode->control_properties.max_framerate);
-
-	err = ov64b40_framerate_to_vts(val,
-			mode->signal_properties.pixel_clock.val,
-			mode->image_properties.line_length,
-			mode->control_properties.framerate_factor,
-			s_data->frmfmt[s_data->mode].size.height, &frame_length);
-	if (err)
-		return err;
-
-	if (!priv->exposure_valid) {
-		err = ov64b40_read_exposure(priv);
-		if (err)
-			return err;
-	}
-
-	/*
-	 * VTS and exposure are three bytes each. While streaming, hold them in
-	 * the register group so one frame boundary takes them whole, unless
-	 * userspace already holds it.
-	 */
-	hold = priv->streaming && !priv->group_hold;
-	if (hold) {
-		err = ov64b40_write_group_hold(s_data, true);
-		if (err)
-			return err;
-	}
-	err = ov64b40_write_frame_length(tc_dev, frame_length);
-	if (hold) {
-		hold_err = ov64b40_write_group_hold(s_data, false);
-		if (!err)
-			err = hold_err;
-	}
-	if (!err)
-		priv->frame_rate = val;
 
 	return err;
 }
@@ -402,10 +317,10 @@ static int ov64b40_set_frame_rate(struct tegracam_device *tc_dev, s64 val)
 	int err = 0;
 
 	mutex_lock(&priv->lock);
-	/* Before set_mode programs the sensor, only record the request. */
-	if (priv->frame_length)
-		err = ov64b40_apply_frame_rate(tc_dev, val);
-	if (!err && !priv->updating_ranges &&
+	if (priv->streaming)
+		err = ov64b40_write_aec(tc_dev, val, priv->exposure,
+					priv->gain);
+	if (!err && !priv->starting &&
 	    !ov64b40_range_clamp(priv->frame_rate_ctrl))
 		priv->req_frame_rate = val;
 	mutex_unlock(&priv->lock);
@@ -416,8 +331,8 @@ static int ov64b40_set_frame_rate(struct tegracam_device *tc_dev, s64 val)
 /*
  * tegracam's range update leaves an in-range control value alone, so after a
  * mode change a control can read a value the sensor isn't running. Make the
- * frame-rate and exposure controls read what set_mode applied. Called during
- * the range update, so the writes are not kept as requests.
+ * frame-rate and exposure controls read what set_mode applied. Called while
+ * the stream is starting, so the writes are not kept as requests.
  */
 static int ov64b40_sync_ctrls(struct ov64b40 *priv)
 {
@@ -579,7 +494,7 @@ static int ov64b40_power_off(struct camera_common_data *s_data)
 
 	/* The module remains powered; leave shared reset released. */
 	mutex_lock(&priv->lock);
-	priv->updating_ranges = false;
+	priv->starting = false;
 	err = ov64b40_write_reg(s_data, OV64B40_STREAM_ADDR, OV64B40_STREAM_OFF);
 	if (!err)
 		priv->streaming = false;
@@ -672,7 +587,7 @@ static int __ov64b40_set_mode(struct tegracam_device *tc_dev)
 	int err;
 
 	/* A range update that failed never reached start_streaming to clear this. */
-	priv->updating_ranges = false;
+	priv->starting = false;
 
 	if (!mode || s_data->mode < 0 || s_data->mode >= s_data->numfmts)
 		return -EINVAL;
@@ -685,8 +600,7 @@ static int __ov64b40_set_mode(struct tegracam_device *tc_dev)
 	}
 
 	/* Reset only the EO sensor over I2C, never the shared reset GPIO. */
-	priv->frame_length = 0;
-	priv->exposure_valid = false;
+	priv->streaming = false;
 	priv->group_hold = false;
 	err = ov64b40_write_reg(s_data, OV64B40_SW_RESET_ADDR, OV64B40_SW_RESET);
 	if (err)
@@ -740,9 +654,8 @@ static int __ov64b40_set_mode(struct tegracam_device *tc_dev)
 	}
 
 	/*
-	 * The tables reset exposure, gain (to 8x) and VTS. Program the frame rate
-	 * first, then exposure and gain: the requested values, or the mode's DT
-	 * defaults.
+	 * The tables reset VTS, exposure and gain (to 8x). Program the requested
+	 * values, or the mode's DT defaults.
 	 */
 	rate = priv->req_frame_rate;
 	if (rate <= 0)
@@ -751,23 +664,15 @@ static int __ov64b40_set_mode(struct tegracam_device *tc_dev)
 		rate = ov64b40_scaled_framerate(
 				s_data->frmfmt[s_data->mode].framerates[0],
 				mode->control_properties.framerate_factor);
-	err = ov64b40_apply_frame_rate(tc_dev, rate);
-	if (err)
-		return err;
-
-	err = ov64b40_apply_exposure(tc_dev, priv->req_exposure > 0 ?
-			priv->req_exposure :
-			(s64)mode->control_properties.default_exp_time.val);
-	if (err)
-		return err;
-
-	err = ov64b40_apply_gain(tc_dev, priv->req_gain > 0 ?
-			priv->req_gain :
+	err = ov64b40_write_aec(tc_dev, rate,
+			priv->req_exposure > 0 ? priv->req_exposure :
+			(s64)mode->control_properties.default_exp_time.val,
+			priv->req_gain > 0 ? priv->req_gain :
 			(s64)mode->control_properties.default_gain);
 	if (err)
 		return err;
 
-	priv->updating_ranges = true;
+	priv->starting = true;
 	return 0;
 }
 
@@ -793,7 +698,7 @@ static int ov64b40_start_streaming(struct tegracam_device *tc_dev)
 		return err;
 
 	mutex_lock(&priv->lock);
-	priv->updating_ranges = false;
+	priv->starting = false;
 	err = ov64b40_write_table(priv, mode_table[OV64B40_START_STREAM]);
 	if (!err)
 		priv->streaming = true;
@@ -808,7 +713,7 @@ static int ov64b40_stop_streaming(struct tegracam_device *tc_dev)
 	int err;
 
 	mutex_lock(&priv->lock);
-	priv->updating_ranges = false;
+	priv->starting = false;
 	err = ov64b40_write_table(priv, mode_table[OV64B40_STOP_STREAM]);
 	if (!err)
 		priv->streaming = false;

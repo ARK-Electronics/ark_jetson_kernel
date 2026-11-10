@@ -105,12 +105,6 @@ static inline u32 ov64b40_chip_id_from_regs(u8 msb, u8 mid, u8 lsb)
 	       ((u32)mid << OV64B40_BYTE_SHIFT) | lsb;
 }
 
-static inline u32 ov64b40_exposure_from_regs(u8 msb, u8 mid, u8 lsb)
-{
-	return ((u32)(msb & OV64B40_EXPOSURE_MSB_MASK) <<
-		OV64B40_WORD_SHIFT) | ((u32)mid << OV64B40_BYTE_SHIFT) | lsb;
-}
-
 static inline void ov64b40_get_exposure_regs(struct reg_8 *regs, u32 lines)
 {
 	regs[0].addr = OV64B40_EXPOSURE_ADDR_MSB;
