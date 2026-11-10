@@ -41,8 +41,9 @@ v4l2-ctl -d /dev/videoN --set-fmt-video=width=4624,height=3468,pixelformat=BG10 
 ```
 
 - **Pixel format:** BGGR RAW10, stored MSB-aligned in 16-bit words (`value >> 6`).
-- **Exposure and gain:** exposure is in microseconds. Gain is in units of 1/16, so 16 is 1x and 248 is 15.5x. Both can be set before streaming or while streaming.
-- **Frame rate:** `frame_rate` is fps × 10^6. Each mode starts at its own rate until a rate is set. A set rate then carries to every mode, limited to that mode's maximum, and the control reads the rate the sensor is running at.
+- **Exposure and gain:** exposure is in microseconds. Gain is in units of 1/16, so 16 is 1x and 248 is 15.5x.
+- **Frame rate:** `frame_rate` is fps × 10^6. Each mode starts at its own rate until a rate is set.
+- **Setting controls:** all three can be set before streaming or while streaming. A set value carries to every mode, limited to that mode's range. The exposure and frame-rate controls read the value in use.
 
 ## Live view
 

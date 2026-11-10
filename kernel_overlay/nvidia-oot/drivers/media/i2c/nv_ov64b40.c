@@ -56,8 +56,10 @@ struct ov64b40 {
 	s64 req_gain;
 	s64 req_exposure;
 	s64 req_frame_rate;
-	/* The rate the sensor runs at, which the frame_rate control has to read. */
+	/* The exposure and rate the sensor runs at, which their controls have to read. */
+	s64 exposure;
 	s64 frame_rate;
+	struct v4l2_ctrl *exposure_ctrl;
 	struct v4l2_ctrl *frame_rate_ctrl;
 	bool streaming;
 	/* Userspace holds the register group through the group_hold control. */
@@ -253,6 +255,10 @@ static int ov64b40_apply_exposure(struct tegracam_device *tc_dev, s64 val)
 	if (!mode)
 		return -EINVAL;
 
+	/* A request can come from another mode's range. */
+	val = clamp_t(s64, val, mode->control_properties.min_exp_time.val,
+		      mode->control_properties.max_exp_time.val);
+
 	err = ov64b40_exposure_to_lines(val,
 			mode->signal_properties.pixel_clock.val,
 			mode->image_properties.line_length,
@@ -261,7 +267,28 @@ static int ov64b40_apply_exposure(struct tegracam_device *tc_dev, s64 val)
 	if (err)
 		return err;
 
-	return ov64b40_write_exposure(priv, lines);
+	err = ov64b40_write_exposure(priv, lines);
+	if (!err)
+		priv->exposure = val;
+
+	return err;
+}
+
+/*
+ * tegracam narrows a control to a mode's range at S_FMT and at stream start,
+ * and passes a clamp down like a write. The control's current value is then
+ * still the old one, outside the new range. A write from userspace always
+ * starts from a value inside it. Called with the control handler locked.
+ */
+static bool ov64b40_range_clamp(const struct v4l2_ctrl *ctrl)
+{
+	s64 cur;
+
+	if (!ctrl)
+		return false;
+
+	cur = *ctrl->p_cur.p_s64;
+	return cur < ctrl->minimum || cur > ctrl->maximum;
 }
 
 static int ov64b40_set_exposure(struct tegracam_device *tc_dev, s64 val)
@@ -273,7 +300,8 @@ static int ov64b40_set_exposure(struct tegracam_device *tc_dev, s64 val)
 	/* Exposure is clamped to VTS, which set_mode programs first. */
 	if (priv->frame_length)
 		err = ov64b40_apply_exposure(tc_dev, val);
-	if (!err && !priv->updating_ranges)
+	if (!err && !priv->updating_ranges &&
+	    !ov64b40_range_clamp(priv->exposure_ctrl))
 		priv->req_exposure = val;
 	mutex_unlock(&priv->lock);
 
@@ -368,24 +396,6 @@ static int ov64b40_apply_frame_rate(struct tegracam_device *tc_dev, s64 val)
 	return err;
 }
 
-/*
- * tegracam narrows the control to a mode's range at S_FMT and at stream start,
- * and passes a clamp down like a write. The control's current value is then
- * still the old one, outside the new range. A write from userspace always
- * starts from a value inside it. Called with the control handler locked.
- */
-static bool ov64b40_frame_rate_clamped(struct ov64b40 *priv)
-{
-	struct v4l2_ctrl *ctrl = priv->frame_rate_ctrl;
-	s64 cur;
-
-	if (!ctrl)
-		return false;
-
-	cur = *ctrl->p_cur.p_s64;
-	return cur < ctrl->minimum || cur > ctrl->maximum;
-}
-
 static int ov64b40_set_frame_rate(struct tegracam_device *tc_dev, s64 val)
 {
 	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
@@ -395,7 +405,8 @@ static int ov64b40_set_frame_rate(struct tegracam_device *tc_dev, s64 val)
 	/* Before set_mode programs the sensor, only record the request. */
 	if (priv->frame_length)
 		err = ov64b40_apply_frame_rate(tc_dev, val);
-	if (!err && !priv->updating_ranges && !ov64b40_frame_rate_clamped(priv))
+	if (!err && !priv->updating_ranges &&
+	    !ov64b40_range_clamp(priv->frame_rate_ctrl))
 		priv->req_frame_rate = val;
 	mutex_unlock(&priv->lock);
 
@@ -404,50 +415,63 @@ static int ov64b40_set_frame_rate(struct tegracam_device *tc_dev, s64 val)
 
 /*
  * tegracam's range update leaves an in-range control value alone, so after a
- * mode change the control can read a rate the sensor isn't running. Make it
- * read the running rate. Called during the range update, so the write is not
- * kept as a request.
+ * mode change a control can read a value the sensor isn't running. Make the
+ * frame-rate and exposure controls read what set_mode applied. Called during
+ * the range update, so the writes are not kept as requests.
  */
-static int ov64b40_sync_frame_rate_ctrl(struct ov64b40 *priv)
+static int ov64b40_sync_ctrls(struct ov64b40 *priv)
 {
+	s64 exposure;
 	s64 rate;
-
-	if (!priv->frame_rate_ctrl)
-		return 0;
+	int err = 0;
 
 	mutex_lock(&priv->lock);
 	rate = priv->frame_rate;
+	exposure = priv->exposure;
 	mutex_unlock(&priv->lock);
 
-	return v4l2_ctrl_s_ctrl_int64(priv->frame_rate_ctrl, rate);
+	if (priv->frame_rate_ctrl)
+		err = v4l2_ctrl_s_ctrl_int64(priv->frame_rate_ctrl, rate);
+	if (!err && priv->exposure_ctrl)
+		err = v4l2_ctrl_s_ctrl_int64(priv->exposure_ctrl, exposure);
+
+	return err;
+}
+
+static void ov64b40_open_range(struct v4l2_ctrl *ctrl, s64 lo, s64 hi)
+{
+	if (ctrl && lo <= hi)
+		v4l2_ctrl_modify_range(ctrl, lo, hi, ctrl->step,
+				       ctrl->default_value);
 }
 
 /*
- * tegracam leaves the control with the range of the last mode it was set to.
- * Between streams, open it to every mode's rates, so a request for the next
- * mode is not clamped to the last one's. set_mode clamps it to its mode.
+ * tegracam leaves the frame-rate and exposure controls with the range of the
+ * last mode they were set to. Between streams, open them to every mode's
+ * range, so a request for the next mode is not clamped to the last one's.
+ * set_mode clamps each to its mode. Gain's range is the same in every mode.
  */
-static void ov64b40_open_frame_rate_range(struct ov64b40 *priv)
+static void ov64b40_open_ranges(struct ov64b40 *priv)
 {
 	const struct sensor_properties *props = &priv->s_data->sensor_props;
-	struct v4l2_ctrl *ctrl = priv->frame_rate_ctrl;
-	s64 lo = S64_MAX;
-	s64 hi = 0;
+	s64 rate_lo = S64_MAX;
+	s64 rate_hi = 0;
+	s64 exp_lo = S64_MAX;
+	s64 exp_hi = 0;
 	u32 i;
-
-	if (!ctrl)
-		return;
 
 	for (i = 0; i < props->num_modes; i++) {
 		const struct sensor_control_properties *cp =
 			&props->sensor_modes[i].control_properties;
 
-		lo = min_t(s64, lo, cp->min_framerate);
-		hi = max_t(s64, hi, cp->max_framerate);
+		rate_lo = min_t(s64, rate_lo, cp->min_framerate);
+		rate_hi = max_t(s64, rate_hi, cp->max_framerate);
+		exp_lo = min_t(s64, exp_lo, cp->min_exp_time.val);
+		exp_hi = max_t(s64, exp_hi, cp->max_exp_time.val);
 	}
-	if (lo <= hi)
-		v4l2_ctrl_modify_range(ctrl, lo, hi, ctrl->step,
-				       ctrl->default_value);
+	ov64b40_open_range(priv->frame_rate_ctrl, rate_lo, rate_hi);
+	/* tegracam's own exposure ranges end one above the maximum. */
+	ov64b40_open_range(priv->exposure_ctrl, exp_lo, exp_hi + 1);
 }
 
 /*
@@ -563,8 +587,8 @@ static int ov64b40_power_off(struct camera_common_data *s_data)
 	if (err)
 		return err;
 
-	/* A format set without streaming left the range at that mode's. */
-	ov64b40_open_frame_rate_range(priv);
+	/* A format set without streaming left the ranges at that mode's. */
+	ov64b40_open_ranges(priv);
 
 	/*
 	 * Software standby only: the sensor stays powered and addressable. Keep
@@ -764,7 +788,7 @@ static int ov64b40_start_streaming(struct tegracam_device *tc_dev)
 	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
 	int err;
 
-	err = ov64b40_sync_frame_rate_ctrl(priv);
+	err = ov64b40_sync_ctrls(priv);
 	if (err)
 		return err;
 
@@ -790,7 +814,7 @@ static int ov64b40_stop_streaming(struct tegracam_device *tc_dev)
 		priv->streaming = false;
 	mutex_unlock(&priv->lock);
 
-	ov64b40_open_frame_rate_range(priv);
+	ov64b40_open_ranges(priv);
 
 	return err;
 }
@@ -869,19 +893,23 @@ static void ov64b40_init_ctrls(struct ov64b40 *priv)
 	hdl = &s_data->tegracam_ctrl_hdl->ctrl_handler;
 	cp = &s_data->sensor_props.sensor_modes[0].control_properties;
 
+	/*
+	 * The frame-rate and exposure controls read the value in use, which may
+	 * be a mode default or a clamp nobody asked for. A write of that same
+	 * value is still a request.
+	 */
 	ctrl = v4l2_ctrl_find(hdl, TEGRA_CAMERA_CID_FRAME_RATE);
 	if (ctrl) {
 		v4l2_ctrl_s_ctrl_int64(ctrl, cp->default_framerate);
-		/*
-		 * The control reads the running rate, which may be a mode default
-		 * nobody asked for. A write of that same value is still a request.
-		 */
 		ctrl->flags |= V4L2_CTRL_FLAG_EXECUTE_ON_WRITE;
 		priv->frame_rate_ctrl = ctrl;
 	}
 	ctrl = v4l2_ctrl_find(hdl, TEGRA_CAMERA_CID_EXPOSURE);
-	if (ctrl)
+	if (ctrl) {
 		v4l2_ctrl_s_ctrl_int64(ctrl, cp->default_exp_time.val);
+		ctrl->flags |= V4L2_CTRL_FLAG_EXECUTE_ON_WRITE;
+		priv->exposure_ctrl = ctrl;
+	}
 	ctrl = v4l2_ctrl_find(hdl, TEGRA_CAMERA_CID_GAIN);
 	if (ctrl)
 		v4l2_ctrl_s_ctrl_int64(ctrl, cp->default_gain);
@@ -890,7 +918,7 @@ static void ov64b40_init_ctrls(struct ov64b40 *priv)
 	priv->req_gain = 0;
 	priv->req_frame_rate = 0;
 
-	ov64b40_open_frame_rate_range(priv);
+	ov64b40_open_ranges(priv);
 }
 
 static int ov64b40_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
