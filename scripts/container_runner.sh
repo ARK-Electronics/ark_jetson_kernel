@@ -1,18 +1,19 @@
 #!/bin/bash
 # Host-detection + container handoff, sourced by setup.sh and build.sh. NVIDIA's
-# documented build host is Ubuntu 22.04; on anything else we re-exec inside a 22.04
-# container so host-tool differences (kmod 31 vs the rootfs's kmod 29) can't corrupt
-# the build. See docs/build_host.md.
+# documented build host is Ubuntu 22.04; we re-exec inside a 22.04 container that
+# also carries kmod 31, which the Noble rootfs needs and 22.04 lacks. See
+# docs/build_host.md.
 
 ARK_BUILDER_IMAGE="ark-jetson-builder:22.04"
 
 # Returns 0 if the calling script should re-exec inside the build container.
-# False when already inside (IN_BUILD_CONTAINER=1) or when the host is 22.04.
+# False when already inside (IN_BUILD_CONTAINER=1) or on a 22.04 host with kmod 31.
 needs_container() {
     [ -z "$IN_BUILD_CONTAINER" ] || return 1
     local host_id
     host_id=$(. /etc/os-release && echo "$VERSION_ID")
-    [ "$host_id" != "22.04" ]
+    [ "$host_id" = "22.04" ] || return 0
+    ! depmod --version 2>/dev/null | grep -qx 'kmod version 31'
 }
 
 # Install docker if missing, then set DOCKER_CMD to (docker) or (sudo docker) by
@@ -87,7 +88,7 @@ run_in_container() {
     # Persistent ccache for container builds: the container is --rm, so without a host
     # mount the cache vanishes each run. Dedicated dir (not a shared host ccache) to
     # avoid cross-project churn; override via ARK_CCACHE_DIR.
-    local ccache_dir="${ARK_CCACHE_DIR:-$HOME/.cache/ark_jetson_ccache}"
+    local ccache_dir="${ARK_CCACHE_DIR:-${CCACHE_DIR:-$HOME/.cache/ark_jetson_ccache}}"
     mkdir -p "$HOME/l4t-gcc" "$ccache_dir"
     echo "Re-executing $(basename "$script_path") in 22.04 build container..."
 
@@ -98,6 +99,14 @@ run_in_container() {
         tty_flags+=(-t)
     fi
 
+    # A symlinked staging/ (CI keeps it on a bigger disk) has to resolve inside the
+    # container too, so mount its target at the same path.
+    local staging_mount=() staging_target
+    if [ -L "$repo_dir/staging" ]; then
+        staging_target=$(realpath "$repo_dir/staging")
+        staging_mount=(-v "$staging_target:$staging_target")
+    fi
+
     # SYS_ADMIN + apparmor=unconfined: NVIDIA's rootfs helpers chroot in and bind-mount
     # /proc,/sys,/dev, which Docker's default profiles block. The container is ephemeral
     # (--rm) and runs only the build, so the wider privilege is acceptable.
@@ -105,12 +114,14 @@ run_in_container() {
         --cap-add=SYS_ADMIN \
         --security-opt apparmor=unconfined \
         -v "$repo_dir:/workspace" \
+        "${staging_mount[@]}" \
         -v "$HOME/l4t-gcc:/root/l4t-gcc" \
         -v "$ccache_dir:/root/.ccache" \
         -w /workspace \
         -e IN_BUILD_CONTAINER=1 \
         -e CCACHE_DIR=/root/.ccache \
         -e CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-20G}" \
+        -e CCACHE_COMPILERCHECK="${CCACHE_COMPILERCHECK:-content}" \
         -e CCACHE_SLOPPINESS=time_macros,include_file_ctime,include_file_mtime \
         -e ARK_BUILD_OS="$ARK_BUILD_OS" \
         -e ARK_BUILD_COMMIT="$ARK_BUILD_COMMIT" \
