@@ -5,6 +5,10 @@
 # usb-storage declines UAS-capable drives, so a USB rootfs on one never mounts.
 CONFIG_USB_UAS=y
 
+# Noble ships the WiFi/Bluetooth firmware zstd-compressed.
+CONFIG_FW_LOADER_COMPRESS=y
+CONFIG_FW_LOADER_COMPRESS_ZSTD=y
+
 # USB modem / cellular
 CONFIG_USB_WDM=y
 CONFIG_USB_NET_DRIVERS=y
