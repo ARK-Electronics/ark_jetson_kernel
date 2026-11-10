@@ -57,10 +57,10 @@ gst-launch-1.0 -e nvarguscamerasrc sensor-id=0 sensor-mode=2 ! \
 
 - **Modes:** `sensor-mode` is the mode number in the table above, and the caps take a frame rate up to that mode's on the port. Mode 3 fails with `InsufficientMemory` on an Orin Nano 4GB.
 - **Sensor ID:** each overlay disables the other camera modules of the flash-time default, so the Hadron EO is `sensor-id=0`.
-- **Black level:** the ISP has no tuning for this sensor and takes its black level as zero, which leaves the picture hazy. [ark_hadron_rear_OV64B40.isp](../scripts/camera/hadron/ark_hadron_rear_OV64B40.isp) sets the sensor's 64. Argus finds the file by the overlay's module badge:
+- **ISP file:** Argus has no tuning for this sensor. [ark_hadron_rear_OV64B40.isp](../camera_isp/ark_hadron_rear_OV64B40.isp) sets its black level of 64, without which the picture is hazy. Colour is still the ISP's default. The image installs the file. On an image built before it did:
 
 ```
-sudo install -m 664 -o root -g root scripts/camera/hadron/ark_hadron_rear_OV64B40.isp /var/nvidia/nvcam/settings/
+sudo install -m 664 -o root -g root camera_isp/ark_hadron_rear_OV64B40.isp /var/nvidia/nvcam/settings/
 sudo systemctl restart nvargus-daemon
 ```
 

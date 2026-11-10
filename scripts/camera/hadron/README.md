@@ -4,7 +4,6 @@
 |------|------|
 | `view/` | Live view of the EO and the Boson, with the adapter's ICM-45686 plotted against the frame timing |
 | `gen_ov64b40_tables.py` | Generates the driver's `ov64b40_tables.h` |
-| `ark_hadron_rear_OV64B40.isp` | Argus ISP override that sets the sensor's black level |
 
 The camera, its overlays and the frame sync: [docs/hadron.md](../../../docs/hadron.md).
 
