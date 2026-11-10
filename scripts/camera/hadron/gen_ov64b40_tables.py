@@ -51,7 +51,8 @@ for mtk, name, desc in TABLES:
         sys.exit(f"{mtk}: odd number of values")
     pairs = list(zip(vals[0::2], vals[1::2]))
     for a, v in pairs:
-        if a > 0xFFFF or v > 0xFF:
+        # Addresses 0 and 1 are the reg_8 tables' wait and end markers.
+        if not 1 < a <= 0xFFFF or v > 0xFF:
             sys.exit(f"{mtk}: bad pair {a:#x},{v:#x}")
     lines.append(f"/* {desc}: {len(pairs)} writes */")
     lines.append(f"static const ov64b40_reg {name}[] = {{")
