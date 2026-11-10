@@ -5,7 +5,7 @@ description: Drive a Jetson carrier (PAB, JAJ, PAB_V3) on the bench — power it
 
 # Jetson hardware in the loop
 
-> **TODO: untested.** Neither this skill nor `jetson_hil.py` has been run against a real Jetson or DP712. The first session that uses it must check each step and command it relies on against the hardware, fix what is wrong, and include those fixes and the removal of this notice in any PR produced with the skill's help.
+> **TODO: partly tested.** `ports`, `psu`, `wait-ssh` and the DP712, USB and SSH facts below were checked on a JAJ on 2026-11-10. `console`, the cold-boot loop and the flash steps have not been run against hardware. The first session that uses those must check them, fix what is wrong, and include those fixes and the removal of this notice in any PR produced with the skill's help.
 
 `jetson_hil.py` (next to this file, needs pyserial) does the mechanics: `ports`, `psu`, `console` (with `--cycle-psu` for a timed cold boot), `wait-ssh`. Run it with `--help`.
 
@@ -31,8 +31,8 @@ Do not power-cycle, flash or change a setpoint until the answers are in. Then ru
 | Supply setpoints | Carrier-specific: ask. Benches have used 16 V (JAJ boot timing), 20 V (JAJ power), 25.2 V (PAB power modules). |
 | Debug UART | 115200 8N1, `ttyTCU0` on the device. Login `jetson` / `jetson`. With the fast-boot firmware, nothing prints before UEFI. |
 | USB IDs | `0955:7020` = booted with the L4T gadget. `0955:7323/7423/7523/7623` = recovery mode (NX 16 GB / NX 8 GB / Nano 8 GB / Nano 4 GB). |
-| USB network | The gadget shows up as two host NICs (rndis + cdc_ncm) and only one answers. Use whichever holds `192.168.55.100`, or bring the profile up by hand with `nmcli con up ark-jetson-usb ifname <nic>`. Never pin a profile to a MAC; it changes per board and per flash. |
-| SSH | `jetson@192.168.55.1` over USB, or the Ethernet IP; `jetson.local` via mDNS. `sudo` password `jetson`. |
+| USB network | The gadget shows up as two host NICs (rndis + cdc_ncm) and only one answers. Use whichever holds `192.168.55.100`, or bring the profile up by hand with `nmcli con up ark-jetson-usb ifname <nic>`. A Jetson reboot can leave the NIC without an address until the profile is brought up again. Never pin a profile to a MAC; it changes per board and per flash. |
+| SSH | `jetson@192.168.55.1` over USB, or the Ethernet IP; `jetson.local` via mDNS. A stock image has no key installed: log in with `sshpass -p jetson`. `sudo` password `jetson`. |
 
 ## 3. Loops
 

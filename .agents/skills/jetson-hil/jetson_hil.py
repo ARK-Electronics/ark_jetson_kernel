@@ -197,7 +197,9 @@ def cmd_console(args):
 def cmd_wait_ssh(args):
     deadline = time.monotonic() + args.timeout
     while time.monotonic() < deadline:
-        if subprocess.run(SSH + [f"{args.user}@{args.host}", "true"], capture_output=True).returncode == 0:
+        result = subprocess.run(SSH + [f"{args.user}@{args.host}", "true"], capture_output=True)
+        # A stock image takes only the password, so without a key sshd's refusal is as far as BatchMode gets.
+        if result.returncode == 0 or b"Permission denied" in result.stderr:
             print(f"ssh {args.user}@{args.host} up after {args.timeout - (deadline - time.monotonic()):.0f} s")
             return 0
         time.sleep(2)
