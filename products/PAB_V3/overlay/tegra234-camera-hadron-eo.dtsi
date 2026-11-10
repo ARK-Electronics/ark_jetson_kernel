@@ -148,7 +148,7 @@
 					};
 				};
 
-				/* FLIR Hadron 640 Engineering Datasheet R170: EFL 4.8 mm, f/2.3, 67 deg HFOV, fixed focus */
+				/* Fixed focus: EFL 4.8 mm, f/2.3, 67 deg HFOV */
 				lens_hadron_eo@FLIR {
 					min_focus_distance = "0.0";
 					hyper_focal = "0.0";
