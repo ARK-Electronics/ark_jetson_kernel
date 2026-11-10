@@ -72,17 +72,21 @@ class Boson:
             if not select.select([self.fd], [], [], 0.05)[0]:
                 continue
             buf += os.read(self.fd, 4096)
-            start = buf.find(0x8E)
-            end = buf.find(0xAE, start + 1) if start >= 0 else -1
-            if end < 0:
-                continue
-            reply = _unstuff(buf[start + 1:end])
-            _, seq, func, status = struct.unpack(">BIII", reply[:13])
-            if binascii.crc_hqx(reply[:-2], 0x1D0F) != struct.unpack(">H", reply[-2:])[0]:
-                raise OSError(f"Boson 0x{function:08x}: bad reply CRC")
-            if status:
-                raise OSError(f"Boson 0x{function:08x}: status 0x{status:x}")
-            return reply[13:-2]
+            while True:
+                start = buf.find(0x8E)
+                end = buf.find(0xAE, start + 1) if start >= 0 else -1
+                if end < 0:
+                    break
+                reply = _unstuff(buf[start + 1:end])
+                del buf[:end + 1]
+                if len(reply) < 15 or binascii.crc_hqx(reply[:-2], 0x1D0F) != struct.unpack(">H", reply[-2:])[0]:
+                    raise OSError(f"Boson 0x{function:08x}: bad reply")
+                _, seq, func, status = struct.unpack(">BIII", reply[:13])
+                if (seq, func) != (self.seq, function):
+                    continue            # the late reply to a command that timed out
+                if status:
+                    raise OSError(f"Boson 0x{function:08x}: status 0x{status:x}")
+                return reply[13:-2]
         raise OSError(f"Boson 0x{function:08x}: no reply")
 
     def serial(self):

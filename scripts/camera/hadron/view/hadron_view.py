@@ -320,10 +320,12 @@ class EoCamera(threading.Thread):
 class FrameSync:
     """The Hadron sync line: the Boson drives it as ext sync master, the IMU and the Jetson timestamp it."""
 
-    def __init__(self, line_name):
+    def __init__(self):
         self.line = self.cam = self.imu = None
         self.error = None
-        self.restore = boson.EXT_SYNC_DISABLED      # the Boson's mode before the view took it over
+        self.restore = None         # the Boson's mode before the view took it over, once read
+
+    def start(self, line_name):
         try:
             # Held as an input, so the Jetson can't drive the line even under an overlay
             # that leaves its MCLK pad an output.
@@ -338,18 +340,22 @@ class FrameSync:
             self.cam.set_ext_sync(boson.EXT_SYNC_MASTER)
         except OSError as e:
             self.error = f"Boson as sync master: {e}"
-            if self.cam:
-                self.cam.close()
-            self.cam = None
+            self.release()          # the set may have taken effect and only its reply been lost
 
-    def close(self):
-        if self.cam:
+    def release(self):
+        """Put the Boson's sync mode back and let go of its port."""
+        if not self.cam:
+            return
+        if self.restore is not None:
             try:
                 self.cam.set_ext_sync(self.restore)
             except OSError as e:
                 log(f"Boson ext sync not restored: {e}")
-            self.cam.close()
-            self.cam = None
+        self.cam.close()
+        self.cam = None
+
+    def close(self):
+        self.release()
         if self.line:
             self.line.close()
             self.line = None
@@ -811,6 +817,8 @@ class Viewer:
             return False
         self.quitting = True
         log(f"quitting ({reason})")
+        if self.sync:
+            self.sync.release()     # first: stop.sh kills a view that takes more than 3 s to stop
         if self.eo:
             self.eo.stopping.set()
             self.eo.join(3)
@@ -872,14 +880,18 @@ def main():
     # default 5 ms switch interval would add up to that at every handoff.
     sys.setswitchinterval(0.0005)
     Gst.init(None)
+    # Until GLib takes the signals over below, they exit through the finally.
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, lambda signum, frame: sys.exit(f"signal {signum}"))
     with open(PID_FILE, "w") as f:
         f.write(f"{os.getpid()}\n")
-    sync = None
+    sync = FrameSync() if args.sync else None
     try:
         # From here the Boson is the sync master, so every way out has to pass the finally.
-        sync = FrameSync(args.sync_line) if args.sync else None
+        if sync:
+            sync.start(args.sync_line)
         viewer = Viewer(args, sync)
-        for sig in (signal.SIGINT, signal.SIGTERM):
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
             GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, viewer.quit)
         viewer.start()
         Gtk.main()
