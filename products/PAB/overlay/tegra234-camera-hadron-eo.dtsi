@@ -188,13 +188,18 @@
 		};
 	};
 
+	/*
+	 * exp-header-pinmux is the default state jetson-io's header configurations
+	 * fill. Sharing the node merges the sync pad with their pins; a separate
+	 * state would replace theirs, or be replaced by it.
+	 */
 	fragment-hadron-eo-sync@0 {
 		target = <&pinmux>;
 		__overlay__ {
 			pinctrl-names = "default";
-			pinctrl-0 = <&hadron_eo_sync>;
-			hadron_eo_sync: hadron-eo-sync {
-				ext-vsync {
+			pinctrl-0 = <&hadron_eo_pinmux>;
+			hadron_eo_pinmux: exp-header-pinmux {
+				hadron-eo-sync {
 					nvidia,pins = HADRON_EO_SYNC_PAD;
 					nvidia,pull = <TEGRA_PIN_PULL_DOWN>;
 					nvidia,tristate = <TEGRA_PIN_ENABLE>;

@@ -109,7 +109,7 @@ def eo_line_time():
 
 def sync_pad_line():
     """GPIO line name of the pad the overlay made the sync input (extperiph1_clk_pp0 is PP.00), or None."""
-    for pins in glob.glob("/sys/firmware/devicetree/base/bus@0/pinmux@*/hadron-eo-sync/*/nvidia,pins"):
+    for pins in glob.glob("/sys/firmware/devicetree/base/bus@0/pinmux@*/exp-header-pinmux/hadron-eo-sync/nvidia,pins"):
         port = dt_string(pins).rsplit("_", 1)[-1]
         return f"{port[:-1].upper()}.{int(port[-1]):02d}"
     return None
