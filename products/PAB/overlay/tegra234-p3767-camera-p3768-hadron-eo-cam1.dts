@@ -36,8 +36,12 @@
 		__overlay__ {
 			bus@0 {
 				i2c@3180000 {
+					#address-cells = <1>;
+					#size-cells = <0>;
 					tca9546@70 {
 						compatible = "nxp,pca9546";
+						#address-cells = <1>;
+						#size-cells = <0>;
 						reg = <0x70>;
 						i2c-parent = <&cam_i2c>;
 						skip_mux_detect = "yes";
