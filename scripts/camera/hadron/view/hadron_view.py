@@ -309,6 +309,7 @@ class FrameSync:
     def __init__(self, line_name):
         self.line = self.cam = self.imu = None
         self.error = None
+        self.restore = boson.EXT_SYNC_DISABLED      # the Boson's mode before the view took it over
         try:
             # Held as an input, so the Jetson can't drive the line even under an overlay
             # that leaves its MCLK pad an output.
@@ -319,17 +320,20 @@ class FrameSync:
             return
         try:
             self.cam = boson.Boson()
+            self.restore = self.cam.ext_sync()
             self.cam.set_ext_sync(boson.EXT_SYNC_MASTER)
         except OSError as e:
             self.error = f"Boson as sync master: {e}"
+            if self.cam:
+                self.cam.close()
             self.cam = None
 
     def close(self):
         if self.cam:
             try:
-                self.cam.set_ext_sync(boson.EXT_SYNC_DISABLED)     # its power-on setting
+                self.cam.set_ext_sync(self.restore)
             except OSError as e:
-                log(f"Boson ext sync not reset: {e}")
+                log(f"Boson ext sync not restored: {e}")
             self.cam.close()
             self.cam = None
         if self.line:
@@ -627,8 +631,9 @@ class SyncPanel:
 
 
 class Viewer:
-    def __init__(self, args):
+    def __init__(self, args, sync):
         self.args = args
+        self.sync = sync
         self.eo = None
         self.quitting = False
         self.ir_frames = collections.deque(maxlen=IR_FPS * 10)
@@ -679,7 +684,6 @@ class Viewer:
             area.get_window().ensure_native()
             self.xids[name] = area.get_window().get_xid()
 
-        self.sync = FrameSync(args.sync_line) if args.sync else None
         if self.sync and self.sync.error:
             log(self.sync.error)
         self.imu = Icm45686(bus=args.imu_bus, addr=args.imu_addr, odr=args.imu_odr, fsync=self.sync is not None,
@@ -854,17 +858,20 @@ def main():
     # default 5 ms switch interval would add up to that at every handoff.
     sys.setswitchinterval(0.0005)
     Gst.init(None)
-    viewer = Viewer(args)
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, viewer.quit)
     with open(PID_FILE, "w") as f:
         f.write(f"{os.getpid()}\n")
+    sync = None
     try:
+        # From here the Boson is the sync master, so every way out has to pass the finally.
+        sync = FrameSync(args.sync_line) if args.sync else None
+        viewer = Viewer(args, sync)
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, sig, viewer.quit)
         viewer.start()
         Gtk.main()
     finally:
-        if viewer.sync:
-            viewer.sync.close()
+        if sync:
+            sync.close()
         os.unlink(PID_FILE)
 
 
