@@ -48,4 +48,5 @@ Do not power-cycle, flash or change a setpoint until the answers are in. Then ru
 - A flash that dies with "cannot mount the NFS server" means NetworkManager grabbed the flasher's USB NIC. `flash.sh` guards against this; a hand-rolled `l4t_initrd_flash.sh` does not.
 - One process per serial port. A leftover reader steals lines; check with `fuser <tty>`.
 - Measured supply current is a module plus carrier plus fan number. Read the module rail from the on-module INA3221 (`in1_input`).
+- A software power-off does not keep a JAJ down: after `shutdown -h now` the module boots again within seconds. To power down cleanly, run `sync`, remount read-only with `echo u > /proc/sysrq-trigger`, then `psu off`.
 - Leave the supply in the state you found it and say so. If you changed a setpoint, restore it.
