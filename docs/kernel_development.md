@@ -10,8 +10,9 @@ Set up the cross-compile environment and build. On an aarch64 host, skip the `CR
 
 ```
 source versions.env
-export CROSS_COMPILE=$HOME/l4t-gcc/$TOOLCHAIN_DIRNAME/bin/aarch64-buildroot-linux-gnu-
-export KERNEL_HEADERS=$PWD/staging/PAB/Linux_for_Tegra/source/kernel/kernel-jammy-src
+export CROSS_COMPILE=$HOME/l4t-gcc/$TOOLCHAIN_CROSS_PREFIX
+export KERNEL_HEADERS=$PWD/staging/PAB/Linux_for_Tegra/source/kernel/$KERNEL_SRC_DIR
+export kernel_name=$KERNEL_NAME
 export INSTALL_MOD_PATH=$PWD/staging/PAB/Linux_for_Tegra/rootfs/
 cd staging/PAB/Linux_for_Tegra/source
 make -C kernel && make modules && make dtbs
@@ -27,10 +28,10 @@ sudo -E make modules_install
 Copy the kernel image into `../kernel/`, where `flash.sh` reads it:
 
 ```
-cp kernel/kernel-jammy-src/arch/arm64/boot/Image ../kernel/
+cp kernel/$KERNEL_SRC_DIR/arch/arm64/boot/Image ../kernel/
 ```
 
-`build.sh` does two more things that a flash from scratch needs and the steps above leave out. It copies the per-module DTBs and the camera `.dtbo` overlays from `kernel-devicetree/generic-dts/dtbs/` into both `rootfs/boot/` and `kernel/dtb/`. It also repoints the `lib/modules/<release>/{build,source}` symlinks at the on-target headers package, so that DKMS and module builds on the target find their headers. Do those two by hand, or run `./build.sh <TARGET>`.
+`build.sh` does two more things that a flash from scratch needs and the steps above leave out. It copies the per-module DTBs and the camera `.dtbo` overlays from `build/nvidia-public/devicetree/generic-dtbs/` into both `rootfs/boot/` and `kernel/dtb/`. It also repoints the `lib/modules/<release>/{build,source}` symlinks at the on-target headers package, so that DKMS and module builds on the target find their headers. Do those two by hand, or run `./build.sh <TARGET>`.
 
 ## Modifying the device tree
 

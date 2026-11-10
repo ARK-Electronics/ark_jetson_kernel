@@ -1,6 +1,6 @@
 # Flashing the QSPI Bootloader
 
-You can flash just the QSPI bootloader and then install an NVMe drive that already has an image on it, as the [NVIDIA docs](https://docs.nvidia.com/jetson/archives/r36.3/DeveloperGuide/SD/FlashingSupport.html#examples) describe. An upgrade from JetPack 5 to JetPack 6 also needs the QSPI bootloader flashed again.
+You can flash just the QSPI bootloader and then install an NVMe drive that already has an image on it, as the [NVIDIA docs](https://docs.nvidia.com/jetson/archives/r39.2/DeveloperGuide/SD/FlashingSupport.html#examples) describe. A major JetPack upgrade, such as 5 to 6 or 6 to 7, also needs the QSPI bootloader flashed again.
 
 Run the flash from the staged BSP directory:
 

@@ -4,12 +4,13 @@ These scripts build and flash an image for a Jetson **Orin Nano** or **Orin NX**
 
 | Component | Version |
 | --- | --- |
-| JetPack | 6.2.2 |
-| L4T (BSP) | R36.5.0 |
-| Kernel | Linux 5.15 |
+| JetPack | 7.2.1 |
+| L4T (BSP) | R39.2.1 |
+| Kernel | Linux 6.8 |
+| Device OS | Ubuntu 24.04 |
 | Host OS | Ubuntu 22.04 |
 
-> **Building on a host other than Ubuntu 22.04?** `setup.sh` and `build.sh` run themselves inside a 22.04 docker image, and install docker through apt if it is missing. [docs/build_host.md](docs/build_host.md) explains why the build is pinned to 22.04.
+> **Build host:** `setup.sh` and `build.sh` run themselves inside a 22.04 docker image that carries kmod 31, and install docker through apt if it is missing. See [docs/build_host.md](docs/build_host.md).
 
 ## Products
 
