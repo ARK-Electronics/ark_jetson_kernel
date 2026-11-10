@@ -260,10 +260,7 @@ class EoCamera(threading.Thread):
                     *(lut.ctypes.data for lut in luts))
 
     def _first_frame(self, cap):
-        # The frame rate only sticks once streaming (set_mode loads the mode default),
-        # and V4L2 skips s_ctrl when the value is unchanged from the last stream, so
-        # step off the target first.
-        cap.set_ctrls(frame_rate=self.target_fps * 1000000 + 1)
+        # The controls take this mode's ranges once it streams.
         cap.set_ctrls(frame_rate=self.target_fps * 1000000)
         self.exp_rng, self.gain_rng = cap.ctrl_range("exposure"), cap.ctrl_range("gain")
         self.exp = self.exp_rng[1]
