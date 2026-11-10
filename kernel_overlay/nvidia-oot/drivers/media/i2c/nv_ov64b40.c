@@ -950,6 +950,12 @@ static int ov64b40_probe(struct i2c_client *client,
 	priv->subdev = &tc_dev->s_data->subdev;
 	tegracam_set_privdata(tc_dev, priv);
 
+	/* Frame intervals the VI reports: two lanes run every mode at half rate. */
+	BUILD_BUG_ON(ARRAY_SIZE(ov64b40_frmfmt_2lane) != ARRAY_SIZE(ov64b40_frmfmt));
+	if (priv->s_data->sensor_props.num_modes &&
+	    priv->s_data->sensor_props.sensor_modes[0].signal_properties.num_lanes == 2)
+		priv->s_data->frmfmt = ov64b40_frmfmt_2lane;
+
 	/* Standard video-interfaces rotation of the module as mounted. */
 	if (!of_property_read_u32(dev->of_node, "rotation", &rotation))
 		priv->rotate_180 = rotation == 180;

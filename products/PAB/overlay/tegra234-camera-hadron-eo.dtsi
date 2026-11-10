@@ -48,16 +48,16 @@
 #define HADRON_EO_STR(x)	HADRON_EO_STR_(x)
 
 /*
- * One sensor mode. framerate is fps x 1000000, max_exp in us.
+ * One sensor mode. framerate is fps x 1000000. min_exp and max_exp are in us;
+ * min_exp is 16 lines, the sensor's minimum, at the mode's line rate.
  *
  * The tables run 0x4800 = 0x64, which gates the clock lane between packets,
- * hence discontinuous_clk. min_exp_time is the sensor's 16-line minimum at
- * the slowest line rate. Analog gain tops out at 15.5x (0xf80 in Q8).
+ * hence discontinuous_clk. Analog gain tops out at 15.5x (0xf80 in Q8).
  * pixel_phase is BGGR, checked with the colour-bar test pattern. mclk_khz is
  * the EO's own oscillator (every mode runs at its designed rate); the host
  * supplies no clock.
  */
-#define HADRON_EO_MODE(name, w, h, pclk, ll, mult, fps, max_exp)	\
+#define HADRON_EO_MODE(name, w, h, pclk, ll, mult, fps, min_exp, max_exp)	\
 	name {								\
 		mclk_khz = "24000";					\
 		num_lanes = HADRON_EO_STR(HADRON_EO_LANES);		\
@@ -90,7 +90,7 @@
 		max_framerate = #fps;					\
 		step_framerate = "1";					\
 		default_framerate = #fps;				\
-		min_exp_time = "170";					\
+		min_exp_time = #min_exp;				\
 		max_exp_time = #max_exp;				\
 		step_exp_time = "1";					\
 		default_exp_time = "5000";				\

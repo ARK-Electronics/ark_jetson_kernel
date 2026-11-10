@@ -62,8 +62,18 @@ static const int ov64b40_120_fr[] = {
 	120,
 };
 
+/* 13.2 fps */
 static const int ov64b40_13_fr[] = {
 	13,
+};
+
+static const int ov64b40_15_fr[] = {
+	15,
+};
+
+/* 6.6 fps */
+static const int ov64b40_7_fr[] = {
+	7,
 };
 
 static const struct camera_common_frmfmt ov64b40_frmfmt[] = {
@@ -71,6 +81,14 @@ static const struct camera_common_frmfmt ov64b40_frmfmt[] = {
 	{{3840, 2160}, ov64b40_60_fr, 1, 0, OV64B40_MODE_3840x2160},
 	{{2304, 1296}, ov64b40_120_fr, 1, 0, OV64B40_MODE_2304x1296},
 	{{9248, 6936}, ov64b40_13_fr, 1, 0, OV64B40_MODE_9248x6936},
+};
+
+/* Two lanes carry the same modes at half the frame rate. */
+static const struct camera_common_frmfmt ov64b40_frmfmt_2lane[] = {
+	{{4624, 3468}, ov64b40_15_fr, 1, 0, OV64B40_MODE_4624x3468},
+	{{3840, 2160}, ov64b40_30_fr, 1, 0, OV64B40_MODE_3840x2160},
+	{{2304, 1296}, ov64b40_60_fr, 1, 0, OV64B40_MODE_2304x1296},
+	{{9248, 6936}, ov64b40_7_fr, 1, 0, OV64B40_MODE_9248x6936},
 };
 
 #endif /* __OV64B40_MODE_TBLS_H__ */
