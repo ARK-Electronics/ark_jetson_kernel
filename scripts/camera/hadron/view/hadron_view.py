@@ -9,7 +9,7 @@ Frame sync: while the view runs, the Boson is the Hadron's ext sync master and
 pulses pin 43 (EXT_VSYNC) at its 60 Hz core rate. The IMU's FSYNC input (R12)
 tags each pulse on the IMU's clock and the Jetson timestamps it on the carrier's
 MCLK pad, which together put the IMU samples on CLOCK_MONOTONIC. The Boson's
-smart averager sends one frame per two core frames over USB, each starting 9.5 ms
+smart averager sends one frame per two core frames over USB, each starting 9.4 ms
 after a pulse.
 
 The EO has no Argus ISP tuning yet, so its raw Bayer frames are rendered here:
