@@ -35,6 +35,8 @@ rotation = <180>;
  * x2: the same sizes and lane rates on half the lanes. The driver doubles HTS,
  * which halves the frame rate and doubles the line time: pix_clk_hz halves with
  * the lane count, line_length stays.
+ * Each frame rate is one the driver turns back into its table's VTS: 13.2 fps
+ * would run the full array 8 lines short of 7280.
  */
 #if HADRON_EO_LANES == 4
 /* 4624x3468 @ 30, 4-cell binned, HTS 936, VTS 4102, 1699.2 Mbps/lane */
@@ -44,12 +46,12 @@ HADRON_EO_MODE(mode1, 3840, 2160, 920000000, 5558, 38.33, 60000000, 97, 16400);
 /* 2304x1296 @ 120, HTS 504, VTS 1904, 1699.2 Mbps/lane */
 HADRON_EO_MODE(mode2, 2304, 1296, 679680000, 2974, 28.32, 120000000, 71, 8100);
 /* 9248x6936 @ 13.2, full array remosaic, HTS 1200, VTS 7280, 2400 Mbps/lane */
-HADRON_EO_MODE(mode3, 9248, 6936, 960000000, 10000, 40.00, 13200000, 167, 75000);
+HADRON_EO_MODE(mode3, 9248, 6936, 960000000, 10000, 40.00, 13186813, 167, 75000);
 #else
 HADRON_EO_MODE(mode0, 4624, 3468, 339840000, 5522, 14.16, 15000000, 260, 66000);
 HADRON_EO_MODE(mode1, 3840, 2160, 460000000, 5558, 19.17, 30000000, 194, 32800);
 HADRON_EO_MODE(mode2, 2304, 1296, 339840000, 2974, 14.16, 60000000, 141, 16200);
-HADRON_EO_MODE(mode3, 9248, 6936, 480000000, 10000, 20.00, 6600000, 334, 150000);
+HADRON_EO_MODE(mode3, 9248, 6936, 480000000, 10000, 20.00, 6593406, 334, 150000);
 #endif
 
 ports {
