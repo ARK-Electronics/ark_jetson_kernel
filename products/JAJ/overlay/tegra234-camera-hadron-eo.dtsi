@@ -183,6 +183,20 @@
 							sysfs-device-tree = "/sys/firmware/devicetree/base/bus@0/lens_hadron_eo@FLIR";
 						};
 					};
+					/*
+					 * UEFI lays this overlay over the flash-time camera default,
+					 * whose other modules would stay. Argus takes a module's ID from
+					 * its position, and a second "rear" hides this one.
+					 */
+					module1 {
+						status = "disabled";
+					};
+					module2 {
+						status = "disabled";
+					};
+					module3 {
+						status = "disabled";
+					};
 				};
 			};
 		};
