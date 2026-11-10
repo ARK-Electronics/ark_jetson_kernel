@@ -103,8 +103,9 @@ fi
 # is host-owned, so git there refuses with "dubious ownership".
 [ -z "$ARK_BUILD_COMMIT" ] && export ARK_BUILD_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD)
 
-# Prime sudo once so sub-processes and docker don't each prompt.
-sudo -v
+# Prime sudo once so sub-processes and docker don't each prompt. `sudo -v` asks for a
+# password unless every sudoers entry is NOPASSWD, so skip it where sudo runs unprompted.
+sudo -n true 2>/dev/null || sudo -v
 
 if [ "$TARGET" = "all" ]; then
     trap 'echo ""; echo "Aborted."; exit 130' INT
@@ -134,7 +135,7 @@ fi
 
 set -e -o pipefail
 
-sudo -v
+sudo -n true 2>/dev/null || sudo -v
 
 START_TIME=$(date +%s)
 
