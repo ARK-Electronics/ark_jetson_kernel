@@ -66,6 +66,9 @@ struct ov64b40 {
 	bool streaming;
 	/* Userspace holds the register group through the group_hold control. */
 	bool group_hold;
+	/* The VTS, exposure and gain bytes that group already carries. */
+	ov64b40_reg held[8];
+	bool held_valid;
 	/*
 	 * Set between set_mode and start_streaming, where tegracam clamps the
 	 * controls to the new mode's ranges and, under override_enable, passes
@@ -120,21 +123,6 @@ static int ov64b40_write_table(struct ov64b40 *priv,
 					OV64B40_TABLE_WAIT_MS, OV64B40_TABLE_END);
 }
 
-static int ov64b40_write_regs(struct ov64b40 *priv,
-			      const ov64b40_reg *regs, unsigned int count)
-{
-	unsigned int i;
-	int err;
-
-	for (i = 0; i < count; i++) {
-		err = ov64b40_write_reg(priv->s_data, regs[i].addr, regs[i].val);
-		if (err)
-			return err;
-	}
-
-	return 0;
-}
-
 static const struct sensor_mode_properties *
 ov64b40_get_mode(struct camera_common_data *s_data)
 {
@@ -167,7 +155,8 @@ static int ov64b40_write_group_hold(struct camera_common_data *s_data, bool val)
  * register, eight bytes. While streaming they go out in one register group, so
  * a frame boundary takes them whole. A new group cancels one still waiting for
  * its boundary, so each group carries all three and not only the value that
- * changed. A group that userspace holds is left for userspace to launch.
+ * changed. A group that userspace holds is left for userspace to launch, and
+ * takes only the bytes it does not carry yet.
  */
 static int ov64b40_write_aec(struct tegracam_device *tc_dev, s64 rate,
 			     s64 exposure, s64 gain)
@@ -179,6 +168,7 @@ static int ov64b40_write_aec(struct tegracam_device *tc_dev, s64 rate,
 	bool hold = priv->streaming && !priv->group_hold;
 	ov64b40_reg regs[8];
 	u32 frame_length;
+	unsigned int i;
 	u32 lines;
 	u16 gain_reg;
 	int end_err;
@@ -219,7 +209,11 @@ static int ov64b40_write_aec(struct tegracam_device *tc_dev, s64 rate,
 		if (err)
 			return err;
 	}
-	err = ov64b40_write_regs(priv, regs, ARRAY_SIZE(regs));
+	for (i = 0; !err && i < ARRAY_SIZE(regs); i++) {
+		if (priv->held_valid && regs[i].val == priv->held[i].val)
+			continue;
+		err = ov64b40_write_reg(s_data, regs[i].addr, regs[i].val);
+	}
 	if (hold) {
 		end_err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
 					    OV64B40_GROUP_HOLD_END);
@@ -230,9 +224,11 @@ static int ov64b40_write_aec(struct tegracam_device *tc_dev, s64 rate,
 			err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
 						OV64B40_GROUP_HOLD_LAUNCH);
 	}
+	priv->held_valid = !err && priv->group_hold;
 	if (err)
 		return err;
 
+	memcpy(priv->held, regs, sizeof(regs));
 	priv->frame_rate = rate;
 	priv->exposure = exposure;
 	priv->gain = gain;
@@ -248,6 +244,7 @@ static int ov64b40_set_group_hold(struct tegracam_device *tc_dev, bool val)
 	err = ov64b40_write_group_hold(tc_dev->s_data, val);
 	if (!err) {
 		priv->group_hold = val;
+		priv->held_valid = false;
 		/* Taking the group cancels one of ours still waiting: carry its values. */
 		if (val && priv->streaming)
 			err = ov64b40_write_aec(tc_dev, priv->frame_rate,
@@ -623,6 +620,7 @@ static int __ov64b40_set_mode(struct tegracam_device *tc_dev)
 	/* Reset only the EO sensor over I2C, never the shared reset GPIO. */
 	priv->streaming = false;
 	priv->group_hold = false;
+	priv->held_valid = false;
 	err = ov64b40_write_reg(s_data, OV64B40_SW_RESET_ADDR, OV64B40_SW_RESET);
 	if (err)
 		return err;
