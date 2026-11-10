@@ -47,7 +47,6 @@ gi.require_version("GstVideo", "1.0")
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkX11, GLib, Gst, GstVideo, Gtk  # noqa: E402,F401
 
-import archtimer  # noqa: E402
 import boson  # noqa: E402
 from icm45686 import Icm45686  # noqa: E402
 from syncline import SyncLine  # noqa: E402
@@ -115,16 +114,30 @@ def sync_pad_line():
     return None
 
 
-def load_renderer():
-    """eorender.c, built next to this file when missing or out of date."""
+def load_native():
+    """eorender.c (the EO render and the timer read), built next to this file when missing or out of date."""
     src, lib = os.path.join(HERE, "eorender.c"), os.path.join(HERE, "libeorender.so")
     if not os.path.exists(lib) or os.path.getmtime(lib) < os.path.getmtime(src):
         subprocess.run(["cc", "-O3", "-shared", "-fPIC", "-o", lib, src], check=True)
-    render = ctypes.CDLL(lib).render_rows      # ctypes drops the GIL for the call
-    render.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
-                       ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-    render.restype = None
-    return render
+    native = ctypes.CDLL(lib)                   # ctypes drops the GIL for each call
+    native.render_rows.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                                   ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+    native.render_rows.restype = None
+    native.cntvct.restype = native.cntfrq.restype = ctypes.c_uint64
+    return native
+
+
+def tsc_minus_monotonic(native):
+    """Seconds to subtract from a VI timestamp, which counts the Tegra TSC, to land on CLOCK_MONOTONIC."""
+    freq = native.cntfrq()
+    best = None
+    for _ in range(20):
+        a = time.monotonic_ns()
+        c = native.cntvct()
+        b = time.monotonic_ns()
+        if best is None or b - a < best[0]:
+            best = (b - a, c / freq - (a + b) / 2e9)
+    return best[1]
 
 
 def bypass_compositor(xid):
@@ -172,8 +185,9 @@ class EoCamera(threading.Thread):
         self.luts = [make_lut(g) for g in self.wb]
         self.exp = self.gain = None
         self.exp_rng = self.gain_rng = None
-        self.tsc_offset = archtimer.tsc_minus_monotonic()
-        self.render = load_renderer()
+        self.native = load_native()
+        self.render = self.native.render_rows
+        self.tsc_offset = tsc_minus_monotonic(self.native)
         self.readout = EO_H * eo_line_time()        # first to last row
         self.pool = ThreadPoolExecutor(WORKERS)
         edges = [round(EO_H * i / WORKERS / 2) * 2 for i in range(WORKERS + 1)]
@@ -220,7 +234,7 @@ class EoCamera(threading.Thread):
                 n += 1
                 now = time.monotonic()
                 if now - t_sync > 1.0:      # NTP slews CLOCK_MONOTONIC against the TSC
-                    self.tsc_offset, t_sync = archtimer.tsc_minus_monotonic(), now
+                    self.tsc_offset, t_sync = tsc_minus_monotonic(self.native), now
                 t_work = time.perf_counter()
                 sof -= self.tsc_offset
                 if last_sof is not None:
