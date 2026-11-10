@@ -18,17 +18,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=versions.env
 source "$SCRIPT_DIR/versions.env"
 
-ARK_OS_PKG="ark-os-jetson-jammy"
+ARK_OS_PKG="ark-os-jetson-noble"
 ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 
-# Camera userspace stack — pinned below the BSP; see versions.env and
-# docs/argus_relaunch_regression.md. gstreamer ships from the `common` pool, the
-# other three from the SoC pool.
+# Camera userspace stack — see versions.env. gstreamer ships from the `common`
+# pool, the other three from the `som` pool.
 NV_CAMERA_PKGS=(nvidia-l4t-gstreamer nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils)
 nv_camera_deb() { echo "${1}_${NV_CAMERA_STACK_VERSION}_arm64.deb"; }
 nv_camera_url() {
-    local pool="t234"
+    local pool="som"
     [ "$1" = "nvidia-l4t-gstreamer" ] && pool="common"
     echo "https://repo.download.nvidia.com/jetson/${pool}/pool/main/n/${1}/$(nv_camera_deb "$1")"
 }
@@ -55,10 +54,10 @@ rels = json.load(sys.stdin)
 for r in sorted(rels, key=lambda r: r.get("created_at", ""), reverse=True):
     for a in r.get("assets", []):
         n = a.get("name", "")
-        if n.startswith("ark-os-jetson-jammy_") and n.endswith("_arm64.deb"):
+        if n.startswith("ark-os-jetson-noble_") and n.endswith("_arm64.deb"):
             print(a["browser_download_url"]); sys.exit(0)
 sys.exit(1)
-') || { echo "ERROR: could not resolve a latest ARK-OS jetson deb." >&2; exit 1; }
+') || { echo "ERROR: no published ARK-OS release carries an ${ARK_OS_PKG} deb." >&2; exit 1; }
     ARK_OS_DEB="$(basename "$ARK_OS_URL")"
     echo "Latest ARK-OS deb: $ARK_OS_DEB"
 fi
@@ -125,62 +124,36 @@ fi
 sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/dev/null 2>&1' \
     || { echo "ERROR: installed ark-os ships no bundled MAVSDK under /usr/lib/ark-os/mavsdk." >&2; exit 1; }
 
-### Install the pinned camera userspace stack (Argus + GStreamer plugins)
-# apply_binaries installs the BSP-stamp camera/multimedia debs; replace them (and add
-# nvidia-l4t-gstreamer, which the BSP set lacks) with the pinned known-good set. The
-# pinned debs' deps assume their own release, so repack each with the out-of-set bounds
-# relaxed (nvidia-l4t-core upper cap, exact-stamp cuda/nvsci) and the in-set exact deps
-# retargeted to NV_CAMERA_PIN_VERSION — a clean apt install instead of dpkg
-# --force-depends, so on-device apt stays consistent. Hold the set so an on-device
-# upgrade can't drag it back to the regressed BSP stamp.
-#
-# The restamp is also what keeps `apt install nvidia-jetpack` working: the metapackage
-# demands nvidia-l4t-gstreamer (>> 36.5-0) (<< 36.6-0), which a truthful 36.4.4 stamp
-# can never satisfy, so the whole install failed as an "impossible situation". Nothing
-# else in that dependency tree constrains the set any tighter than (>> 36.0, << 37.0).
-relax_l4t_deps() {
-    local in="$1" out="$2" work
-    work=$(mktemp -d)
-    dpkg-deb -R "$in" "$work"
-    sed -i \
-        -e "s/nvidia-l4t-core (<< [0-9.]*-0)/nvidia-l4t-core (<< 37.0-0)/" \
-        -e "s/nvidia-l4t-cuda (= [^)]*)/nvidia-l4t-cuda/" \
-        -e "s/nvidia-l4t-nvsci (= [^)]*)/nvidia-l4t-nvsci/" \
-        -e "s/(= ${NV_CAMERA_STACK_VERSION})/(= ${NV_CAMERA_PIN_VERSION})/g" \
-        -e "s/^Version: .*/Version: ${NV_CAMERA_PIN_VERSION}/" \
-        "$work/DEBIAN/control"
-    dpkg-deb -b --root-owner-group "$work" "$out" >/dev/null
-    rm -rf "$work"
-}
-echo "Installing the pinned camera userspace stack (${NV_CAMERA_STACK_VERSION} as ${NV_CAMERA_PIN_VERSION})..."
+### Install the camera userspace stack (Argus + GStreamer plugins)
+# apply_binaries installs the camera/multimedia debs but not nvidia-l4t-gstreamer.
+# Install all four at NV_CAMERA_STACK_VERSION so the set stays on one stamp.
+echo "Installing the camera userspace stack (${NV_CAMERA_STACK_VERSION})..."
 NV_CAMERA_TMP_DEBS=()
 for pkg in "${NV_CAMERA_PKGS[@]}"; do
     deb=$(nv_camera_deb "$pkg")
     fetch_deb "$deb" "$(nv_camera_url "$pkg")"
-    relax_l4t_deps "$DOWNLOADS_DIR/$deb" "/tmp/ark1_$deb"
-    sudo mv "/tmp/ark1_$deb" "$ROOTFS_DIR/tmp/ark1_$deb"
-    sudo rm -f "$ROOTFS_DIR/tmp/$deb"
-    NV_CAMERA_TMP_DEBS+=("/tmp/ark1_$deb")
+    NV_CAMERA_TMP_DEBS+=("/tmp/$deb")
 done
 # One transaction: the set inter-depends by exact version.
-sudo chroot "$ROOTFS_DIR" apt-get install -y --allow-downgrades --allow-change-held-packages \
-    "${NV_CAMERA_TMP_DEBS[@]}"
-sudo chroot "$ROOTFS_DIR" apt-mark hold "${NV_CAMERA_PKGS[@]}"
+sudo chroot "$ROOTFS_DIR" apt-get install -y --allow-downgrades "${NV_CAMERA_TMP_DEBS[@]}"
 for pkg in "${NV_CAMERA_PKGS[@]}"; do
     v=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Version}' "$pkg")
-    [ "$v" = "${NV_CAMERA_PIN_VERSION}" ] || {
-        echo "ERROR: $pkg is '$v', expected ${NV_CAMERA_PIN_VERSION}." >&2; exit 1; }
+    [ "$v" = "${NV_CAMERA_STACK_VERSION}" ] || {
+        echo "ERROR: $pkg is '$v', expected ${NV_CAMERA_STACK_VERSION}." >&2; exit 1; }
 done
 # Assert the plugin actually loads and registers nvarguscamerasrc — file existence
 # alone misses unresolvable libraries. Inspect the plugin *file*, not the element:
 # element instantiation (e.g. --exists) dials nvargus-daemon/EGL, absent in a chroot.
 # The registry cache is pointed at /tmp so scan state doesn't ship in the image.
+# R39 only puts the GPU libraries on the loader path at first boot (nvgpu on Orin),
+# so the check names them itself.
 sudo chroot "$ROOTFS_DIR" env GST_REGISTRY=/tmp/provision-gst-registry.bin \
+    LD_LIBRARY_PATH=/opt/nvidia/l4t-gpu-libs/nvgpu \
     gst-inspect-1.0 /usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstnvarguscamerasrc.so \
     | grep -qw nvarguscamerasrc \
     || { echo "ERROR: nvarguscamerasrc missing or failed to load after installing the camera stack." >&2; exit 1; }
 sudo rm -f "$ROOTFS_DIR/tmp/provision-gst-registry.bin"
-for pkg in "${NV_CAMERA_PKGS[@]}"; do sudo rm -f "$ROOTFS_DIR/tmp/ark1_$(nv_camera_deb "$pkg")"; done
+for deb in "${NV_CAMERA_TMP_DEBS[@]}"; do sudo rm -f "$ROOTFS_DIR$deb"; done
 
 ### Install the Argus ISP overrides
 # Argus loads <badge>.isp only for the camera module of that badge, and wants the file
@@ -206,15 +179,21 @@ NV_BOOT_CHAIN_PKGS=(
     nvidia-l4t-kernel-headers
     nvidia-l4t-kernel-oot-headers
     nvidia-l4t-kernel-oot-modules
+    nvidia-l4t-kernel-module-configs
+    nvidia-l4t-kernel-nvgpu
+    nvidia-l4t-kernel-openrm
+    nvidia-l4t-kernel-partitions
     nvidia-l4t-display-kernel
+    nvidia-l4t-initrd
     nvidia-l4t-bootloader
+    nvidia-l4t-bootloader-utils
 )
 echo "Holding the ARK-built boot chain against NVIDIA's apt repo..."
 sudo chroot "$ROOTFS_DIR" apt-mark hold "${NV_BOOT_CHAIN_PKGS[@]}"
 # apt-mark hold is a no-op on a package that is not installed, so assert the result
 # rather than the command.
 held=$(sudo chroot "$ROOTFS_DIR" apt-mark showhold)
-for pkg in "${NV_BOOT_CHAIN_PKGS[@]}" "${NV_CAMERA_PKGS[@]}"; do
+for pkg in "${NV_BOOT_CHAIN_PKGS[@]}"; do
     printf '%s\n' "$held" | grep -qx "$pkg" || {
         echo "ERROR: $pkg is not held; an apt upgrade would replace it." >&2; exit 1; }
 done

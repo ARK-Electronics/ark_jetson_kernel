@@ -174,13 +174,24 @@ fi
 # command-not-found from make, after the ~30 min stage + provision.
 THIS_MACHINE="$(uname -m)"
 if [[ "$THIS_MACHINE" != "aarch64" ]]; then
-    export CROSS_COMPILE="$HOME/l4t-gcc/$TOOLCHAIN_DIRNAME/bin/aarch64-buildroot-linux-gnu-"
+    export CROSS_COMPILE="$HOME/l4t-gcc/${TOOLCHAIN_CROSS_PREFIX}"
     if [ ! -x "${CROSS_COMPILE}gcc" ]; then
         echo "ERROR: cross toolchain not found at ${CROSS_COMPILE}gcc — run ./setup.sh" >&2
         exit 1
     fi
 fi
-export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
+# The Noble rootfs reads module indexes with kmod 31 and the 22.04 host ships kmod 29,
+# so depmod must come from the kmod 31 the build container carries.
+if [ -x /opt/ark-kmod31/bin/depmod ]; then
+    export PATH="/opt/ark-kmod31/bin:$PATH"
+fi
+if ! depmod --version | grep -qx 'kmod version 31'; then
+    echo "ERROR: this BSP needs kmod 31 for depmod, found: $(depmod --version | head -n 1)" >&2
+    echo "       Build through the container (docker/Dockerfile)." >&2
+    exit 1
+fi
+export KERNEL_HEADERS="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}"
+export kernel_name="${KERNEL_NAME}"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
 
 # --fast reuses an existing staged tree; there's nothing to reuse if it's absent.
@@ -224,28 +235,6 @@ if [ ! -d "$L4T_DIR" ]; then
     sudo "$L4T_DIR/tools/l4t_create_default_user.sh" \
         -u jetson -p jetson -n jetson -a --accept-license
 
-    # nvfb.sh generates the SSH host keys on first boot by re-running openssh-server's
-    # postinst. If ssh-keygen dies partway (power cut, reboot, /etc full while
-    # nvresizefs is still growing the rootfs) it leaves a zero-length key behind, and
-    # postinst's create_key() guards on existence rather than size — so every retry
-    # skips that file, the reconfigure finally exits 0, nvfb drops its once-only
-    # nvfirstboot guard, and sshd can never start again. Clearing truncated keys first
-    # lets nvfb's own retry loop do what it was written to do.
-    echo "Patching nvfb.sh so an interrupted SSH host key generation can be retried..."
-    sudo python3 - "$L4T_DIR/rootfs/etc/systemd/nvfb.sh" <<'PY'
-import sys
-path = sys.argv[1]
-src = open(path).read()
-anchor = '\twhile [ "${status-1}" -ne 0 ]; do\n'
-if src.count(anchor) != 1:
-    sys.exit("ERROR: nvfb.sh has no single openssh reconfigure loop to patch; "
-             "re-check how this BSP generates SSH host keys before shipping.")
-fix = ("\t# A zero-length key from an interrupted run would otherwise be skipped\n"
-       "\t# forever by create_key(), leaving sshd permanently unable to start.\n"
-       "\tfind /etc/ssh -maxdepth 1 -name 'ssh_host_*_key' -empty -print -delete\n")
-open(path, 'w').write(src.replace(anchor, fix + anchor))
-PY
-
     if [ "$PROVISION" -eq 1 ]; then
         PROVISION_SCRIPT="$SCRIPT_DIR/provision.sh"
         if [ ! -f "$PROVISION_SCRIPT" ]; then
@@ -258,6 +247,7 @@ PY
         echo "========================================="
 
         ROOTFS_DIR="$L4T_DIR/rootfs"
+        source "$SCRIPT_DIR/scripts/provision_resolver.sh"
 
         cleanup_chroot() {
             # /proc and /sys pull in nested submounts (binfmt_misc, cgroup, ...) via
@@ -272,14 +262,15 @@ PY
                 echo "WARNING: mounts still present under $ROOTFS_DIR after cleanup:" >&2
                 mount | grep " on $ROOTFS_DIR/" >&2
             fi
+            restore_provision_resolver
         }
         trap cleanup_chroot EXIT
 
+        prepare_provision_resolver "$ROOTFS_DIR"
         sudo mount --bind /proc "$ROOTFS_DIR/proc"
         sudo mount --bind /sys "$ROOTFS_DIR/sys"
         sudo mount --bind /dev "$ROOTFS_DIR/dev"
         sudo mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
-        sudo cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
         export ROOTFS_DIR TARGET
         if ! bash "$PROVISION_SCRIPT"; then
@@ -300,6 +291,7 @@ PY
     tar xf kernel_src.tbz2
     tar xf kernel_oot_modules_src.tbz2
     tar xf nvidia_kernel_display_driver_source.tbz2
+    tar xf nvidia_unified_gpu_display_driver_source.tbz2
     popd > /dev/null
 
     # Snapshot the pristine stock overlay Makefile so the per-build ARK overlay step
@@ -308,7 +300,7 @@ PY
     cp "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay/Makefile" \
        "$STAGING_DIR/.overlay-makefile.stock"
 
-    DEFCONFIG="$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/configs/defconfig"
+    DEFCONFIG="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/configs/defconfig"
     echo "Applying shared defconfig fragment..."
     cat "$SCRIPT_DIR/defconfig.fragment" >> "$DEFCONFIG"
 
@@ -509,20 +501,23 @@ echo "========================================="
 
 cd "$SOURCE_DIR"
 
-# The bootlin toolchain defaults to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
-# startfiles and fails — its LAST line is a collect2 error, which NVIDIA's nv_compiler.h
-# recipe bakes into the module's /proc version banner via `tail -1`. Repoint it at
-# `--version | head -1`, which never links. Fail loud if the BSP moved the recipe; drop the
-# stale header so it regenerates.
-NVIDIA_KBUILD="$SOURCE_DIR/nvdisplay/kernel-open/nvidia/nvidia.Kbuild"
-if grep -qF -- '-v 2>&1 | tail -n 1' "$NVIDIA_KBUILD"; then
-    sed -i 's/\$(CC) -v 2>&1 | tail -n 1/$(CC) --version 2>\&1 | head -n 1/' "$NVIDIA_KBUILD"
-    rm -f "$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
-elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
-    echo "ERROR: nv_compiler.h version probe in nvidia.Kbuild is neither the known-bad nor" >&2
-    echo "       the patched form — BSP layout changed; re-check the probe patch in build.sh." >&2
-    exit 1
-fi
+# A bare `$(CC) -v` (no input) links, and on a toolchain defaulting to -fPIE/-pie that
+# fails — its LAST line is a collect2 error, which NVIDIA's nv_compiler.h recipe bakes into
+# the module's /proc version banner via `tail -1`. Repoint it at `--version | head -1`,
+# which never links. Fail loud if the BSP moved the recipe; drop the stale header so it
+# regenerates. R39 builds two display trees: nvdisplay (nvgpu) and unifiedgpudisp (openrm).
+DISPLAY_TREES=(nvdisplay unifiedgpudisp)
+for display_tree in "${DISPLAY_TREES[@]}"; do
+    NVIDIA_KBUILD="$SOURCE_DIR/$display_tree/kernel-open/nvidia/nvidia.Kbuild"
+    if grep -qF -- '-v 2>&1 | tail -n 1' "$NVIDIA_KBUILD"; then
+        sed -i 's/\$(CC) -v 2>&1 | tail -n 1/$(CC) --version 2>\&1 | head -n 1/' "$NVIDIA_KBUILD"
+        rm -f "$SOURCE_DIR/$display_tree/kernel-open/nv_compiler.h"
+    elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
+        echo "ERROR: nv_compiler.h version probe in $NVIDIA_KBUILD is neither the known-bad nor" >&2
+        echo "       the patched form — BSP layout changed; re-check the probe patch in build.sh." >&2
+        exit 1
+    fi
+done
 
 # ccache wraps the cross-compiler for the kernel proper only (kernel C rarely changes → warm
 # hits). The OOT NVIDIA modules build without it on purpose: their conftest/version steps
@@ -533,29 +528,35 @@ if command -v ccache >/dev/null 2>&1; then
     KERNEL_MAKE_ARGS+=("CC=ccache ${CROSS_COMPILE}gcc")
 fi
 
-make -C kernel "${KERNEL_MAKE_ARGS[@]}" \
-    && make modules CC="${CROSS_COMPILE}gcc" \
-    && make dtbs CC="${CROSS_COMPILE}gcc"
+# Separate commands: in an && chain, set -e ignores a failure of all but the last.
+make -C kernel "${KERNEL_MAKE_ARGS[@]}"
+make modules CC="${CROSS_COMPILE}gcc"
+make dtbs CC="${CROSS_COMPILE}gcc"
 
-# Sanity-check the display-driver build: nv_compiler.h must read as a real compiler version
-# (probe fixed above) and the three display .kos must be non-empty — catches a broken or
+# Sanity-check the display-driver builds: nv_compiler.h must read as a real compiler version
+# (probe fixed above) and the display .kos must be non-empty — catches a broken or
 # missing cross-compiler instead of silently shipping a bad module.
-NV_COMPILER_H="$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
-if [ ! -s "$NV_COMPILER_H" ] || ! grep -qE 'version|[0-9]+\.[0-9]+\.[0-9]+' "$NV_COMPILER_H"; then
-    echo "ERROR: NVIDIA compiler-version probe produced no sane version string:" >&2
-    echo "       $NV_COMPILER_H: $(cat "$NV_COMPILER_H" 2>/dev/null)" >&2
-    exit 1
-fi
-for ko in nvidia.ko nvidia-modeset.ko nvidia-drm.ko; do
-    [ -s "$SOURCE_DIR/nvdisplay/kernel-open/$ko" ] \
-        || { echo "ERROR: NVIDIA module $ko missing or empty after build" >&2; exit 1; }
+for display_tree in "${DISPLAY_TREES[@]}"; do
+    NV_COMPILER_H="$SOURCE_DIR/$display_tree/kernel-open/nv_compiler.h"
+    if [ ! -s "$NV_COMPILER_H" ] || ! grep -qE 'version|[0-9]+\.[0-9]+\.[0-9]+' "$NV_COMPILER_H"; then
+        echo "ERROR: NVIDIA compiler-version probe produced no sane version string:" >&2
+        echo "       $NV_COMPILER_H: $(cat "$NV_COMPILER_H" 2>/dev/null)" >&2
+        exit 1
+    fi
+    display_modules=(nvidia.ko nvidia-modeset.ko nvidia-drm.ko)
+    [ "$display_tree" = unifiedgpudisp ] && display_modules+=(nvidia-uvm.ko)
+    for ko in "${display_modules[@]}"; do
+        [ -s "$SOURCE_DIR/$display_tree/kernel-open/$ko" ] \
+            || { echo "ERROR: NVIDIA module $display_tree/$ko missing or empty after build" >&2; exit 1; }
+    done
 done
 
+# sudo resets PATH, which would put the host's kmod 29 depmod back in front.
 echo "Installing in-tree modules and dtbs..."
-sudo -E make install -C kernel
+sudo -E env "PATH=$PATH" make install -C kernel
 
 echo "Installing out-of-tree modules..."
-sudo -E make modules_install
+sudo -E env "PATH=$PATH" make modules_install
 
 # ── Fix module symlinks ─────────────────────────────────────────────────────
 
@@ -571,14 +572,16 @@ fi
 echo "Built kernel release: $JETSON_KERNEL_VERSION"
 
 MODULES_PATH="$INSTALL_MOD_PATH/lib/modules/$JETSON_KERNEL_VERSION"
-HEADERS_TARGET="/usr/src/linux-headers-${JETSON_KERNEL_VERSION}-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
-
 if [ ! -d "$MODULES_PATH" ]; then
     echo "ERROR: module path $MODULES_PATH not found after modules_install" >&2
     echo "       (kernel release '$JETSON_KERNEL_VERSION' does not match the installed modules)." >&2
     exit 1
 fi
-echo "Fixing kernel module symlinks in rootfs..."
+# On-target path of the headers tree nvidia-l4t-kernel-headers installed for this
+# release, found in the rootfs rather than hardcoded: it moves with the distro.
+HEADERS_TARGET=$(python3 "$SCRIPT_DIR/scripts/find_kernel_headers.py" --target-path \
+    "$INSTALL_MOD_PATH" "$JETSON_KERNEL_VERSION")
+echo "Fixing kernel module symlinks in rootfs (headers at $HEADERS_TARGET)..."
 sudo rm -f "$MODULES_PATH/build" "$MODULES_PATH/source"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
@@ -586,9 +589,13 @@ sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
 # ── Install build outputs ───────────────────────────────────────────────────
 
 echo "Installing kernel Image..."
-cp "$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
+cp "$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
 
-DTBS_SOURCE="$SOURCE_DIR/kernel-devicetree/generic-dts/dtbs"
+DTBS_SOURCE="$SOURCE_DIR/build/nvidia-public/devicetree/generic-dtbs"
+if [ ! -d "$DTBS_SOURCE" ]; then
+    echo "ERROR: no compiled DTBs at $DTBS_SOURCE — did 'make dtbs' run?" >&2
+    exit 1
+fi
 
 echo "Installing DTBs..."
 for variant in 0000 0001 0003 0004 0005; do
