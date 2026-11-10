@@ -204,7 +204,8 @@ class EoCamera(threading.Thread):
         """Stream into cached USERPTR buffers if the VI takes them, else its uncached MMAP ones."""
         for userptr in (True, False):
             cap = Capture(self.dev)
-            cap.set_ctrls(sensor_mode=EO_MODE, bypass_mode=0)  # S_FMT picks the mode from this
+            # S_FMT picks the mode from sensor_mode, and the driver keeps the rate for the stream.
+            cap.set_ctrls(sensor_mode=EO_MODE, bypass_mode=0, frame_rate=self.target_fps * 1000000)
             cap.set_format(EO_W, EO_H, "BG10")
             try:
                 cap.start(userptr=userptr)
@@ -274,14 +275,9 @@ class EoCamera(threading.Thread):
                     *(lut.ctypes.data for lut in luts))
 
     def _first_frame(self, cap):
-        # The controls take this mode's ranges once it streams.
-        cap.set_ctrls(frame_rate=self.target_fps * 1000000)
-        # tegracam puts each maximum one above the sensor's and drops a write of that value.
-        (emin, emax), (gmin, gmax) = cap.ctrl_range("exposure"), cap.ctrl_range("gain")
-        self.exp_rng, self.gain_rng = (emin, emax - 1), (gmin, gmax - 1)
-        self.exp = self.exp_rng[1]
-        self.gain = min(max(64, self.gain_rng[0]), self.gain_rng[1])
-        cap.set_ctrls(exposure=self.exp, gain=self.gain)
+        # While it streams, the controls have this mode's ranges and read the values in use.
+        self.exp_rng, self.gain_rng = cap.ctrl_range("exposure"), cap.ctrl_range("gain")
+        self.exp, self.gain = cap.get_ctrl("exposure"), cap.get_ctrl("gain")
         log(f"EO streaming {EO_W}x{EO_H} @ {self.target_fps} fps into "
             f"{'USERPTR' if cap.memory == MEMORY_USERPTR else 'MMAP'} buffers; "
             f"exposure {self.exp_rng} us, gain {self.gain_rng}; TSC - monotonic {self.tsc_offset:.6f} s")

@@ -75,6 +75,7 @@ VIDIOC_QBUF = _ioc(3, 15, v4l2_buffer)
 VIDIOC_DQBUF = _ioc(3, 17, v4l2_buffer)
 VIDIOC_STREAMON = _ioc(1, 18, C.c_int)
 VIDIOC_STREAMOFF = _ioc(1, 19, C.c_int)
+VIDIOC_G_EXT_CTRLS = _ioc(3, 71, v4l2_ext_controls)
 VIDIOC_S_EXT_CTRLS = _ioc(3, 72, v4l2_ext_controls)
 VIDIOC_QUERY_EXT_CTRL = _ioc(3, 103, v4l2_query_ext_ctrl)
 
@@ -114,6 +115,12 @@ class Capture:
         q = v4l2_query_ext_ctrl(id=self.ctrl_ids[name])
         fcntl.ioctl(self.fd, VIDIOC_QUERY_EXT_CTRL, q)
         return q.minimum, q.maximum
+
+    def get_ctrl(self, name):
+        arr = (v4l2_ext_control * 1)()
+        arr[0].id = self.ctrl_ids[name]
+        fcntl.ioctl(self.fd, VIDIOC_G_EXT_CTRLS, v4l2_ext_controls(count=1, controls=arr))
+        return arr[0].value64
 
     def set_ctrls(self, **values):
         arr = (v4l2_ext_control * len(values))()
