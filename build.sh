@@ -693,6 +693,30 @@ sudo tee "$L4T_DIR/rootfs/etc/modprobe.d/ark-bluetooth.conf" >/dev/null <<'EOF'
 install btusb /sbin/modprobe -q rtk_btusb; /sbin/modprobe --ignore-install btusb $CMDLINE_OPTS
 EOF
 
+# ── Restore the saved clock after the RTC sets it ───────────────────────────
+
+# The PMIC RTC driver is a module on R39, and the kernel sets the system clock from it when
+# it registers, seconds into boot. systemd-timesyncd has by then restored its recorded time,
+# which provision.sh seeds with the build time, and the RTC winds the clock back: to 1970 on
+# a board whose RTC was never set. snapd then rejects its signing keys as expired, and
+# snapd.seeded holds multi-user.target, gdm and jtop forever. Start timesyncd after the RTC
+# instead. The udev rule gives /dev/rtc0 the device unit the ordering needs.
+echo "Ordering systemd-timesyncd after the RTC..."
+sudo tee "$L4T_DIR/rootfs/etc/udev/rules.d/60-ark-rtc.rules" >/dev/null <<'EOF'
+# Gives /dev/rtc0 a systemd device unit, so systemd-timesyncd can be ordered after the RTC
+# registers. See systemd-timesyncd.service.d/ark-after-rtc.conf.
+SUBSYSTEM=="rtc", KERNEL=="rtc0", TAG+="systemd"
+EOF
+sudo mkdir -p "$L4T_DIR/rootfs/etc/systemd/system/systemd-timesyncd.service.d"
+sudo tee "$L4T_DIR/rootfs/etc/systemd/system/systemd-timesyncd.service.d/ark-after-rtc.conf" >/dev/null <<'EOF'
+# The PMIC RTC driver is a module on R39 and the kernel sets the system clock from it when it
+# registers, seconds into boot. Started earlier, timesyncd restores its recorded time and the
+# RTC then winds the clock back, to 1970 on a board whose RTC was never set.
+[Unit]
+Wants=dev-rtc0.device
+After=dev-rtc0.device
+EOF
+
 # ── Record build metadata ───────────────────────────────────────────────────
 
 BUILD_COMMIT=$ARK_BUILD_COMMIT
