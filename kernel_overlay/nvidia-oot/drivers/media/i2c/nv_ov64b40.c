@@ -60,6 +60,8 @@ struct ov64b40 {
 	s64 frame_rate;
 	struct v4l2_ctrl *frame_rate_ctrl;
 	bool streaming;
+	/* Userspace holds the register group through the group_hold control. */
+	bool group_hold;
 	/*
 	 * Set between set_mode and start_streaming, where tegracam clamps the
 	 * controls to the new mode's ranges. Those writes reach the sensor but
@@ -139,23 +141,32 @@ ov64b40_get_mode(struct camera_common_data *s_data)
 	return &s_data->sensor_props.sensor_modes[s_data->mode_prop_idx];
 }
 
+static int ov64b40_write_group_hold(struct camera_common_data *s_data, bool val)
+{
+	int err;
+
+	if (val)
+		return ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
+					 OV64B40_GROUP_HOLD_START);
+
+	err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
+				OV64B40_GROUP_HOLD_END);
+	if (!err)
+		err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
+					OV64B40_GROUP_HOLD_LAUNCH);
+
+	return err;
+}
+
 static int ov64b40_set_group_hold(struct tegracam_device *tc_dev, bool val)
 {
 	struct ov64b40 *priv = tegracam_get_privdata(tc_dev);
-	struct camera_common_data *s_data = tc_dev->s_data;
 	int err;
 
 	mutex_lock(&priv->lock);
-	if (val) {
-		err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
-					OV64B40_GROUP_HOLD_START);
-	} else {
-		err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
-					OV64B40_GROUP_HOLD_END);
-		if (!err)
-			err = ov64b40_write_reg(s_data, OV64B40_GROUP_HOLD_ADDR,
-						OV64B40_GROUP_HOLD_LAUNCH);
-	}
+	err = ov64b40_write_group_hold(tc_dev->s_data, val);
+	if (!err)
+		priv->group_hold = val;
 	mutex_unlock(&priv->lock);
 
 	return err;
@@ -309,6 +320,8 @@ static int ov64b40_apply_frame_rate(struct tegracam_device *tc_dev, s64 val)
 	struct camera_common_data *s_data = tc_dev->s_data;
 	const struct sensor_mode_properties *mode = ov64b40_get_mode(s_data);
 	u32 frame_length;
+	bool hold;
+	int hold_err;
 	int err;
 
 	if (!mode || s_data->mode < 0 || s_data->mode >= s_data->numfmts)
@@ -332,7 +345,23 @@ static int ov64b40_apply_frame_rate(struct tegracam_device *tc_dev, s64 val)
 			return err;
 	}
 
+	/*
+	 * VTS and exposure are three bytes each. While streaming, hold them in
+	 * the register group so one frame boundary takes them whole, unless
+	 * userspace already holds it.
+	 */
+	hold = priv->streaming && !priv->group_hold;
+	if (hold) {
+		err = ov64b40_write_group_hold(s_data, true);
+		if (err)
+			return err;
+	}
 	err = ov64b40_write_frame_length(tc_dev, frame_length);
+	if (hold) {
+		hold_err = ov64b40_write_group_hold(s_data, false);
+		if (!err)
+			err = hold_err;
+	}
 	if (!err)
 		priv->frame_rate = val;
 
@@ -634,6 +663,7 @@ static int __ov64b40_set_mode(struct tegracam_device *tc_dev)
 	/* Reset only the EO sensor over I2C, never the shared reset GPIO. */
 	priv->frame_length = 0;
 	priv->exposure_valid = false;
+	priv->group_hold = false;
 	err = ov64b40_write_reg(s_data, OV64B40_SW_RESET_ADDR, OV64B40_SW_RESET);
 	if (err)
 		return err;
