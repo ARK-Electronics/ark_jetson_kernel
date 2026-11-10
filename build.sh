@@ -96,7 +96,7 @@ if ! downloads_present; then
 fi
 
 # Capture host OS before any container handoff — inside the build container,
-# /etc/os-release describes the container (always 22.04), not the actual host.
+# /etc/os-release describes the container (always 24.04), not the actual host.
 [ -z "$ARK_BUILD_OS" ] && export ARK_BUILD_OS=$(. /etc/os-release && echo "$PRETTY_NAME")
 
 # Resolve the build commit on the host: inside the container the bind-mounted repo
@@ -124,7 +124,7 @@ fi
 
 export TARGET
 
-# Re-exec in the 22.04 container if needed, passing the resolved TARGET so it
+# Re-exec in the 24.04 container if needed, passing the resolved TARGET so it
 # doesn't re-prompt.
 if needs_container; then
     CONTAINER_ARGS=("$TARGET")
@@ -179,16 +179,6 @@ if [[ "$THIS_MACHINE" != "aarch64" ]]; then
         echo "ERROR: cross toolchain not found at ${CROSS_COMPILE}gcc — run ./setup.sh" >&2
         exit 1
     fi
-fi
-# The Noble rootfs reads module indexes with kmod 31 and the 22.04 host ships kmod 29,
-# so depmod must come from the kmod 31 the build container carries.
-if [ -x /opt/ark-kmod31/bin/depmod ]; then
-    export PATH="/opt/ark-kmod31/bin:$PATH"
-fi
-if ! depmod --version | grep -qx 'kmod version 31'; then
-    echo "ERROR: this BSP needs kmod 31 for depmod, found: $(depmod --version | head -n 1)" >&2
-    echo "       Build through the container (docker/Dockerfile)." >&2
-    exit 1
 fi
 export KERNEL_HEADERS="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}"
 export kernel_name="${KERNEL_NAME}"
@@ -551,12 +541,11 @@ for display_tree in "${DISPLAY_TREES[@]}"; do
     done
 done
 
-# sudo resets PATH, which would put the host's kmod 29 depmod back in front.
 echo "Installing in-tree modules and dtbs..."
-sudo -E env "PATH=$PATH" make install -C kernel
+sudo -E make install -C kernel
 
 echo "Installing out-of-tree modules..."
-sudo -E env "PATH=$PATH" make modules_install
+sudo -E make modules_install
 
 # ── Fix module symlinks ─────────────────────────────────────────────────────
 
