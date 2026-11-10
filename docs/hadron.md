@@ -2,7 +2,7 @@
 
 The visible camera of the FLIR Hadron 640R / 640R+, connected through the ARK Hadron Adapter. The Hadron's Boson thermal camera is separate: it enumerates over USB as a UVC device (`09cb:4007`) and needs no overlay.
 
-**Status:** V4L2 RAW10 capture works in all four modes, with exposure, gain and frame-rate controls. It has been bench-tested on JAJ only: CAM1 (4-lane) and CAM0 (2-lane). Argus (`nvarguscamerasrc`) does not work: the sensor has no ISP tuning (`camera_overrides.isp`), and the flash-time IMX219 `module1` stays in the camera platform under the Hadron overlay.
+**Status:** V4L2 RAW10 capture works in all four modes, with exposure, gain and frame-rate controls. Argus (`nvarguscamerasrc`) works in modes 0 to 2, with the ISP's default colour. Both have been bench-tested on JAJ only: V4L2 on CAM1 (4-lane) and CAM0 (2-lane), Argus on CAM0.
 
 ## Driver
 
@@ -44,6 +44,25 @@ v4l2-ctl -d /dev/videoN --set-fmt-video=width=4624,height=3468,pixelformat=BG10 
 - **Exposure and gain:** exposure is in microseconds. Gain is in units of 1/16, so 16 is 1x and 248 is 15.5x.
 - **Frame rate:** `frame_rate` is fps × 10^6. Each mode starts at its own rate until a rate is set.
 - **Setting controls:** all three can be set before streaming or while streaming. A set value carries to every mode, limited to that mode's range. Each control reads the value in use.
+
+## Argus
+
+```
+gst-launch-1.0 -e nvarguscamerasrc sensor-id=0 sensor-mode=2 ! \
+  'video/x-raw(memory:NVMM),width=2304,height=1296,framerate=60/1' ! \
+  nvvidconv ! 'video/x-raw,format=I420,width=1280,height=720' ! \
+  x264enc tune=zerolatency speed-preset=ultrafast bitrate=6000 ! h264parse ! mp4mux ! \
+  filesink location=hadron.mp4
+```
+
+- **Modes:** `sensor-mode` is the mode number in the table above, and the caps take a frame rate up to that mode's on the port. Mode 3 fails with `InsufficientMemory` on an Orin Nano 4GB.
+- **Sensor ID:** each overlay disables the other camera modules of the flash-time default, so the Hadron EO is `sensor-id=0`.
+- **Black level:** the ISP has no tuning for this sensor and takes its black level as zero, which leaves the picture hazy. [ark_hadron_rear_OV64B40.isp](../scripts/camera/hadron/ark_hadron_rear_OV64B40.isp) sets the sensor's 64. Argus finds the file by the overlay's module badge:
+
+```
+sudo install -m 664 -o root -g root scripts/camera/hadron/ark_hadron_rear_OV64B40.isp /var/nvidia/nvcam/settings/
+sudo systemctl restart nvargus-daemon
+```
 
 ## Live view
 
