@@ -262,7 +262,9 @@ class EoCamera(threading.Thread):
     def _first_frame(self, cap):
         # The controls take this mode's ranges once it streams.
         cap.set_ctrls(frame_rate=self.target_fps * 1000000)
-        self.exp_rng, self.gain_rng = cap.ctrl_range("exposure"), cap.ctrl_range("gain")
+        # tegracam puts each maximum one above the sensor's and drops a write of that value.
+        (emin, emax), (gmin, gmax) = cap.ctrl_range("exposure"), cap.ctrl_range("gain")
+        self.exp_rng, self.gain_rng = (emin, emax - 1), (gmin, gmax - 1)
         self.exp = self.exp_rng[1]
         self.gain = min(max(64, self.gain_rng[0]), self.gain_rng[1])
         cap.set_ctrls(exposure=self.exp, gain=self.gain)
