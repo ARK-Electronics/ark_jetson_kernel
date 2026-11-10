@@ -2,7 +2,7 @@
 
 The visible camera of the FLIR Hadron 640R / 640R+, connected through the ARK Hadron Adapter. The Hadron's Boson thermal camera is separate: it enumerates over USB as a UVC device (`09cb:4007`) and needs no overlay.
 
-**Status:** V4L2 RAW10 capture works in all four modes, with exposure, gain and frame-rate controls. Argus (`nvarguscamerasrc`) works in modes 0 to 2, with the ISP's default colour. Both have been bench-tested on JAJ only: V4L2 on CAM1 (4-lane) and CAM0 (2-lane), Argus on CAM0.
+**Status:** V4L2 RAW10 capture works in all four modes, with exposure, gain and frame-rate controls. Argus (`nvarguscamerasrc`) works in all four, with the ISP's default colour. Both have been bench-tested on JAJ only, on CAM1 (4-lane) and CAM0 (2-lane).
 
 ## Driver
 
@@ -55,7 +55,9 @@ gst-launch-1.0 -e nvarguscamerasrc sensor-id=0 sensor-mode=2 ! \
   filesink location=hadron.mp4
 ```
 
-- **Modes:** `sensor-mode` is the mode number in the table above, and the caps take a frame rate up to that mode's on the port. Mode 3 fails with `InsufficientMemory` on an Orin Nano 4GB.
+- **Modes:** `sensor-mode` is the mode number in the table above, and the caps take a frame rate up to that mode's on the port.
+- **Full array:** mode 3 runs on an Orin NX 16GB. On an Orin Nano 4GB Argus runs out of memory at about 1.5 GB of buffers. For a smaller picture, put the size in the caps so Argus scales it: an 8x downscale in `nvvidconv` leaves bands.
+- **120 fps:** mode 2 on a 4-lane port delivers about 100 fps through Argus unless `sudo jetson_clocks` is running.
 - **Sensor ID:** each overlay disables the other camera modules of the flash-time default, so the Hadron EO is `sensor-id=0`.
 - **ISP file:** Argus has no tuning for this sensor. [ark_hadron_rear_OV64B40.isp](../camera_isp/ark_hadron_rear_OV64B40.isp) sets its black level of 64, without which the picture is hazy. Colour is still the ISP's default. The image installs the file. On an image built before it did:
 
