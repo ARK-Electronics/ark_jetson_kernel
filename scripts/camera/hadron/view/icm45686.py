@@ -102,6 +102,9 @@ class Icm45686(threading.Thread):
         self.error = None
 
     def configure(self):
+        # Whatever else answers at this address must not be reset.
+        if self.dev.read(WHO_AM_I, 1)[0] != WHOAMI:
+            raise RuntimeError(f"no ICM-45686 at 0x{self.dev.addr:02x}")
         self.dev.write(REG_MISC2, 0x02)                 # soft reset
         time.sleep(0.005)
         for _ in range(100):
