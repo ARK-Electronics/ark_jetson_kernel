@@ -673,6 +673,26 @@ sudo tee "$L4T_DIR/rootfs/etc/sysctl.d/99-ark-console-quiet.conf" >/dev/null <<'
 kernel.printk = 4 4 1 7
 EOF
 
+# ── Let btusb load beside NVIDIA's Realtek driver ───────────────────────────
+
+# nvidia-l4t-configs ships /etc/modprobe.d/nvidia-preferred-oot-modules.conf, which will not
+# load btusb while rtk_btusb is installed. Every non-Realtek Bluetooth controller is left
+# without a driver, the Intel AX210 on the bundles included. modprobe runs the first install
+# command it finds for a module, so the override only works from a file that sorts ahead of
+# NVIDIA's. rtk_btusb still loads first and claims the Realtek controllers.
+NV_OOT_PREFERENCE="$L4T_DIR/rootfs/etc/modprobe.d/nvidia-preferred-oot-modules.conf"
+if ! grep -q '^install btusb' "$NV_OOT_PREFERENCE"; then
+    echo "ERROR: $NV_OOT_PREFERENCE no longer gates btusb — BSP changed;" >&2
+    echo "       re-check whether build.sh still needs the ark-bluetooth.conf override." >&2
+    exit 1
+fi
+echo "Installing the btusb modprobe override..."
+sudo tee "$L4T_DIR/rootfs/etc/modprobe.d/ark-bluetooth.conf" >/dev/null <<'EOF'
+# NVIDIA's nvidia-preferred-oot-modules.conf will not load btusb while rtk_btusb is installed.
+# modprobe runs the first install command it finds, and this file sorts ahead of NVIDIA's.
+install btusb /sbin/modprobe -q rtk_btusb; /sbin/modprobe --ignore-install btusb $CMDLINE_OPTS
+EOF
+
 # ── Record build metadata ───────────────────────────────────────────────────
 
 BUILD_COMMIT=$ARK_BUILD_COMMIT
