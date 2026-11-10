@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hadron demo</title>
+<style>
+  :root { --bg: #101317; --panel: #1a1f26; --line: #2b323c; --text: #e6e8eb; --dim: #8c95a1; --accent: #f0a23a; --bad: #ff6f59; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, sans-serif; }
+  header { display: flex; align-items: baseline; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 18px; }
+  #status { color: var(--bad); }
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 16px 20px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  h2 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; gap: 12px; }
+  h2 small { color: var(--dim); font-weight: normal; font-variant-numeric: tabular-nums; text-align: right; }
+  img { display: block; width: 100%; background: #000; border-radius: 4px; min-height: 120px; }
+  .error { color: var(--bad); margin: 8px 0 0; min-height: 1.4em; }
+  .controls { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; gap: 10px 12px; align-items: center; margin-top: 6px; }
+  .controls label { color: var(--dim); }
+  .controls output { font-variant-numeric: tabular-nums; min-width: 5.5em; text-align: right; }
+  select, button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; font: inherit; }
+  select { width: 100%; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; justify-self: start; }
+  input:disabled { opacity: 0.4; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>FLIR Hadron 640R</h1>
+  <span id="status"></span>
+</header>
+<main>
+  <section>
+    <h2>Visible camera <small id="eo-read"></small></h2>
+    <img src="/eo.mjpg" alt="Visible camera stream">
+    <p class="error" id="eo-error"></p>
+    <div class="controls">
+      <label for="mode">Mode</label><select id="mode"></select><span></span>
+      <label for="fps">Frame rate</label><select id="fps"></select><span></span>
+      <label for="auto">Auto exposure</label><input type="checkbox" id="auto"><span></span>
+      <label for="exposure_ms">Exposure</label><input type="range" id="exposure_ms" step="0.1"><output id="exposure_ms-out"></output>
+      <label for="gain">Gain</label><input type="range" id="gain" step="0.5"><output id="gain-out"></output>
+      <label for="wb">White balance</label><select id="wb"></select><span></span>
+      <label for="saturation">Saturation</label><input type="range" id="saturation" min="0" max="2" step="0.05"><output id="saturation-out"></output>
+    </div>
+  </section>
+  <section>
+    <h2>Thermal camera <small id="ir-read"></small></h2>
+    <img src="/ir.mjpg" alt="Thermal camera stream">
+    <p class="error" id="ir-error"></p>
+    <div class="controls">
+      <label for="palette">Palette</label><select id="palette"></select><span></span>
+      <label for="ffc">Flat field</label><button id="ffc" type="button">Run correction</button><span></span>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+
+function options(select, items, value) {
+  const want = JSON.stringify(items);
+  if (select.dataset.items !== want) {
+    select.replaceChildren(...items.map(([v, text]) => new Option(text, v)));
+    select.dataset.items = want;
+  }
+  if (document.activeElement !== select) select.value = value;
+}
+
+function slider(id, value, unit, min, max) {
+  const el = $(id);
+  if (min !== undefined) { el.min = min; el.max = max; }
+  if (document.activeElement !== el) el.value = value;
+  $(id + '-out').textContent = Number(el.value).toFixed(id === 'saturation' ? 2 : 1) + unit;
+}
+
+function render(s) {
+  const eo = s.eo, set = eo.settings, mode = eo.modes[set.mode];
+  options($('mode'), eo.modes.map(m => [m.id, `${m.w} x ${m.h}, up to ${m.max_fps} fps`]), set.mode);
+  if (mode) {
+    options($('fps'), mode.rates.map(r => [r, `${r} fps`]), set.fps);
+    slider('exposure_ms', set.exposure_ms, ' ms', mode.exposure_ms[0], Math.min(mode.exposure_ms[1], 1000 / set.fps));
+    slider('gain', set.gain, 'x', mode.gain[0], mode.gain[1]);
+  }
+  $('auto').checked = set.auto;
+  $('exposure_ms').disabled = $('gain').disabled = set.auto;
+  options($('wb'), eo.wb_modes.map((name, i) => [i, name]), set.wb);
+  slider('saturation', set.saturation, '');
+  const sensor = eo.sensor.fps ? `sensor ${eo.sensor.exposure_ms} ms, ${eo.sensor.gain}x, ${eo.sensor.fps} fps · ` : '';
+  $('eo-read').textContent = `${sensor}page ${eo.fps} fps`;
+  $('eo-error').textContent = eo.error || '';
+
+  const ir = s.ir;
+  options($('palette'), ir.palettes.map((name, i) => [i, name]), ir.palette ?? 0);
+  $('palette').disabled = $('ffc').disabled = !ir.controls;
+  $('ir-read').textContent = (ir.serial ? `serial ${ir.serial} · ` : '') + `page ${ir.fps} fps`;
+  $('ir-error').textContent = ir.error || '';
+}
+
+async function send(changes) {
+  try {
+    const reply = await fetch('/set', {method: 'POST', body: JSON.stringify(changes)});
+    render(await reply.json());
+  } catch (e) { $('status').textContent = 'The demo is not answering.'; }
+}
+
+async function poll() {
+  try {
+    render(await (await fetch('/state')).json());
+    $('status').textContent = '';
+  } catch (e) { $('status').textContent = 'The demo is not answering.'; }
+}
+
+for (const id of ['mode', 'fps', 'wb', 'palette'])
+  $(id).addEventListener('change', e => { e.target.blur(); send({[id]: Number(e.target.value)}); });
+for (const id of ['exposure_ms', 'gain', 'saturation']) {
+  $(id).addEventListener('input', e => { $(id + '-out').textContent = Number(e.target.value).toFixed(id === 'saturation' ? 2 : 1); });
+  $(id).addEventListener('change', e => { e.target.blur(); send({[id]: Number(e.target.value)}); });
+}
+$('auto').addEventListener('change', e => send({auto: e.target.checked}));
+$('ffc').addEventListener('click', () => send({ffc: true}));
+
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

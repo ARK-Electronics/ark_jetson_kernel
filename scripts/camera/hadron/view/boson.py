@@ -14,7 +14,11 @@ import time
 import tty
 
 EXT_SYNC_DISABLED, EXT_SYNC_MASTER, EXT_SYNC_SLAVE = 0, 1, 2
-_GET_SERIAL, _SET_EXT_SYNC, _GET_EXT_SYNC = 0x00050002, 0x00050098, 0x00050099
+# Colour palettes by id, FLR_COLORLUT_ID_E in the SDK.
+COLOR_LUTS = ("White hot", "Black hot", "Rainbow", "Rainbow HC", "Ironbow", "Lava", "Arctic", "Globow",
+              "Graded fire", "Hottest")
+_GET_SERIAL, _RUN_FFC, _SET_EXT_SYNC, _GET_EXT_SYNC = 0x00050002, 0x00050007, 0x00050098, 0x00050099
+_SET_COLOR_LUT, _GET_COLOR_LUT = 0x000B0003, 0x000B0004
 
 
 def find_port(vendor="09cb"):
@@ -98,3 +102,14 @@ class Boson:
     def set_ext_sync(self, mode):
         """Volatile: the Boson powers up with its saved setting (disabled unless saved)."""
         self.call(_SET_EXT_SYNC, struct.pack(">I", mode))
+
+    def color_lut(self):
+        return struct.unpack(">I", self.call(_GET_COLOR_LUT)[:4])[0]
+
+    def set_color_lut(self, lut):
+        """The palette of the colourised UVC stream. Volatile, like the sync mode."""
+        self.call(_SET_COLOR_LUT, struct.pack(">I", lut))
+
+    def run_ffc(self):
+        """Flat-field correction: the shutter closes for a fraction of a second."""
+        self.call(_RUN_FFC)

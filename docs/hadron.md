@@ -66,6 +66,20 @@ sudo install -m 664 -o root -g root camera_isp/ark_hadron_rear_OV64B40.isp /var/
 sudo systemctl restart nvargus-daemon
 ```
 
+## Demo
+
+Both cameras on one page in a browser, with the settings that change them:
+
+```
+scripts/camera/hadron/demo.sh [user@host]
+```
+
+Run it on a PC with this repo checked out. It copies the demo to the Jetson over SSH, starts it there and opens `http://<jetson>:8642/`. The host defaults to `jetson@192.168.55.1`, the Jetson over its USB-C cable. Ctrl-C stops it.
+
+- **EO:** through Argus, so the picture needs the ISP file above. The page sets the mode, the frame rate, auto or manual exposure and gain, white balance and saturation. A change of mode, frame rate or exposure restarts the stream.
+- **Boson:** colour palette and flat-field correction, over its serial port.
+- **Readout:** the exposure, gain and frame rate the sensor runs at, from the driver's controls.
+
 ## Live view
 
 `scripts/camera/hadron/view/` shows the EO and the Boson side by side on the Jetson's display, with the adapter's ICM-45686 plotted against the frame timing. Install and use: [scripts/camera/hadron](../scripts/camera/hadron/README.md).
