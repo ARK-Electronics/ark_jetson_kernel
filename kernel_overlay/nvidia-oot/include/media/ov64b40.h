@@ -1,5 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
-/* OV64B40 register definitions and control conversions. */
+/*
+ * OV64B40 register definitions and control conversions.
+ *
+ * Copyright (c) 2026, ARK Electronics.
+ */
 
 #ifndef __OV64B40_H__
 #define __OV64B40_H__

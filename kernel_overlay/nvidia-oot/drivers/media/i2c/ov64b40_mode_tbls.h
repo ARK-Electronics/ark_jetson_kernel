@@ -3,6 +3,8 @@
  * OV64B40 register tables. The init and mode tables in ov64b40_tables.h are
  * generated from the GPL-2.0 OV64B imgsensor driver in realme's Narzo 50 / 8i
  * (MIAMI, MT6781) kernel release: 24 MHz input, MIPI D-PHY 4-lane.
+ *
+ * Copyright (c) 2026, ARK Electronics.
  */
 
 #ifndef __OV64B40_MODE_TBLS_H__
