@@ -1,19 +1,18 @@
 #!/bin/bash
-# Host-detection + container handoff, sourced by setup.sh and build.sh. NVIDIA's
-# documented build host is Ubuntu 22.04; we re-exec inside a 22.04 container that
-# also carries kmod 31, which the Noble rootfs needs and 22.04 lacks. See
-# docs/build_host.md.
+# Host-detection + container handoff, sourced by setup.sh and build.sh. The build
+# host is Ubuntu 24.04, matching the Jetson rootfs; on anything else we re-exec inside
+# a 24.04 container so host-tool differences (a kmod other than the rootfs's kmod 31)
+# can't corrupt the build. See docs/build_host.md.
 
-ARK_BUILDER_IMAGE="ark-jetson-builder:22.04"
+ARK_BUILDER_IMAGE="ark-jetson-builder:24.04"
 
 # Returns 0 if the calling script should re-exec inside the build container.
-# False when already inside (IN_BUILD_CONTAINER=1) or on a 22.04 host with kmod 31.
+# False when already inside (IN_BUILD_CONTAINER=1) or when the host is 24.04.
 needs_container() {
     [ -z "$IN_BUILD_CONTAINER" ] || return 1
     local host_id
     host_id=$(. /etc/os-release && echo "$VERSION_ID")
-    [ "$host_id" = "22.04" ] || return 0
-    ! depmod --version 2>/dev/null | grep -qx 'kmod version 31'
+    [ "$host_id" != "24.04" ]
 }
 
 # Install docker if missing, then set DOCKER_CMD to (docker) or (sudo docker) by
@@ -22,7 +21,7 @@ ensure_docker() {
     if ! command -v docker >/dev/null 2>&1; then
         if ! command -v apt-get >/dev/null 2>&1; then
             echo "ERROR: docker is not installed and apt-get is not available." >&2
-            echo "       Install docker manually, or run on an Ubuntu 22.04 host." >&2
+            echo "       Install docker manually, or run on an Ubuntu 24.04 host." >&2
             echo "       See docs/build_host.md." >&2
             exit 1
         fi
@@ -49,7 +48,7 @@ ensure_docker() {
     fi
 }
 
-# Re-exec the calling script in the 22.04 build container (does not return on
+# Re-exec the calling script in the 24.04 build container (does not return on
 # success; builds the image on first use).
 #   $1     path to the calling script ($0)
 #   $2..   args passed through to the in-container run
@@ -67,7 +66,7 @@ run_in_container() {
     # Rebuild when the image is missing OR the Dockerfile changed since it was built.
     # An existence-only check silently keeps a stale image after a Dockerfile edit (e.g.
     # missing a newly-added tool, failing later with "command not found"). Stamp the build
-    # with a content-hash label and compare it back — the :22.04 tag stays stable and the
+    # with a content-hash label and compare it back — the :24.04 tag stays stable and the
     # check needs no network.
     local want_sha have_sha
     want_sha=$(sha256sum "$repo_dir/docker/Dockerfile" | cut -d' ' -f1)
@@ -88,23 +87,15 @@ run_in_container() {
     # Persistent ccache for container builds: the container is --rm, so without a host
     # mount the cache vanishes each run. Dedicated dir (not a shared host ccache) to
     # avoid cross-project churn; override via ARK_CCACHE_DIR.
-    local ccache_dir="${ARK_CCACHE_DIR:-${CCACHE_DIR:-$HOME/.cache/ark_jetson_ccache}}"
+    local ccache_dir="${ARK_CCACHE_DIR:-$HOME/.cache/ark_jetson_ccache}"
     mkdir -p "$HOME/l4t-gcc" "$ccache_dir"
-    echo "Re-executing $(basename "$script_path") in 22.04 build container..."
+    echo "Re-executing $(basename "$script_path") in 24.04 build container..."
 
     # Only add -t when stdin/stdout are both TTYs; `docker run -t` against a non-TTY
     # (CI, pipe, redirection) errors out. -i stays so the interactive prompt still works.
     local tty_flags=(-i)
     if [ -t 0 ] && [ -t 1 ]; then
         tty_flags+=(-t)
-    fi
-
-    # A symlinked staging/ (CI keeps it on a bigger disk) has to resolve inside the
-    # container too, so mount its target at the same path.
-    local staging_mount=() staging_target
-    if [ -L "$repo_dir/staging" ]; then
-        staging_target=$(realpath "$repo_dir/staging")
-        staging_mount=(-v "$staging_target:$staging_target")
     fi
 
     # SYS_ADMIN + apparmor=unconfined: NVIDIA's rootfs helpers chroot in and bind-mount
@@ -114,14 +105,12 @@ run_in_container() {
         --cap-add=SYS_ADMIN \
         --security-opt apparmor=unconfined \
         -v "$repo_dir:/workspace" \
-        "${staging_mount[@]}" \
         -v "$HOME/l4t-gcc:/root/l4t-gcc" \
         -v "$ccache_dir:/root/.ccache" \
         -w /workspace \
         -e IN_BUILD_CONTAINER=1 \
         -e CCACHE_DIR=/root/.ccache \
         -e CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-20G}" \
-        -e CCACHE_COMPILERCHECK="${CCACHE_COMPILERCHECK:-content}" \
         -e CCACHE_SLOPPINESS=time_macros,include_file_ctime,include_file_mtime \
         -e ARK_BUILD_OS="$ARK_BUILD_OS" \
         -e ARK_BUILD_COMMIT="$ARK_BUILD_COMMIT" \
