@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libssl-dev \
         bc \
         kmod \
+        qemu-user-static \
+        binfmt-support \
+        device-tree-compiler \
         wget \
         curl \
         tar \

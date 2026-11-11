@@ -1,0 +1,5 @@
+[Unit]
+Description=Deferred JAJ application and UI services
+# Reaching this target means systemd started the enabled units, not that their
+# camera streams, MAVLink connections, web APIs, or other outputs are ready.
+After=multi-user.target
