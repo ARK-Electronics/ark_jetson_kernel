@@ -5,7 +5,7 @@ description: Drive a Jetson carrier (PAB, JAJ, PAB_V3) on the bench — power it
 
 # Jetson hardware in the loop
 
-> **TODO: partly tested.** `ports`, `psu`, `wait-ssh` and the DP712, USB and SSH facts below were checked on a JAJ on 2026-11-10. `console`, the cold-boot loop and the flash steps have not been run against hardware. The first session that uses those must check them, fix what is wrong, and include those fixes and the removal of this notice in any PR produced with the skill's help.
+> **TODO: partly tested.** `ports`, `psu`, `wait-ssh` and the DP712, USB and SSH facts below were checked on a JAJ on 2026-11-10, and the flash steps on 2026-11-11. `console` and the cold-boot loop have not been run against hardware. The first session that uses those must check them, fix what is wrong, and include those fixes and the removal of this notice in any PR produced with the skill's help.
 
 `jetson_hil.py` (next to this file, needs pyserial) does the mechanics: `ports`, `psu`, `console` (with `--cycle-psu` for a timed cold boot), `wait-ssh`. Run it with `--help`.
 
@@ -37,7 +37,7 @@ Do not power-cycle, flash or change a setpoint until the answers are in. Then ru
 ## 3. Loops
 
 - **Cold boot with a timed console:** `jetson_hil.py console <uart> --cycle-psu <psu> --seconds 120 --until 'login:' --log boot.log`. Timestamps are seconds since `OUTP ON`, and that includes the carrier's ~2 s power-on reset. Then `wait-ssh`.
-- **Flash:** the user holds Force Recovery while you run `psu off` then `psu on`. Check that `ports` shows a recovery ID. `flash.sh` and `build.sh` prompt for sudo, so give the user the exact command (`./flash.sh <TARGET>`) to run themselves. Throw away the first boot after a flash (key generation, rootfs resize, first-boot provisioning) before timing anything.
+- **Flash:** the user holds Force Recovery while the supply comes on, from `psu off` then `psu on` or from the supply's own Output button. Check that `ports` shows a recovery ID. The board can wait in recovery while a build finishes. Where `sudo -n true` succeeds, run `./build.sh <TARGET>` and then `echo y | ./flash.sh <TARGET>` yourself. The `y` answers the flash's confirmation prompt, and `flash.sh` returns once the first boot answers SSH. Where sudo needs a password, give the user the exact commands to run instead. After the flash, bring the host's USB profile up again before you use SSH. Throw away the first boot after a flash (key generation, rootfs resize, first-boot provisioning) before timing anything.
 - **A failed flash** needs a physical re-entry: power off, then on with Force Recovery held. Re-authorizing USB does not reset the BootROM. Never start an RCM flash right after a software `reboot recovery`, because it stalls at `Sending mb1`.
 
 ## 4. Gotchas
@@ -48,5 +48,6 @@ Do not power-cycle, flash or change a setpoint until the answers are in. Then ru
 - A flash that dies with "cannot mount the NFS server" means NetworkManager grabbed the flasher's USB NIC. `flash.sh` guards against this; a hand-rolled `l4t_initrd_flash.sh` does not.
 - One process per serial port. A leftover reader steals lines; check with `fuser <tty>`.
 - Measured supply current is a module plus carrier plus fan number. Read the module rail from the on-module INA3221 (`in1_input`).
+- `systemctl isolate multi-user.target` takes the USB network down, and only a power cycle brings it back. To run without the desktop, use `systemctl stop gdm`.
 - A software power-off does not keep a JAJ down: after `shutdown -h now` the module boots again within seconds. To power down cleanly, run `sync`, remount read-only with `echo u > /proc/sysrq-trigger`, then `psu off`.
 - Leave the supply in the state you found it and say so. If you changed a setpoint, restore it.
