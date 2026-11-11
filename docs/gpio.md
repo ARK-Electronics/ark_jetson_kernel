@@ -143,16 +143,16 @@ sudo ./flash.sh -k B_MB1_BCT -c bootloader/generic/cfg/flash_t234_qspi.xml jetso
 
 Reboot for the change to take effect.
 
-For a hog owned by the kernel instead, add this to the carrier's `nv-common.dtsi`:
+For a hog owned by the kernel instead, add this to the carrier's `ark-<target>-overrides.dtsi`. [device-tree.md](device-tree.md) shows where that file lives.
 
 ```dts
-gpio@2200000 {
-    my-peripheral-en {
-        gpio-hog;
-        output-high;
-        gpios = <TEGRA234_MAIN_GPIO(H, 7) 0>;
-        line-name = "my-peripheral-en";
-    };
+&{/bus@0/gpio@2200000} {
+	my-peripheral-en {
+		gpio-hog;
+		output-high;
+		gpios = <TEGRA234_MAIN_GPIO(H, 7) 0>;
+		line-name = "my-peripheral-en";
+	};
 };
 ```
 
