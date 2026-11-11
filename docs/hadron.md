@@ -76,7 +76,7 @@ sudo systemctl restart nvargus-daemon
 - **Reset:** the carrier's `CAMn_PWDN` drives Hadron `/HADRON_RST` through the adapter, and high releases the sensor. FLIR documents the line as shared with the Boson, so the driver releases it once and never drives it low. Standby is software (`0x0100`).
 - **No MCLK:** the Hadron connector has no clock pin, because the EO has its own oscillator. The adapter routes the carrier's `CAMn_MCLK` to Hadron pin 43 `EXT_VSYNC` instead, so the overlays declare no clocks and make that pad an input (see [Frame sync](#frame-sync)).
 - **Orientation:** with the tables' phone-module mirror and flip, the EO reads out rotated 180° relative to the Boson in the same housing. The overlays set `rotation = <180>`, and the driver undoes both while keeping BGGR.
-- **Adapter I2C:** the adapter's ICM-45686 IMU (`0x68`) and the Hadron's internal IMU (`0x28`) are on the Hadron control I2C (JAJ J36, module I2C0), not on the camera bus.
+- **Adapter I2C:** the adapter's ICM-45686 IMU (`0x68`) and the Hadron's internal IMU (`0x28`) are on the Hadron control I2C, not on the camera bus. Its cable goes to either I2C connector of the carrier, and the scripts find the IMU by its ID.
 
 ## Frame sync
 

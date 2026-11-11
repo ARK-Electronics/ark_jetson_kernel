@@ -11,6 +11,7 @@ puts the samples on CLOCK_MONOTONIC to within the Jetson's interrupt jitter.
 import collections
 import ctypes as C
 import fcntl
+import glob
 import os
 import threading
 import time
@@ -50,6 +51,7 @@ class i2c_rdwr_ioctl_data(C.Structure):
 class I2CDevice:
     def __init__(self, bus, addr):
         self.fd = os.open(f"/dev/i2c-{bus}", os.O_RDWR)
+        self.bus = bus
         self.addr = addr
 
     def _transfer(self, wr, nread=0):
@@ -72,6 +74,34 @@ class I2CDevice:
 
     def ireg_write(self, reg, value):
         self._transfer([IREG_ADDR_15_8, reg >> 8, reg & 0xFF, value])
+
+
+def find_bus(addr=0x68):
+    """The I2C bus with an ICM-45686 at addr, or None.
+
+    The adapter's I2C cable can go to any I2C connector of the carrier, so every bus of the SoC's
+    own controllers is asked for the chip's ID. Mux channels and the display and power-management
+    adapters are left alone.
+    """
+    def number(path):
+        return int(path.split("/i2c-")[1].split("/")[0])
+
+    for name in sorted(glob.glob("/sys/bus/i2c/devices/i2c-*/name"), key=number):
+        with open(name) as f:
+            if not f.read().strip().endswith(".i2c"):
+                continue
+        try:
+            dev = I2CDevice(number(name), addr)
+        except OSError:
+            continue
+        try:
+            if dev.read(WHO_AM_I, 1)[0] == WHOAMI:
+                return dev.bus
+        except OSError:
+            pass
+        finally:
+            os.close(dev.fd)
+    return None
 
 
 def _line(x, y):

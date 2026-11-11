@@ -48,7 +48,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkX11, GLib, Gst, GstVideo, Gtk  # noqa: E402,F401
 
 import boson  # noqa: E402
-from icm45686 import Icm45686  # noqa: E402
+from icm45686 import Icm45686, find_bus  # noqa: E402
 from syncline import SyncLine  # noqa: E402
 from v4l2cap import MEMORY_USERPTR, Capture  # noqa: E402
 
@@ -852,7 +852,7 @@ def main():
     p.add_argument("--eo", help="tegra VI node of the OV64B40 (default: found by name)")
     p.add_argument("--ir", help="Boson UVC capture node (default: found by name)")
     p.add_argument("--eo-fps", type=int, default=25, help="25 fps puts a whole number of IMU samples in a frame")
-    p.add_argument("--imu-bus", type=int, default=1)
+    p.add_argument("--imu-bus", type=int, help="I2C bus of the ICM-45686 (default: the bus it answers on)")
     p.add_argument("--imu-addr", type=lambda v: int(v, 0), default=0x68)
     p.add_argument("--imu-odr", type=int, default=200, choices=(50, 100, 200, 400),
                    help="the bus runs at 100 kHz, which caps the FIFO rate")
@@ -863,6 +863,10 @@ def main():
     p.add_argument("--no-sync", dest="sync", action="store_false",
                    help="leave the Boson's ext sync alone and time the IMU from host reads")
     args = p.parse_args()
+    if args.imu_bus is None:
+        args.imu_bus = find_bus(args.imu_addr)
+        if args.imu_bus is None:
+            raise SystemExit(f"no ICM-45686 at 0x{args.imu_addr:02x} on any I2C bus")
     args.eo = args.eo or find_node("ov64b40")
     args.ir = args.ir or find_node("Boson")
     if args.sync and not args.sync_line:
