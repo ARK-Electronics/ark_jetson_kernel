@@ -31,6 +31,7 @@ FTDI_VID = "0403"
 # The DP712 drops the first query after its port opens (DTR resets the FT232) and garbles commands sent
 # back to back, so every exchange waits a beat and every query is re-asked.
 PSU_BAUD = 9600
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 PSU_OPEN_SETTLE = 0.2
 PSU_COMMAND_GAP = 0.1
 PSU_QUERY_ATTEMPTS = 3
@@ -172,11 +173,23 @@ def cmd_console(args):
         uart.write((args.send + "\n").encode())
     matched = False
     buffer = b""
+    quiet_reads = 0
     while time.monotonic() - t0 < args.seconds:
-        buffer += uart.read(4096)
-        while b"\n" in buffer:
-            raw, buffer = buffer.split(b"\n", 1)
-            line = f"[{time.monotonic() - t0:8.3f}] {raw.decode(errors='replace').rstrip()}"
+        data = uart.read(4096)
+        buffer += data
+        quiet_reads = 0 if data else quiet_reads + 1
+        # UEFI redraws with bare carriage returns and leaves its prompts unterminated, so a line
+        # ends at either terminator, and what is left after a quiet second counts as a line too.
+        parts = re.split(rb"[\r\n]+", buffer)
+        buffer = parts.pop()
+        if buffer and quiet_reads >= 5:
+            parts.append(buffer)
+            buffer = b""
+        for raw in parts:
+            text = ANSI_ESCAPE.sub("", raw.decode(errors="replace")).rstrip()
+            if not text:
+                continue
+            line = f"[{time.monotonic() - t0:8.3f}] {text}"
             print(line, flush=True)
             if log:
                 log.write(line + "\n")
