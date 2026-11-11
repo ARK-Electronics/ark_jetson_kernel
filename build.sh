@@ -96,7 +96,7 @@ if ! downloads_present; then
 fi
 
 # Capture host OS before any container handoff — inside the build container,
-# /etc/os-release describes the container (always 22.04), not the actual host.
+# /etc/os-release describes the container (always 24.04), not the actual host.
 [ -z "$ARK_BUILD_OS" ] && export ARK_BUILD_OS=$(. /etc/os-release && echo "$PRETTY_NAME")
 
 # Resolve the build commit on the host: inside the container the bind-mounted repo
@@ -124,7 +124,7 @@ fi
 
 export TARGET
 
-# Re-exec in the 22.04 container if needed, passing the resolved TARGET so it
+# Re-exec in the 24.04 container if needed, passing the resolved TARGET so it
 # doesn't re-prompt.
 if needs_container; then
     CONTAINER_ARGS=("$TARGET")
@@ -174,13 +174,14 @@ fi
 # command-not-found from make, after the ~30 min stage + provision.
 THIS_MACHINE="$(uname -m)"
 if [[ "$THIS_MACHINE" != "aarch64" ]]; then
-    export CROSS_COMPILE="$HOME/l4t-gcc/$TOOLCHAIN_DIRNAME/bin/aarch64-buildroot-linux-gnu-"
+    export CROSS_COMPILE="$HOME/l4t-gcc/${TOOLCHAIN_CROSS_PREFIX}"
     if [ ! -x "${CROSS_COMPILE}gcc" ]; then
         echo "ERROR: cross toolchain not found at ${CROSS_COMPILE}gcc — run ./setup.sh" >&2
         exit 1
     fi
 fi
-export KERNEL_HEADERS="$SOURCE_DIR/kernel/kernel-jammy-src"
+export KERNEL_HEADERS="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}"
+export kernel_name="${KERNEL_NAME}"
 export INSTALL_MOD_PATH="$L4T_DIR/rootfs/"
 
 # --fast reuses an existing staged tree; there's nothing to reuse if it's absent.
@@ -224,28 +225,6 @@ if [ ! -d "$L4T_DIR" ]; then
     sudo "$L4T_DIR/tools/l4t_create_default_user.sh" \
         -u jetson -p jetson -n jetson -a --accept-license
 
-    # nvfb.sh generates the SSH host keys on first boot by re-running openssh-server's
-    # postinst. If ssh-keygen dies partway (power cut, reboot, /etc full while
-    # nvresizefs is still growing the rootfs) it leaves a zero-length key behind, and
-    # postinst's create_key() guards on existence rather than size — so every retry
-    # skips that file, the reconfigure finally exits 0, nvfb drops its once-only
-    # nvfirstboot guard, and sshd can never start again. Clearing truncated keys first
-    # lets nvfb's own retry loop do what it was written to do.
-    echo "Patching nvfb.sh so an interrupted SSH host key generation can be retried..."
-    sudo python3 - "$L4T_DIR/rootfs/etc/systemd/nvfb.sh" <<'PY'
-import sys
-path = sys.argv[1]
-src = open(path).read()
-anchor = '\twhile [ "${status-1}" -ne 0 ]; do\n'
-if src.count(anchor) != 1:
-    sys.exit("ERROR: nvfb.sh has no single openssh reconfigure loop to patch; "
-             "re-check how this BSP generates SSH host keys before shipping.")
-fix = ("\t# A zero-length key from an interrupted run would otherwise be skipped\n"
-       "\t# forever by create_key(), leaving sshd permanently unable to start.\n"
-       "\tfind /etc/ssh -maxdepth 1 -name 'ssh_host_*_key' -empty -print -delete\n")
-open(path, 'w').write(src.replace(anchor, fix + anchor))
-PY
-
     if [ "$PROVISION" -eq 1 ]; then
         PROVISION_SCRIPT="$SCRIPT_DIR/provision.sh"
         if [ ! -f "$PROVISION_SCRIPT" ]; then
@@ -258,6 +237,7 @@ PY
         echo "========================================="
 
         ROOTFS_DIR="$L4T_DIR/rootfs"
+        source "$SCRIPT_DIR/scripts/provision_resolver.sh"
 
         cleanup_chroot() {
             # /proc and /sys pull in nested submounts (binfmt_misc, cgroup, ...) via
@@ -272,14 +252,15 @@ PY
                 echo "WARNING: mounts still present under $ROOTFS_DIR after cleanup:" >&2
                 mount | grep " on $ROOTFS_DIR/" >&2
             fi
+            restore_provision_resolver
         }
         trap cleanup_chroot EXIT
 
+        prepare_provision_resolver "$ROOTFS_DIR"
         sudo mount --bind /proc "$ROOTFS_DIR/proc"
         sudo mount --bind /sys "$ROOTFS_DIR/sys"
         sudo mount --bind /dev "$ROOTFS_DIR/dev"
         sudo mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
-        sudo cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
         export ROOTFS_DIR TARGET
         if ! bash "$PROVISION_SCRIPT"; then
@@ -300,6 +281,7 @@ PY
     tar xf kernel_src.tbz2
     tar xf kernel_oot_modules_src.tbz2
     tar xf nvidia_kernel_display_driver_source.tbz2
+    tar xf nvidia_unified_gpu_display_driver_source.tbz2
     popd > /dev/null
 
     # Snapshot the pristine stock overlay Makefile so the per-build ARK overlay step
@@ -308,7 +290,7 @@ PY
     cp "$SOURCE_DIR/hardware/nvidia/t23x/nv-public/overlay/Makefile" \
        "$STAGING_DIR/.overlay-makefile.stock"
 
-    DEFCONFIG="$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/configs/defconfig"
+    DEFCONFIG="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/configs/defconfig"
     echo "Applying shared defconfig fragment..."
     cat "$SCRIPT_DIR/defconfig.fragment" >> "$DEFCONFIG"
 
@@ -509,20 +491,23 @@ echo "========================================="
 
 cd "$SOURCE_DIR"
 
-# The bootlin toolchain defaults to -fPIE/-pie, so a bare `$(CC) -v` (no input) links PIE
-# startfiles and fails — its LAST line is a collect2 error, which NVIDIA's nv_compiler.h
-# recipe bakes into the module's /proc version banner via `tail -1`. Repoint it at
-# `--version | head -1`, which never links. Fail loud if the BSP moved the recipe; drop the
-# stale header so it regenerates.
-NVIDIA_KBUILD="$SOURCE_DIR/nvdisplay/kernel-open/nvidia/nvidia.Kbuild"
-if grep -qF -- '-v 2>&1 | tail -n 1' "$NVIDIA_KBUILD"; then
-    sed -i 's/\$(CC) -v 2>&1 | tail -n 1/$(CC) --version 2>\&1 | head -n 1/' "$NVIDIA_KBUILD"
-    rm -f "$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
-elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
-    echo "ERROR: nv_compiler.h version probe in nvidia.Kbuild is neither the known-bad nor" >&2
-    echo "       the patched form — BSP layout changed; re-check the probe patch in build.sh." >&2
-    exit 1
-fi
+# A bare `$(CC) -v` (no input) links, and on a toolchain defaulting to -fPIE/-pie that
+# fails — its LAST line is a collect2 error, which NVIDIA's nv_compiler.h recipe bakes into
+# the module's /proc version banner via `tail -1`. Repoint it at `--version | head -1`,
+# which never links. Fail loud if the BSP moved the recipe; drop the stale header so it
+# regenerates. R39 builds two display trees: nvdisplay (nvgpu) and unifiedgpudisp (openrm).
+DISPLAY_TREES=(nvdisplay unifiedgpudisp)
+for display_tree in "${DISPLAY_TREES[@]}"; do
+    NVIDIA_KBUILD="$SOURCE_DIR/$display_tree/kernel-open/nvidia/nvidia.Kbuild"
+    if grep -qF -- '-v 2>&1 | tail -n 1' "$NVIDIA_KBUILD"; then
+        sed -i 's/\$(CC) -v 2>&1 | tail -n 1/$(CC) --version 2>\&1 | head -n 1/' "$NVIDIA_KBUILD"
+        rm -f "$SOURCE_DIR/$display_tree/kernel-open/nv_compiler.h"
+    elif ! grep -qF -- '--version 2>&1 | head -n 1' "$NVIDIA_KBUILD"; then
+        echo "ERROR: nv_compiler.h version probe in $NVIDIA_KBUILD is neither the known-bad nor" >&2
+        echo "       the patched form — BSP layout changed; re-check the probe patch in build.sh." >&2
+        exit 1
+    fi
+done
 
 # ccache wraps the cross-compiler for the kernel proper only (kernel C rarely changes → warm
 # hits). The OOT NVIDIA modules build without it on purpose: their conftest/version steps
@@ -533,22 +518,27 @@ if command -v ccache >/dev/null 2>&1; then
     KERNEL_MAKE_ARGS+=("CC=ccache ${CROSS_COMPILE}gcc")
 fi
 
-make -C kernel "${KERNEL_MAKE_ARGS[@]}" \
-    && make modules CC="${CROSS_COMPILE}gcc" \
-    && make dtbs CC="${CROSS_COMPILE}gcc"
+# Separate commands: in an && chain, set -e ignores a failure of all but the last.
+make -C kernel "${KERNEL_MAKE_ARGS[@]}"
+make modules CC="${CROSS_COMPILE}gcc"
+make dtbs CC="${CROSS_COMPILE}gcc"
 
-# Sanity-check the display-driver build: nv_compiler.h must read as a real compiler version
-# (probe fixed above) and the three display .kos must be non-empty — catches a broken or
+# Sanity-check the display-driver builds: nv_compiler.h must read as a real compiler version
+# (probe fixed above) and the display .kos must be non-empty — catches a broken or
 # missing cross-compiler instead of silently shipping a bad module.
-NV_COMPILER_H="$SOURCE_DIR/nvdisplay/kernel-open/nv_compiler.h"
-if [ ! -s "$NV_COMPILER_H" ] || ! grep -qE 'version|[0-9]+\.[0-9]+\.[0-9]+' "$NV_COMPILER_H"; then
-    echo "ERROR: NVIDIA compiler-version probe produced no sane version string:" >&2
-    echo "       $NV_COMPILER_H: $(cat "$NV_COMPILER_H" 2>/dev/null)" >&2
-    exit 1
-fi
-for ko in nvidia.ko nvidia-modeset.ko nvidia-drm.ko; do
-    [ -s "$SOURCE_DIR/nvdisplay/kernel-open/$ko" ] \
-        || { echo "ERROR: NVIDIA module $ko missing or empty after build" >&2; exit 1; }
+for display_tree in "${DISPLAY_TREES[@]}"; do
+    NV_COMPILER_H="$SOURCE_DIR/$display_tree/kernel-open/nv_compiler.h"
+    if [ ! -s "$NV_COMPILER_H" ] || ! grep -qE 'version|[0-9]+\.[0-9]+\.[0-9]+' "$NV_COMPILER_H"; then
+        echo "ERROR: NVIDIA compiler-version probe produced no sane version string:" >&2
+        echo "       $NV_COMPILER_H: $(cat "$NV_COMPILER_H" 2>/dev/null)" >&2
+        exit 1
+    fi
+    display_modules=(nvidia.ko nvidia-modeset.ko nvidia-drm.ko)
+    [ "$display_tree" = unifiedgpudisp ] && display_modules+=(nvidia-uvm.ko)
+    for ko in "${display_modules[@]}"; do
+        [ -s "$SOURCE_DIR/$display_tree/kernel-open/$ko" ] \
+            || { echo "ERROR: NVIDIA module $display_tree/$ko missing or empty after build" >&2; exit 1; }
+    done
 done
 
 echo "Installing in-tree modules and dtbs..."
@@ -571,14 +561,16 @@ fi
 echo "Built kernel release: $JETSON_KERNEL_VERSION"
 
 MODULES_PATH="$INSTALL_MOD_PATH/lib/modules/$JETSON_KERNEL_VERSION"
-HEADERS_TARGET="/usr/src/linux-headers-${JETSON_KERNEL_VERSION}-ubuntu22.04_aarch64/3rdparty/canonical/linux-jammy/kernel-source"
-
 if [ ! -d "$MODULES_PATH" ]; then
     echo "ERROR: module path $MODULES_PATH not found after modules_install" >&2
     echo "       (kernel release '$JETSON_KERNEL_VERSION' does not match the installed modules)." >&2
     exit 1
 fi
-echo "Fixing kernel module symlinks in rootfs..."
+# On-target path of the headers tree nvidia-l4t-kernel-headers installed for this
+# release, found in the rootfs rather than hardcoded: it moves with the distro.
+HEADERS_TARGET=$(python3 "$SCRIPT_DIR/scripts/find_kernel_headers.py" --target-path \
+    "$INSTALL_MOD_PATH" "$JETSON_KERNEL_VERSION")
+echo "Fixing kernel module symlinks in rootfs (headers at $HEADERS_TARGET)..."
 sudo rm -f "$MODULES_PATH/build" "$MODULES_PATH/source"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/build"
 sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
@@ -586,9 +578,13 @@ sudo ln -sfn "$HEADERS_TARGET" "$MODULES_PATH/source"
 # ── Install build outputs ───────────────────────────────────────────────────
 
 echo "Installing kernel Image..."
-cp "$SOURCE_DIR/kernel/kernel-jammy-src/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
+cp "$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}/arch/arm64/boot/Image" "$L4T_DIR/kernel/"
 
-DTBS_SOURCE="$SOURCE_DIR/kernel-devicetree/generic-dts/dtbs"
+DTBS_SOURCE="$SOURCE_DIR/build/nvidia-public/devicetree/generic-dtbs"
+if [ ! -d "$DTBS_SOURCE" ]; then
+    echo "ERROR: no compiled DTBs at $DTBS_SOURCE — did 'make dtbs' run?" >&2
+    exit 1
+fi
 
 echo "Installing DTBs..."
 for variant in 0000 0001 0003 0004 0005; do
@@ -675,6 +671,65 @@ sudo tee "$L4T_DIR/rootfs/etc/sysctl.d/99-ark-console-quiet.conf" >/dev/null <<'
 # Console threshold 4: warnings and anything less severe stay off the 115200 console that
 # the kernel blocks on. KERN_ERR and worse still print; dmesg still records everything.
 kernel.printk = 4 4 1 7
+EOF
+
+# ── Let btusb load beside NVIDIA's Realtek driver ───────────────────────────
+
+# nvidia-l4t-configs ships /etc/modprobe.d/nvidia-preferred-oot-modules.conf, which will not
+# load btusb while rtk_btusb is installed. Every non-Realtek Bluetooth controller is left
+# without a driver, the Intel AX210 on the bundles included. modprobe runs the first install
+# command it finds for a module, so the override only works from a file that sorts ahead of
+# NVIDIA's. rtk_btusb still loads first and claims the Realtek controllers.
+NV_OOT_PREFERENCE="$L4T_DIR/rootfs/etc/modprobe.d/nvidia-preferred-oot-modules.conf"
+if ! grep -q '^install btusb' "$NV_OOT_PREFERENCE"; then
+    echo "ERROR: $NV_OOT_PREFERENCE no longer gates btusb — BSP changed;" >&2
+    echo "       re-check whether build.sh still needs the ark-bluetooth.conf override." >&2
+    exit 1
+fi
+echo "Installing the btusb modprobe override..."
+sudo tee "$L4T_DIR/rootfs/etc/modprobe.d/ark-bluetooth.conf" >/dev/null <<'EOF'
+# NVIDIA's nvidia-preferred-oot-modules.conf will not load btusb while rtk_btusb is installed.
+# modprobe runs the first install command it finds, and this file sorts ahead of NVIDIA's.
+install btusb /sbin/modprobe -q rtk_btusb; /sbin/modprobe --ignore-install btusb $CMDLINE_OPTS
+EOF
+
+# ── Restore the saved clock after the RTC sets it ───────────────────────────
+
+# The PMIC RTC driver is a module on R39, and the kernel sets the system clock from it when
+# it registers, seconds into boot. systemd-timesyncd has by then restored its recorded time,
+# which provision.sh seeds with the build time, and the RTC winds the clock back: to 1970 on
+# a board whose RTC was never set. snapd then rejects its signing keys as expired, and
+# snapd.seeded holds multi-user.target, gdm and jtop forever. Start timesyncd after the RTC
+# instead. The udev rule gives /dev/rtc0 the device unit the ordering needs.
+echo "Ordering systemd-timesyncd after the RTC..."
+sudo tee "$L4T_DIR/rootfs/etc/udev/rules.d/60-ark-rtc.rules" >/dev/null <<'EOF'
+# Gives /dev/rtc0 a systemd device unit, so systemd-timesyncd can be ordered after the RTC
+# registers. See systemd-timesyncd.service.d/ark-after-rtc.conf.
+SUBSYSTEM=="rtc", KERNEL=="rtc0", TAG+="systemd"
+EOF
+sudo mkdir -p "$L4T_DIR/rootfs/etc/systemd/system/systemd-timesyncd.service.d"
+sudo tee "$L4T_DIR/rootfs/etc/systemd/system/systemd-timesyncd.service.d/ark-after-rtc.conf" >/dev/null <<'EOF'
+# The PMIC RTC driver is a module on R39 and the kernel sets the system clock from it when it
+# registers, seconds into boot. Started earlier, timesyncd restores its recorded time and the
+# RTC then winds the clock back, to 1970 on a board whose RTC was never set.
+[Unit]
+Wants=dev-rtc0.device
+After=dev-rtc0.device
+EOF
+
+# ── Regenerate missing or empty SSH host keys ───────────────────────────────
+
+echo "Installing the SSH host key drop-in..."
+sudo mkdir -p "$L4T_DIR/rootfs/etc/systemd/system/ssh.service.d"
+sudo tee "$L4T_DIR/rootfs/etc/systemd/system/ssh.service.d/ark-hostkeys.conf" >/dev/null <<'EOF'
+# cloud-init writes the host keys once, on the first boot, and never again. A reset before
+# they reach the disk leaves them missing or empty, and sshd never starts. ssh-keygen -A
+# creates the missing keys and replaces the empty ones. It has to run ahead of the stock
+# sshd -t, which fails while there are no keys, so the list is cleared and rebuilt.
+[Service]
+ExecStartPre=
+ExecStartPre=/usr/bin/ssh-keygen -A
+ExecStartPre=/usr/sbin/sshd -t
 EOF
 
 # ── Record build metadata ───────────────────────────────────────────────────

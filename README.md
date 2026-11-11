@@ -4,12 +4,13 @@ These scripts build and flash an image for a Jetson **Orin Nano** or **Orin NX**
 
 | Component | Version |
 | --- | --- |
-| JetPack | 6.2.2 |
-| L4T (BSP) | R36.5.0 |
-| Kernel | Linux 5.15 |
-| Host OS | Ubuntu 22.04 |
+| JetPack | 7.2.1 |
+| L4T (BSP) | R39.2.1 |
+| Kernel | Linux 6.8 |
+| Device OS | Ubuntu 24.04 |
+| Host OS | Ubuntu 24.04 |
 
-> **Building on a host other than Ubuntu 22.04?** `setup.sh` and `build.sh` run themselves inside a 22.04 docker image, and install docker through apt if it is missing. [docs/build_host.md](docs/build_host.md) explains why the build is pinned to 22.04.
+> **Building on a host other than Ubuntu 24.04?** `setup.sh` and `build.sh` run themselves inside a 24.04 docker image, and install docker through apt if it is missing. [docs/build_host.md](docs/build_host.md) explains why the build is pinned to 24.04.
 
 ## Products
 
@@ -143,4 +144,4 @@ sudo reboot
 | [docs/kernel_development.md](docs/kernel_development.md) | Manual kernel builds and device tree changes |
 | [docs/device-tree.md](docs/device-tree.md) | Where a device-tree change belongs, and how the build applies ARK's changes |
 | [docs/qspi_bootloader.md](docs/qspi_bootloader.md) | Flashing only the QSPI bootloader |
-| [docs/build_host.md](docs/build_host.md) | Why the build pins to Ubuntu 22.04 |
+| [docs/build_host.md](docs/build_host.md) | Why the build pins to Ubuntu 24.04 |

@@ -1,5 +1,7 @@
 # JetPack 6.2.2 Argus Regression
 
+**JetPack 6 only.** The JetPack 7 image installs the camera stack at the BSP stamp, with no pin, repack or hold. The repro below has not been rerun on R39.
+
 This page tracks [issue #107](https://github.com/ARK-Electronics/ark_jetson_kernel/issues/107). Camera pipelines that work on our old images based on R36.4.3 misbehave on the R36.5.0 / JetPack 6.2.2 base. **Status: we reproduced it on the bench, traced the root cause to NVIDIA's closed camera userspace, and fixed it in this repo by pinning that stack to the last good release (2026-07-17).** The kernel, the device tree and the RCE firmware that we build and flash are cleared. Nothing on the BSP side of this repo is at fault.
 
 ## Symptom
