@@ -2,6 +2,7 @@
 
 | Path | What |
 |------|------|
+| `demo.sh`, `demo/` | Browser demo: both cameras and their settings on one page. See [docs/hadron.md](../../../docs/hadron.md#demo) |
 | `view/` | Live view of the EO and the Boson, with the adapter's ICM-45686 plotted against the frame timing |
 | `gen_ov64b40_tables.py` | Generates the driver's `ov64b40_tables.h` |
 

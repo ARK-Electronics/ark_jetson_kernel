@@ -66,6 +66,26 @@ sudo install -m 664 -o root -g root camera_isp/ark_hadron_rear_OV64B40.isp /var/
 sudo systemctl restart nvargus-daemon
 ```
 
+## Demo
+
+The demo shows the visible and thermal cameras side by side in your browser, and you can change their settings while you watch. Run it from your PC, in a checkout of this repo:
+
+```
+scripts/camera/hadron/demo.sh jetson@jetson.local
+```
+
+The script copies the demo to the Jetson over SSH, starts it there and opens `http://jetson.local:8642/` in your browser. Press Ctrl-C in the terminal to stop it. If your Jetson has a different login or address, change `jetson@jetson.local` to match.
+
+On the page you can:
+
+- Change the visible camera's mode and frame rate, use auto exposure or set the exposure and gain yourself, and adjust white balance and saturation.
+- Pick a colour palette for the thermal camera and run its flat-field correction.
+- See the exposure, gain and frame rate the visible camera is running at.
+- See the Hadron's roll and pitch on an attitude indicator. They come from the IMU on the adapter.
+- Turn on **Boson drives sync** to make the thermal camera the frame-sync master. The page then counts the sync pulses that reach the Jetson and the ones the IMU tags.
+
+The visible camera's picture comes through Argus, so it uses the ISP file described above. Its stream restarts when you change the mode, the frame rate or the exposure. When the demo stops, it puts the thermal camera's palette and sync mode back as it found them.
+
 ## Live view
 
 `scripts/camera/hadron/view/` shows the EO and the Boson side by side on the Jetson's display, with the adapter's ICM-45686 plotted against the frame timing. Install and use: [scripts/camera/hadron](../scripts/camera/hadron/README.md).
