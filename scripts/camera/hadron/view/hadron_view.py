@@ -186,6 +186,7 @@ class EoCamera(threading.Thread):
         self.luts = [make_lut(g) for g in self.wb]
         self.exp = self.gain = None
         self.exp_rng = self.gain_rng = None
+        self.exp_set = collections.deque(maxlen=16)     # (CLOCK_MONOTONIC of the write, exposure us), oldest first
         self.native = load_native()
         self.render = self.native.render_rows
         self.tsc_offset = tsc_minus_monotonic(self.native)
@@ -243,7 +244,7 @@ class EoCamera(threading.Thread):
                     # The VI skips frames without bumping the sequence when no buffer is queued.
                     self.dropped += max(0, round((sof - last_sof) * self.target_fps) - 1)
                 last_sof = sof
-                exp = (self.exp or 0) * 1e-6
+                exp = self._exposure_at(sof)
                 self.frames.append((seq, sof, exp))
                 self.deliver_ms = 0.95 * self.deliver_ms + 0.05 * (t_dq - sof) * 1000
 
@@ -279,9 +280,17 @@ class EoCamera(threading.Thread):
         # While it streams, the controls have this mode's ranges and read the values in use.
         self.exp_rng, self.gain_rng = cap.ctrl_range("exposure"), cap.ctrl_range("gain")
         self.exp, self.gain = cap.get_ctrl("exposure"), cap.get_ctrl("gain")
+        self.exp_set.append((float("-inf"), self.exp))
         log(f"EO streaming {EO_W}x{EO_H} @ {self.target_fps} fps into "
             f"{'USERPTR' if cap.memory == MEMORY_USERPTR else 'MMAP'} buffers; "
             f"exposure {self.exp_rng} us, gain {self.gain_rng}; TSC - monotonic {self.tsc_offset:.6f} s")
+
+    def _exposure_at(self, sof):
+        """Seconds of exposure of the frame read out from sof: the newest written before its first row began."""
+        for t_set, exp in reversed(self.exp_set):
+            if sof - exp * 1e-6 >= t_set:
+                return exp * 1e-6
+        return (self.exp or 0) * 1e-6
 
     def _update_ae_awb(self, cap, raw):
         # Sparse samples keep this well under a millisecond.
@@ -311,6 +320,7 @@ class EoCamera(threading.Thread):
         gain = int(min(max(round(ev / exp), gmin), gmax))
         if (exp, gain) != (self.exp, self.gain):
             cap.set_ctrls(exposure=exp, gain=gain)
+            self.exp_set.append((time.monotonic(), exp))
             self.exp, self.gain = exp, gain
 
 
