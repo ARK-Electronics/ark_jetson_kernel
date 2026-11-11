@@ -558,9 +558,9 @@ else
 fi
 
 # ── Wait for the flashed image to finish its first boot ─────────────────────
-# The image ships no SSH host keys: nvfb-ssh-keygen.service generates them on the
-# first boot, ordered Before=ssh.service, so an sshd banner proves the board is
-# past the window where losing power can leave it with truncated keys.
+# The image ships no SSH host keys: cloud-init generates them on the first boot, so
+# an sshd banner proves they exist. A power cut before they reach the disk leaves
+# empty keys, which ssh.service regenerates the next time it starts.
 # The board serves 192.168.55.1 over the cable it was just flashed on.
 # Keep in sync with the copy in flash.sh.
 
@@ -623,7 +623,7 @@ wait_for_first_boot() {
     done
     echo "" >&2
     echo "ERROR: no sshd on $JETSON_USB_ADDRESS:22 within ${FIRST_BOOT_TIMEOUT}s — the first boot did not finish." >&2
-    echo "       Keep it powered and cabled; check its console: systemctl status nvfb-ssh-keygen ssh" >&2
+    echo "       Keep it powered and cabled; check its console: systemctl status cloud-init ssh" >&2
     echo "       Removing power now can leave a unit whose sshd never starts." >&2
     return 1
 }

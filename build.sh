@@ -717,6 +717,23 @@ Wants=dev-rtc0.device
 After=dev-rtc0.device
 EOF
 
+# ── Regenerate missing or empty SSH host keys ───────────────────────────────
+
+# cloud-init writes the host keys once, on the first boot, and then disables itself. A power
+# cut before they reach the disk leaves zero-length keys that nothing regenerates, and sshd
+# never starts again. ssh-keygen -A creates the missing keys, replaces the empty ones, and
+# does nothing when they are all there.
+echo "Installing the SSH host key drop-in..."
+sudo mkdir -p "$L4T_DIR/rootfs/etc/systemd/system/ssh.service.d"
+sudo tee "$L4T_DIR/rootfs/etc/systemd/system/ssh.service.d/ark-hostkeys.conf" >/dev/null <<'EOF'
+# cloud-init writes the host keys once, on the first boot, and then disables itself. A power
+# cut before they reach the disk leaves zero-length keys that nothing regenerates, and sshd
+# never starts again. ssh-keygen -A creates the missing keys, replaces the empty ones, and
+# does nothing when they are all there.
+[Service]
+ExecStartPre=/usr/bin/ssh-keygen -A
+EOF
+
 # ── Record build metadata ───────────────────────────────────────────────────
 
 BUILD_COMMIT=$ARK_BUILD_COMMIT
