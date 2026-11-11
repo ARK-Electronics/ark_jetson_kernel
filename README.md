@@ -1,6 +1,6 @@
 # ARK Jetson Carrier Setup
 
-Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an ARK Jetson Carrier.
+These scripts build and flash an image for a Jetson **Orin Nano** or **Orin NX** on an ARK Jetson carrier.
 
 | Component | Version |
 | --- | --- |
@@ -9,7 +9,7 @@ Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an AR
 | Kernel | Linux 5.15 |
 | Host OS | Ubuntu 22.04 |
 
-> **Building on a non-22.04 host?** `setup.sh` and `build.sh` auto-containerize themselves in a 22.04 docker image (docker is auto-installed via apt if missing). See [docs/build_host.md](docs/build_host.md) for why we pin to 22.04.
+> **Building on a host other than Ubuntu 22.04?** `setup.sh` and `build.sh` run themselves inside a 22.04 docker image, and install docker through apt if it is missing. [docs/build_host.md](docs/build_host.md) explains why the build is pinned to 22.04.
 
 ## Products
 
@@ -23,7 +23,9 @@ Scripts for building and flashing a Jetson **Orin Nano** or **Orin NX** on an AR
 
 ## Flash a Prebuilt Image
 
-Just want the stock image? Each [release](https://downloads.arkelectron.com/jetson/) ships a ready-to-flash package per carrier — the same image bundles ship with. On a Debian/Ubuntu host, with the Jetson connected over USB and booted into recovery (hold the Force Recovery button while powering on):
+If you only want the stock image, flash a prebuilt package. Each [release](https://downloads.arkelectron.com/jetson/) has one for every carrier, with the same image that ARK's bundles ship with.
+
+Connect the Jetson to a Debian or Ubuntu host over USB, and boot it into recovery by holding the Force Recovery button while you power it on. Then run:
 
 ```
 curl -LO https://raw.githubusercontent.com/ARK-Electronics/ark_jetson_kernel/main/packaging/flash_from_package.sh
@@ -31,50 +33,65 @@ chmod +x flash_from_package.sh
 ./flash_from_package.sh pab        # or jaj / pab-v3, or a specific tag like pab-6.2.2.4
 ```
 
-No build tools or kernel source needed. Flashes the QSPI bootloader and the rootfs to NVMe; one package covers every Orin Nano/NX module variant. See [packaging/README.md](packaging/README.md) for details.
+The script flashes the QSPI bootloader and writes the rootfs to NVMe. One package covers every Orin Nano and NX module variant. [packaging/README.md](packaging/README.md) has the details.
 
-To customize the image instead, build from source:
+To customize the image, build it from source as described below.
 
 ## Build & Flash
 
 ### 1. Setup
-Download the BSP, root filesystem, and kernel source tarballs (one time):
+
+Download the BSP, root filesystem and kernel source tarballs. You only need to do this once.
+
 ```
 ./setup.sh
 ```
 
 ### 2. Build
+
+Build the image for your carrier:
+
 ```
 ./build.sh PAB
 ```
-- Targets are `PAB`, `JAJ`, `PAB_V3`, or `all`.
-- By default a build re-stages `staging/{TARGET}/` from scratch and provisions the image — it preinstalls [ARK-OS](https://github.com/ARK-Electronics/ARK-OS) and tooling. To bake in your own packages, edit [`provision.sh`](provision.sh).
-- `--fast` reuses the existing staged tree and just recompiles the kernel/device tree, for quick iteration after a full build.
-- `--no-provision` builds a bare image (no ARK-OS). `--clean` and `--provision` are still accepted but are the default now.
+
+- The target is `PAB`, `JAJ`, `PAB_V3` or `all`.
+- By default a build stages `staging/{TARGET}/` again from scratch and provisions the image, which preinstalls [ARK-OS](https://github.com/ARK-Electronics/ARK-OS) and tooling. To add your own packages to the image, edit [`provision.sh`](provision.sh).
+- `--fast` reuses the staged tree and only recompiles the kernel and device tree. Use it for quick changes after a full build.
+- `--no-provision` builds a bare image without ARK-OS. `--clean` and `--provision` are still accepted, but they are the default now.
 
 ### 3. Add WiFi (optional)
-Bake a WiFi profile into the image before flashing:
+
+You can put a WiFi profile into the image before you flash it:
+
 ```
 ./scripts/add_wifi_network.sh PAB YourNetworkName YourPassword
 ```
-Or add it later over the USB connection:
+
+Or add the network later, over the USB connection:
+
 ```
 ssh jetson@jetson.local
 sudo nmcli dev wifi connect YourNetworkName password YourPassword
 ```
 
 ### 4. Flash
-Connect to the USB port, then power on with the Force Recovery button held.
+
+Connect the carrier's USB port to your PC, then power the Jetson on with the Force Recovery button held.
+
 ```
 ./flash.sh PAB
 ```
-By default `flash.sh` targets NVMe. Other storage layouts:
+
+`flash.sh` writes to NVMe by default. For other storage, add a flag:
+
 ```
 ./flash.sh PAB --sdcard     # SD card (NVIDIA dev kit modules)
 ./flash.sh PAB --usb        # USB thumb drive
 ```
 
-When flashing completes, SSH in over Micro USB or WiFi:
+When the flash finishes, log in over Micro USB or WiFi:
+
 ```
 ssh jetson@jetson.local
 ```
@@ -85,7 +102,8 @@ ssh jetson@jetson.local
 
 ## Cameras
 
-Every carrier ships with an IMX219 overlay already selected, so cameras work out of the box: the quad overlay on **PAB**, the dual overlay on **JAJ** and **PAB_V3**. To use a different camera, select an overlay with NVIDIA's `jetson-io` tool. List what's available:
+Every carrier ships with an IMX219 overlay already selected, so IMX219 cameras work on the first boot. **PAB** has the quad overlay, and **JAJ** and **PAB_V3** have the dual. To use a different camera, select its overlay with NVIDIA's `jetson-io` tool. First list what is available:
+
 ```
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
 ```
@@ -98,22 +116,27 @@ sudo /opt/nvidia/jetson-io/config-by-hardware.py -l
    2. Camera IMX477 Quad
    3. Camera IMX708 Quad
 ```
-Apply one and reboot:
+
+Then apply one by name and reboot:
+
 ```
 sudo /opt/nvidia/jetson-io/config-by-hardware.py -n 2="Camera IMX477 Quad"
 sudo reboot
 ```
-See [docs/cameras.md](docs/cameras.md) for supported sensors and how to verify and stream a camera, and [docs/camera_overlays.md](docs/camera_overlays.md) to build, install, or write a custom camera overlay.
+
+[docs/cameras.md](docs/cameras.md) lists the supported sensors and shows how to test and stream a camera. [docs/camera_overlays.md](docs/camera_overlays.md) shows how to build, install or write your own camera overlay.
 
 ## More documentation
-- [docs/cameras.md](docs/cameras.md) — supported sensors, streaming, and known issues
-- [docs/camera_overlays.md](docs/camera_overlays.md) — build, install, and author camera device-tree overlays
-- [docs/gpio.md](docs/gpio.md) — 40-pin / I2S header GPIO and boot-time pad defaults
 
-- [docs/i2c.md](docs/i2c.md) — I2C bus map and scanning
-- [docs/servo_expander.md](docs/servo_expander.md) — PWM / servo output via the ARK Servo Expander (PCA9685) over I2C
-- [docs/10gbe_ethernet.md](docs/10gbe_ethernet.md) — Auvidea M20E 10GbE adapter
-- [docs/share_wifi.md](docs/share_wifi.md) — share the host PC's WiFi with the Jetson over USB
-- [docs/power.md](docs/power.md) — power modes, clock speeds, and measured power draw
-- [docs/kernel_development.md](docs/kernel_development.md) — manual kernel builds and device tree changes
-- [docs/build_host.md](docs/build_host.md) — why the build pins to Ubuntu 22.04
+| Page | Covers |
+| --- | --- |
+| [docs/cameras.md](docs/cameras.md) | Supported sensors, streaming, and known issues |
+| [docs/camera_overlays.md](docs/camera_overlays.md) | Build, install, and author camera device-tree overlays |
+| [docs/gpio.md](docs/gpio.md) | 40-pin / I2S header GPIO and boot-time pad defaults |
+| [docs/i2c.md](docs/i2c.md) | I2C bus map and scanning |
+| [docs/servo_expander.md](docs/servo_expander.md) | PWM / servo output via the ARK Servo Expander (PCA9685) over I2C |
+| [docs/10gbe_ethernet.md](docs/10gbe_ethernet.md) | Auvidea M20E 10GbE adapter |
+| [docs/share_wifi.md](docs/share_wifi.md) | Share the host PC's WiFi with the Jetson over USB |
+| [docs/power.md](docs/power.md) | Power modes, clock speeds, and measured power draw |
+| [docs/kernel_development.md](docs/kernel_development.md) | Manual kernel builds and device tree changes |
+| [docs/build_host.md](docs/build_host.md) | Why the build pins to Ubuntu 22.04 |
