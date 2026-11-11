@@ -66,6 +66,7 @@ SYNC_HISTORY = 25 * IR_CORE_FPS         # pulses kept: the phase plot spans 20 s
 LIN = np.clip((np.arange(1024) - BLACK) / (FULL - BLACK), 0, None).astype(np.float32)
 HERE = os.path.dirname(os.path.abspath(__file__))
 PID_FILE = os.path.join(HERE, "view.pid")
+SYNC_FILE = os.path.join(HERE, "view.sync")     # the Boson's mode to put back, kept while the view holds it master
 
 COLOR = dict(bg=(0.06, 0.07, 0.09), fg=(0.90, 0.91, 0.93), dim=(0.55, 0.58, 0.62), grid=(0.18, 0.20, 0.23),
              x=(0.95, 0.42, 0.42), y=(0.40, 0.82, 0.45), z=(0.35, 0.65, 0.98), warn=(1.0, 0.45, 0.35),
@@ -332,11 +333,25 @@ class FrameSync:
             return
         try:
             self.cam = boson.Boson()
-            self.restore = self.cam.ext_sync()
+            found, saved = self.cam.ext_sync(), self._saved()
+            # A view that was killed left the Boson master, so master read now is not the mode to put back.
+            self.restore = saved if found == boson.EXT_SYNC_MASTER and saved is not None else found
+            with open(SYNC_FILE, "w") as f:
+                f.write(f"{self.restore}\n")
             self.cam.set_ext_sync(boson.EXT_SYNC_MASTER)
         except OSError as e:
             self.error = f"Boson as sync master: {e}"
             self.release()          # the set may have taken effect and only its reply been lost
+
+    @staticmethod
+    def _saved():
+        """The mode in SYNC_FILE, which a view that was killed never put back, or None."""
+        try:
+            with open(SYNC_FILE) as f:
+                mode = int(f.read())
+        except (OSError, ValueError):
+            return None
+        return mode if mode in (boson.EXT_SYNC_DISABLED, boson.EXT_SYNC_MASTER, boson.EXT_SYNC_SLAVE) else None
 
     def release(self):
         """Put the Boson's sync mode back and let go of its port."""
@@ -347,6 +362,9 @@ class FrameSync:
                 self.cam.set_ext_sync(self.restore)
             except OSError as e:
                 log(f"Boson ext sync not restored: {e}")
+            else:
+                if os.path.exists(SYNC_FILE):
+                    os.unlink(SYNC_FILE)
         self.cam.close()
         self.cam = None
 

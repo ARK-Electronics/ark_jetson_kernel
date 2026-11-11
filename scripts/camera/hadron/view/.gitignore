@@ -3,4 +3,5 @@ __pycache__/
 libeorender.so
 view.log
 view.pid
+view.sync
 nv_ov64b40.ko
