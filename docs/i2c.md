@@ -1,19 +1,21 @@
 # I2C on ARK Jetson Carriers
 
-Orin Nano / NX, all ARK carriers (JAJ / PAB / PAB_V3).
+This page applies to an Orin Nano or NX on any ARK carrier: JAJ, PAB or PAB_V3.
 
 ## Scan a bus
+
+List the buses, then scan the one you want:
 
 ```bash
 i2cdetect -l              # list buses
 sudo i2cdetect -y -r 7    # scan bus 7
 ```
 
-Always pass **`-r`**. Without it, `i2cdetect` skips most addresses on Tegra — including `0x40–0x4F`, where power monitors live — so the scan looks emptier than it is.
+Always pass **`-r`**. Without it, `i2cdetect` skips most addresses on Tegra, including `0x40–0x4F`, where the power monitors live, so the scan looks emptier than it is.
 
 ## Which bus is which
 
-Linux bus numbers come from device-tree aliases and **don't** match the connector signal names — use this table, don't guess:
+Linux bus numbers come from device-tree aliases and **don't** match the connector signal names. Use this table instead of guessing:
 
 | Connector signal | `/dev`  | Logic | Devices |
 |------------------|---------|-------|---------|
@@ -22,4 +24,4 @@ Linux bus numbers come from device-tree aliases and **don't** match the connecto
 | Camera CSI       | `i2c-2` | 3.3 V | camera sensors |
 | I2C1             | `i2c-7` | 3.3 V | **INA238 `0x45`**, EEPROMs `0x50` / `0x58` |
 
-Adding an **ARK Servo Expander** for PWM? Its PCA9685 also defaults to `0x40` and collides with the INA3221 on `i2c-1` — see [servo_expander.md](servo_expander.md).
+If you add an **ARK Servo Expander** for PWM, its PCA9685 also defaults to `0x40` and collides with the INA3221 on `i2c-1`. [servo_expander.md](servo_expander.md) shows how to move it.

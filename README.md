@@ -132,6 +132,8 @@ sudo reboot
 | --- | --- |
 | [docs/cameras.md](docs/cameras.md) | Supported sensors, streaming, and known issues |
 | [docs/camera_overlays.md](docs/camera_overlays.md) | Build, install, and author camera device-tree overlays |
+| [docs/hadron.md](docs/hadron.md) | FLIR Hadron EO camera: driver, overlays, capture, demo and frame sync |
+| [docs/argus_relaunch_regression.md](docs/argus_relaunch_regression.md) | The JetPack 6.2.2 Argus regression and the camera stack pin that fixes it |
 | [docs/gpio.md](docs/gpio.md) | 40-pin / I2S header GPIO and boot-time pad defaults |
 | [docs/i2c.md](docs/i2c.md) | I2C bus map and scanning |
 | [docs/servo_expander.md](docs/servo_expander.md) | PWM / servo output via the ARK Servo Expander (PCA9685) over I2C |
@@ -139,4 +141,6 @@ sudo reboot
 | [docs/share_wifi.md](docs/share_wifi.md) | Share the host PC's WiFi with the Jetson over USB |
 | [docs/power.md](docs/power.md) | Power modes, clock speeds, and measured power draw |
 | [docs/kernel_development.md](docs/kernel_development.md) | Manual kernel builds and device tree changes |
+| [docs/device-tree.md](docs/device-tree.md) | Where a device-tree change belongs, and how the build applies ARK's changes |
+| [docs/qspi_bootloader.md](docs/qspi_bootloader.md) | Flashing only the QSPI bootloader |
 | [docs/build_host.md](docs/build_host.md) | Why the build pins to Ubuntu 22.04 |

@@ -7,6 +7,7 @@ Before editing a file matching a row's paths, read that rule in `.agents/rules/`
 | `build-scripts.md` | `setup.sh`, `build.sh`, `build_kernel.sh`, `flash.sh`, `provision.sh` |
 | `bct-crlf.md` | `products/*/device_tree/bootloader/**` (MB1 BCT dtsi) |
 | `dt-overrides.md` | `products/*/device_tree/**/ark-*-overrides.dtsi` |
+| `docs.md` | `docs/**`, `README.md` |
 
 Skills live in `.agents/skills/`: `cut-jetson-release` tags, validates and publishes a product release; `jetson-hil` drives a bench Jetson (DP712 power, debug UART, USB flash, SSH).
 

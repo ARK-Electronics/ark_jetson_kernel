@@ -1,15 +1,15 @@
 # JetPack 6.2.2 Argus Regression
 
-Tracking doc for [issue #107](https://github.com/ARK-Electronics/ark_jetson_kernel/issues/107): camera pipelines that work on our old R36.4.3-based images misbehave on the R36.5.0 / JetPack 6.2.2 base. **Status: reproduced on the bench, root-caused to NVIDIA's closed camera userspace, and fixed in this repo by pinning that stack to the last good release (2026-07-17).** The kernel, device tree, and RCE firmware we build/flash are exonerated — nothing in the BSP side of this repo is at fault.
+This page tracks [issue #107](https://github.com/ARK-Electronics/ark_jetson_kernel/issues/107). Camera pipelines that work on our old images based on R36.4.3 misbehave on the R36.5.0 / JetPack 6.2.2 base. **Status: we reproduced it on the bench, traced the root cause to NVIDIA's closed camera userspace, and fixed it in this repo by pinning that stack to the last good release (2026-07-17).** The kernel, the device tree and the RCE firmware that we build and flash are cleared. Nothing on the BSP side of this repo is at fault.
 
 ## Symptom
 
-On stock 36.5.0 userspace, two distinct misbehaviors, both absent on 36.4.3/36.4.4:
+The stock 36.5.0 userspace misbehaves in two distinct ways. Neither happens on 36.4.3 or 36.4.4.
 
-1. **Every session teardown is dirty**: `ERROR: ... GstNvArgusCameraSrc: CANCELLED / Argus Correctable Error Status` at `Setting pipeline to NULL`, on every single run (frames themselves are fine). This is the exact log Gremsy pasted in #107.
-2. **Occasional hard relaunch failure** (~1 in 60–120 relaunches on our bench): the pipeline starts but delivers no frames (`nvbuf_utils: dmabuf_fd -1 mapped entry NOT found`, `NvBufSurfaceFromFd Failed`), the client's teardown RPC times out (`(Argus) Error Timeout ... ClientSocketManager`), and **nvargus-daemon segfaults**. Daemon-side chain, verbatim from the bench: `SCF: Error Timeout ... CaptureServiceEvent wait` → `Error: Camera HwEvents wait, this may indicate a hardware timeout occured` → `InvalidState: 2 buffers still pending during EGLStreamProducer destruction` → `waitForIdle() timed out` → `(NvCameraUtils) Error InvalidState: Mutex not initialized (EGLStreamProducer.cpp)` → `Main process exited, code=killed, status=11/SEGV`. systemd restarts the daemon (~1 s), a client connecting during the window gets `Cannot create camera provider`, and service recovers — net ~40 s video outage per event. On setups where the daemon wedges instead of dying (several forum reports), it's dead until reboot.
+1. **Every session teardown is dirty.** Each run prints `ERROR: ... GstNvArgusCameraSrc: CANCELLED / Argus Correctable Error Status` at `Setting pipeline to NULL`. The frames themselves are fine. This is the exact log Gremsy pasted in #107.
+2. **A relaunch occasionally fails hard**, about 1 in 60–120 relaunches on our bench. The pipeline starts but delivers no frames, and logs `nvbuf_utils: dmabuf_fd -1 mapped entry NOT found` and `NvBufSurfaceFromFd Failed`. The client's teardown RPC then times out with `(Argus) Error Timeout ... ClientSocketManager`, and **nvargus-daemon segfaults**. This is the chain on the daemon side, verbatim from the bench: `SCF: Error Timeout ... CaptureServiceEvent wait` → `Error: Camera HwEvents wait, this may indicate a hardware timeout occured` → `InvalidState: 2 buffers still pending during EGLStreamProducer destruction` → `waitForIdle() timed out` → `(NvCameraUtils) Error InvalidState: Mutex not initialized (EGLStreamProducer.cpp)` → `Main process exited, code=killed, status=11/SEGV`. systemd restarts the daemon in about 1 s. A client that connects in that window gets `Cannot create camera provider`, and then service recovers. Each event costs about 40 s of video. Several forum reports describe setups where the daemon wedges instead of dying, and there it stays dead until a reboot.
 
-Grep-able signatures: `Argus Correctable Error Status`, `NvBufSurfaceFromFd`, `Error: Camera HwEvents wait`, `Mutex not initialized`, `status=11/SEGV` (journal), `Cannot create camera provider`.
+You can grep for these signatures: `Argus Correctable Error Status`, `NvBufSurfaceFromFd`, `Error: Camera HwEvents wait`, `Mutex not initialized`, `Cannot create camera provider`, and `status=11/SEGV` in the journal.
 
 ## Affected versions
 
@@ -20,11 +20,22 @@ Grep-able signatures: `Argus Correctable Error Status`, `NvBufSurfaceFromFd`, `E
 | 36.4.7 | 6.2.1 apt refresh | `libnvscf.so` + `libnvodm_imager.so` rebuilt, all else byte-identical to 36.4.4 | regressed — NVIDIA: "Suppose it's regressing for R36.4.7" |
 | 36.5.0 | 6.2.2 | further changes on the 36.4.7 line | regressed — bench: 248/252 dirty teardowns, 3 daemon segfaults in 252 launches |
 
-Key external threads: [368915](https://forums.developer.nvidia.com/t/jetson-orin-nano-jetpack-6-2-2-36-5-nvarguscamerasrc-fails-to-load-when-launched-for-a-second-time/368915) (Orin Nano relaunch black-screen, stock sensors, no encoder — NVIDIA suggested the rtcpu power workaround there), [358915](https://forums.developer.nvidia.com/t/jetson-orin-nano-developer-kit-jetpack-6-2-1-36-4-7-nvarguscamerasrc-fails-to-load-the-camera-with-id-1-when-launched-for-the-second-time/358915) (the 36.4.3-good/36.4.7-bad/36.5.0-still-bad bisect), [374682](https://forums.developer.nvidia.com/t/argus-timeout-when-capturing-frames-still-occurs-in-jetpack-6-2-2-r36-5-0/374682) (6.2.2 SCF timeouts + hangs, closest to our crash mode), [375178](https://forums.developer.nvidia.com/t/jetpack-6-2-1-three-cameras-using-libargus-close-and-reopen-cause-system-crash/375178), [375615](https://forums.developer.nvidia.com/t/jetson-orin-nx-16gb-jp6-2-2ga-argus-camera-frame-capture-abnormality-issue/375615?page=2), [Stereolabs 11481](https://community.stereolabs.com/t/nvargus-daemon-sensor-could-not-be-opened-imagerguid-15-on-multi-camera-kill-and-restart-after-updating-to-zed-sdk-5-4-jetpack-6-2-l4t-36-5/11481). Not listed in the [R36.5 release notes](https://docs.nvidia.com/jetson/archives/r36.5/ReleaseNotes/Jetson_Linux_Release_Notes_r36.5.pdf) known issues; NVIDIA has repeatedly failed to reproduce internally and committed to no fix.
+These are the main external threads:
+
+- [368915](https://forums.developer.nvidia.com/t/jetson-orin-nano-jetpack-6-2-2-36-5-nvarguscamerasrc-fails-to-load-when-launched-for-a-second-time/368915) reports a black screen on relaunch on an Orin Nano, with stock sensors and no encoder. NVIDIA suggested the rtcpu power workaround there.
+- [358915](https://forums.developer.nvidia.com/t/jetson-orin-nano-developer-kit-jetpack-6-2-1-36-4-7-nvarguscamerasrc-fails-to-load-the-camera-with-id-1-when-launched-for-the-second-time/358915) has the bisect: 36.4.3 good, 36.4.7 bad, 36.5.0 still bad.
+- [374682](https://forums.developer.nvidia.com/t/argus-timeout-when-capturing-frames-still-occurs-in-jetpack-6-2-2-r36-5-0/374682) reports SCF timeouts and hangs on 6.2.2. It is the closest to our crash.
+- Further reports are [375178](https://forums.developer.nvidia.com/t/jetpack-6-2-1-three-cameras-using-libargus-close-and-reopen-cause-system-crash/375178), [375615](https://forums.developer.nvidia.com/t/jetson-orin-nx-16gb-jp6-2-2ga-argus-camera-frame-capture-abnormality-issue/375615?page=2) and [Stereolabs 11481](https://community.stereolabs.com/t/nvargus-daemon-sensor-could-not-be-opened-imagerguid-15-on-multi-camera-kill-and-restart-after-updating-to-zed-sdk-5-4-jetpack-6-2-l4t-36-5/11481).
+
+The regression is not among the known issues in the [R36.5 release notes](https://docs.nvidia.com/jetson/archives/r36.5/ReleaseNotes/Jetson_Linux_Release_Notes_r36.5.pdf). NVIDIA has repeatedly failed to reproduce it internally and has committed to no fix.
 
 ## Bench results (2026-07-17)
 
-Setup: PAB_V3 carrier, Orin NX 16GB, dual IMX219 (stock driver + our baked dual overlay), image = current main (`ac62335`, R36.5.0 base), rtsp-server disabled. Method: cycle `nvarguscamerasrc` sessions (90 frames @1080p to JPEG, clean EOS teardown), alternating sensor 0/1, 10 s idle gap so the RCE runtime-suspends between launches (5 s autosuspend). Per-launch verdicts: PASS = frames + clean teardown; DIRTY = frames but Argus errors (signature #1); FAIL = no frames / hang (signature #2).
+The setup was a PAB_V3 carrier with an Orin NX 16GB and dual IMX219, using the stock driver and our baked dual overlay. The image was current main (`ac62335`, R36.5.0 base) with rtsp-server disabled.
+
+The method was to cycle `nvarguscamerasrc` sessions, alternating between sensor 0 and sensor 1. Each session captured 90 frames at 1080p to JPEG and tore down cleanly on EOS. A 10 s idle gap between launches let the RCE runtime-suspend, since its autosuspend delay is 5 s.
+
+Each launch got a verdict. PASS means frames and a clean teardown. DIRTY means frames with Argus errors, which is signature #1. FAIL means no frames or a hang, which is signature #2.
 
 | Configuration | Launches | PASS | DIRTY | FAIL (daemon SEGV events) |
 |---|---|---|---|---|
@@ -35,37 +46,41 @@ Setup: PAB_V3 carrier, Orin NX 16GB, dual IMX219 (stock driver + our baked dual 
 | **36.4.4 userspace quartet** on the same kernel/fw | 100 | **100** | 0 | 0 |
 | repacked `+ark1` 36.4.4 set (the shipped fix), post-install | 20 | 20 | 0 | 0 |
 
-Conclusions the data forces:
+The data forces these conclusions:
 
-- **The rtcpu runtime-PM workaround from thread 368915 is ineffective here.** The daemon crashed with the RCE pinned `active` the whole run (`pre=active` logged on every iteration). Do not ship it. It may still matter for the Orin-Nano black-screen manifestation in that thread, but it is not a fix for the regression.
-- **The regression is entirely in NVIDIA's closed camera userspace.** Swapping only `nvidia-l4t-camera`, `nvidia-l4t-multimedia`, `nvidia-l4t-multimedia-utils`, and `nvidia-l4t-gstreamer` to 36.4.x — same 36.5.0 kernel, same OOT modules, same DT, same flashed RCE firmware, runtime PM back to `auto` — produced 250/250 clean launches with pristine teardowns.
-- **The kernel side is exonerated**, including the new-in-36.5.0 capture-ivc channel semaphore (it was loaded and active during all 250 clean launches, and dmesg stayed silent through every failure — the crashes never touched the kernel logs). Its leaked-semaphore error path (missing `up()` on `-EBADF` in `tegra_capture_ivc_notify_chan_id()`) remains a latent NVIDIA bug but is not this regression's trigger.
-- The two failure signatures come from the same userspace: both vanish together with the version swap.
-- Partial swaps don't work: 36.4.x `nvidia-l4t-camera` alone against 36.5.0 multimedia fails with `(Argus) Error BadParameter: Invalid surface count` (NvBufSurface ABI skew). The four debs must move as a set.
+- **The rtcpu runtime-PM workaround from thread 368915 does not work here.** The daemon crashed with the RCE pinned `active` for the whole run, and `pre=active` was logged on every iteration. Do not ship it. It may still matter for the black screen on Orin Nano in that thread, but it does not fix the regression.
+- **The regression is entirely in NVIDIA's closed camera userspace.** We swapped only `nvidia-l4t-camera`, `nvidia-l4t-multimedia`, `nvidia-l4t-multimedia-utils` and `nvidia-l4t-gstreamer` to 36.4.x. The 36.5.0 kernel, the OOT modules, the DT and the flashed RCE firmware stayed the same, and runtime PM went back to `auto`. That produced 250/250 clean launches with pristine teardowns.
+- **The kernel side is cleared**, including the capture-ivc channel semaphore that is new in 36.5.0. It was loaded and active during all 250 clean launches, and dmesg stayed silent through every failure, so the crashes never touched the kernel logs. Its error path leaks the semaphore, through a missing `up()` on `-EBADF` in `tegra_capture_ivc_notify_chan_id()`. That remains a latent NVIDIA bug, but it does not trigger this regression.
+- The two failure signatures come from the same userspace. Both vanish together with the version swap.
+- A partial swap does not work. 36.4.x `nvidia-l4t-camera` alone against 36.5.0 multimedia fails with `(Argus) Error BadParameter: Invalid surface count`, because the NvBufSurface ABI differs. The four debs must move as a set.
 
 ## The fix (shipped in this repo)
 
-`--provision` now pins the camera userspace stack to `NV_CAMERA_STACK_VERSION` (versions.env, currently `36.4.4-20250616085344` = JetPack 6.2.1, the newest bench-clean release). Because the 36.4.x debs declare `nvidia-l4t-core (<< 36.5-0)` and exact-stamp deps on cuda/nvsci, provision.sh repacks them (`relax_l4t_deps`): core cap relaxed, out-of-set exact deps unversioned, in-set exact deps retargeted, and the version restamped to `NV_CAMERA_PIN_VERSION` (`36.5.99-20250616085344+ark1`). They then install as one ordinary `apt-get install --allow-downgrades` transaction — dpkg/apt state stays consistent (`apt-get check` clean) — and are `apt-mark hold` so an on-device upgrade against NVIDIA's repo can't drag them back to the regressed stamp.
+`--provision` now pins the camera userspace stack to `NV_CAMERA_STACK_VERSION` in versions.env. It is currently `36.4.4-20250616085344`, which is JetPack 6.2.1, the newest release that ran clean on the bench.
 
-Already-flashed 6.2.2.x devices can be fixed in place with the same four repacked debs: `sudo apt-get install -y --allow-downgrades ./ark1_*.deb && sudo apt-mark hold nvidia-l4t-gstreamer nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils && sudo systemctl restart nvargus-daemon`.
+The 36.4.x debs declare `nvidia-l4t-core (<< 36.5-0)` and depend on exact stamps of cuda and nvsci, so provision.sh repacks them in `relax_l4t_deps`. It relaxes the core cap, removes the version from exact deps outside the set, retargets exact deps inside the set, and restamps the version to `NV_CAMERA_PIN_VERSION`, which is `36.5.99-20250616085344+ark1`.
 
-On each BSP bump, rerun the repro below against the new stock stack; drop the pin (set `NV_CAMERA_STACK_VERSION` back to the BSP stamp) once NVIDIA ships a fixed userspace. Known tradeoff while pinned: the camera stack stops receiving NVIDIA's 36.5.x security/bug updates.
+The debs then install as one ordinary `apt-get install --allow-downgrades` transaction, and the dpkg and apt state stays consistent: `apt-get check` is clean. They are held with `apt-mark hold`, so an upgrade on the device against NVIDIA's repo can't drag them back to the regressed stamp.
+
+You can fix a device that is already flashed with 6.2.2.x in place, with the same four repacked debs: `sudo apt-get install -y --allow-downgrades ./ark1_*.deb && sudo apt-mark hold nvidia-l4t-gstreamer nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils && sudo systemctl restart nvargus-daemon`.
+
+On each BSP bump, run the repro below again against the new stock stack. Once NVIDIA ships a fixed userspace, drop the pin by setting `NV_CAMERA_STACK_VERSION` back to the BSP stamp. The pin has one known cost: the camera stack stops receiving NVIDIA's 36.5.x security and bug updates.
 
 ### Why the version is restamped, not just suffixed
 
-`nvidia-jetpack-runtime` declares `nvidia-l4t-gstreamer (>> 36.5-0), (<< 36.6-0)`, which no truthful 36.4.4 stamp can satisfy — `apt install nvidia-jetpack` failed outright with "you have requested an impossible situation". `36.5.99` sits inside that window and above NVIDIA's newest 36.5.x, so the metapackage resolves and apt still never wants to upgrade the set. Nothing else in that dependency tree is tighter: `nvidia-l4t-jetson-multimedia-api` asks only for `(>> 36.0) (<< 37.0)` on camera/multimedia/multimedia-utils, and the CUDA/TensorRT/VPI side doesn't depend on them at all.
+`nvidia-jetpack-runtime` declares `nvidia-l4t-gstreamer (>> 36.5-0), (<< 36.6-0)`, which no truthful 36.4.4 stamp can satisfy. `apt install nvidia-jetpack` failed outright with "you have requested an impossible situation". `36.5.99` sits inside that window and above NVIDIA's newest 36.5.x, so the metapackage resolves and apt still never wants to upgrade the set. Nothing else in that dependency tree is tighter. `nvidia-l4t-jetson-multimedia-api` asks only for `(>> 36.0) (<< 37.0)` on camera, multimedia and multimedia-utils, and the CUDA, TensorRT and VPI side doesn't depend on them at all.
 
-The contents are still `NV_CAMERA_STACK_VERSION`; the `+ark1` suffix and the real `20250616085344` build stamp in the debian revision are what say so. When the pin is dropped, both variables go back to the BSP stamp together.
+The contents are still `NV_CAMERA_STACK_VERSION`. The `+ark1` suffix and the real `20250616085344` build stamp in the debian revision are what say so. When you drop the pin, set both variables back to the BSP stamp together.
 
-For Gremsy (#107): their custom IMX586 driver is not the cause — stock sensors reproduce it. They can apply the same pinned userspace on a 36.5.0-based release (best: current kernel + working cameras), or stay on `b2275f3` (R36.4.3) until NVIDIA fixes 36.5.x.
+For Gremsy, in #107: their custom IMX586 driver is not the cause, because stock sensors reproduce it. They can apply the same pinned userspace on a release based on 36.5.0, which is the better option, since it gives them the current kernel and working cameras. Or they can stay on `b2275f3` (R36.4.3) until NVIDIA fixes 36.5.x.
 
-Upstream: worth filing on the NVIDIA forum with the bench data — the `HwEvents wait` → EGLStreamProducer `Mutex not initialized` → SEGV chain, the 36.4.3/36.4.4-good vs 36.4.7/36.5.0-bad bisect, and the fact that the 36.4.7 refresh rebuilt only `libnvscf.so`/`libnvodm_imager.so` — and to note the rtcpu workaround does not help on Orin NX.
+This is worth filing on the NVIDIA forum with the bench data. That means the chain from `HwEvents wait` through the EGLStreamProducer `Mutex not initialized` to the SEGV, the bisect with 36.4.3 and 36.4.4 good and 36.4.7 and 36.5.0 bad, and the fact that the 36.4.7 refresh rebuilt only `libnvscf.so` and `libnvodm_imager.so`. The report should also note that the rtcpu workaround does not help on Orin NX.
 
 ## Reproducing it
 
-Two IMX219s (or any two stock-supported sensors), a 36.5.0-based image, rtsp-server stopped so the cameras are free. The dirty-teardown signature shows on the *first* `gst-launch-1.0 nvarguscamerasrc ... ! fakesink` run; the crash needs cycling — alternate sensors with an idle gap and wait for a FAIL (observed: iteration 54 and 66-launches-later on one bench day; NVIDIA's internal repro attempts failed, so expect variance). Watch `sudo journalctl -u nvargus-daemon -f` for the SEGV.
+You need two IMX219s, or any two sensors the stock image supports, and an image based on 36.5.0. Stop rtsp-server so that the cameras are free. The dirty teardown shows on the *first* `gst-launch-1.0 nvarguscamerasrc ... ! fakesink` run. The crash needs cycling: alternate the sensors with an idle gap and wait for a FAIL. On one bench day it came at iteration 54 and again 66 launches later. NVIDIA's own attempts to reproduce it failed, so expect variance. Watch `sudo journalctl -u nvargus-daemon -f` for the SEGV.
 
-Test harness used for all numbers above (also handy for the BSP-bump retest):
+This is the test harness behind all the numbers above. It is also what to run again after a BSP bump:
 
 ```bash
 #!/usr/bin/env bash
@@ -111,11 +126,30 @@ sudo kill "$JP" "$DP" 2>/dev/null
 echo "DONE PASS=$pass DIRTY=$dirty FAIL=$fail" >> "$OUT/summary.txt"
 ```
 
-Phases that produced the numbers: `RUN=p1 ./argus_test.sh 12 10 0` (single cam), `RUN=p2 ./argus_test.sh 60 10 0 1` (alternating — this hit the first crash at i=54), `echo on > .../power/control` then `RUN=won ./argus_test.sh 120 10 0 1` (workaround test — crashed at i=86), then the same alternating run on each candidate userspace. When a launch fails, classify before rebooting: immediate retry (transient?), `sudo systemctl status nvargus-daemon` (SEGV + restart counter?), `v4l2-ctl --stream-mmap` (pure V4L2 path still alive?), dmesg (should be silent — kernel noise would be new information).
+These phases produced the numbers:
+
+1. `RUN=p1 ./argus_test.sh 12 10 0` ran a single camera.
+2. `RUN=p2 ./argus_test.sh 60 10 0 1` alternated the two cameras, and hit the first crash at i=54.
+3. `echo on > .../power/control` and then `RUN=won ./argus_test.sh 120 10 0 1` tested the workaround, and crashed at i=86.
+4. The same alternating run was then repeated on each candidate userspace.
+
+When a launch fails, classify the failure before you reboot:
+
+- Retry at once, to see whether it was transient.
+- Run `sudo systemctl status nvargus-daemon`, to see a SEGV and the restart counter.
+- Run `v4l2-ctl --stream-mmap`, to see whether the pure V4L2 path is still alive.
+- Read dmesg. It should be silent, and kernel noise would be new information.
 
 ## Background: how the root cause was narrowed
 
-Artifact forensics that pointed at userspace before the bench confirmed it: the 36.4.7 refresh (where the forum bisect first sees the regression) left every `nvidia-l4t-camera` binary byte-identical to 36.4.4 **except `libnvscf.so` and `libnvodm_imager.so`**; the camrtc kernel↔RCE ABI headers are unchanged 36.4.3→36.5.0; the rtcpu DT (including `nvidia,autosuspend-delay-ms = <5000>`) is byte-identical across the releases; and the kernel-side camera diffs are compat shims plus the announced VI leak/error-recovery fixes, with one new piece of synchronization (the capture-ivc per-channel semaphore, absent from all 36.4.x builds — verified via `nm -u capture-ivc.ko | grep down_timeout` on NVIDIA's prebuilt debs) that the bench then cleared of blame. NVIDIA's apt pool (`repo.download.nvidia.com/jetson/t234` + `common`, dists r36.4/r36.5) retains all the 36.4.x debs, which is what makes the pin reproducible.
+A comparison of the release artifacts pointed at userspace before the bench confirmed it:
+
+- The 36.4.7 refresh is where the forum bisect first sees the regression. It left every `nvidia-l4t-camera` binary byte-identical to 36.4.4 **except `libnvscf.so` and `libnvodm_imager.so`**.
+- The camrtc ABI headers between the kernel and the RCE are unchanged from 36.4.3 to 36.5.0.
+- The rtcpu DT, including `nvidia,autosuspend-delay-ms = <5000>`, is byte-identical across the releases.
+- The camera diffs on the kernel side are compat shims plus the announced VI leak and error-recovery fixes. They add one new piece of synchronization, the per-channel semaphore in capture-ivc, which is absent from all 36.4.x builds. We verified that with `nm -u capture-ivc.ko | grep down_timeout` on NVIDIA's prebuilt debs, and the bench then cleared it of blame.
+
+NVIDIA's apt pool keeps all the 36.4.x debs, which is what makes the pin reproducible. The pool is `repo.download.nvidia.com/jetson/t234` plus `common`, in dists r36.4 and r36.5.
 
 ## Results log
 
