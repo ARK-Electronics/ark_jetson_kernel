@@ -33,6 +33,8 @@ chmod +x flash_from_package.sh
 
 No build tools or kernel source needed. Flashes the QSPI bootloader and the rootfs to NVMe; one package covers every Orin Nano/NX module variant. See [packaging/README.md](packaging/README.md) for details.
 
+Add `--encrypt` to put the rootfs on an encrypted partition that the Jetson unlocks by itself at boot, so an SSD removed from the carrier can't be read. See [docs/disk_encryption.md](docs/disk_encryption.md).
+
 To customize the image instead, build from source:
 
 ## Build & Flash
@@ -72,6 +74,7 @@ By default `flash.sh` targets NVMe. Other storage layouts:
 ```
 ./flash.sh PAB --sdcard     # SD card (NVIDIA dev kit modules)
 ./flash.sh PAB --usb        # USB thumb drive
+./flash.sh PAB --encrypt    # NVMe, rootfs encrypted (docs/disk_encryption.md)
 ```
 
 When flashing completes, SSH in over Micro USB or WiFi:
@@ -115,5 +118,6 @@ See [docs/cameras.md](docs/cameras.md) for supported sensors and how to verify a
 - [docs/10gbe_ethernet.md](docs/10gbe_ethernet.md) — Auvidea M20E 10GbE adapter
 - [docs/share_wifi.md](docs/share_wifi.md) — share the host PC's WiFi with the Jetson over USB
 - [docs/power.md](docs/power.md) — power modes, clock speeds, and measured power draw
+- [docs/disk_encryption.md](docs/disk_encryption.md) — encrypted rootfs that unlocks itself at boot, and what it does and doesn't protect
 - [docs/kernel_development.md](docs/kernel_development.md) — manual kernel builds and device tree changes
 - [docs/build_host.md](docs/build_host.md) — why the build pins to Ubuntu 22.04

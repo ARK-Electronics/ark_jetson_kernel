@@ -1,13 +1,13 @@
 ---
 name: jetson-hil
-description: Drive a Jetson carrier (PAB, JAJ, PAB_V3) on the bench — power it from the Rigol DP712, capture the debug UART, flash over USB, reach it over SSH, and run boot or regression loops. Use when a task needs a real Jetson in the loop.
+description: Drive a Jetson carrier (PAB, JAJ, PAB_V3) on the bench — power it from a Rigol DP712 or DP800, capture the debug UART, flash over USB, reach it over SSH, and run boot or regression loops. Use when a task needs a real Jetson in the loop.
 ---
 
 # Jetson hardware in the loop
 
-> **TODO: untested.** Neither this skill nor `jetson_hil.py` has been run against a real Jetson or DP712. The first session that uses it must check each step and command it relies on against the hardware, fix what is wrong, and include those fixes and the removal of this notice in any PR produced with the skill's help.
-
 `jetson_hil.py` (next to this file, needs pyserial) does the mechanics: `ports`, `psu`, `console` (with `--cycle-psu` for a timed cold boot), `wait-ssh`. Run it with `--help`.
+
+Bench-verified on a JAJ with an Orin Nano 4GB and a Rigol DP811 over USB-TMC: `ports`, `psu status|on|off`, `console` with and without `--cycle-psu`, `wait-ssh`, and USB flashing with a human on Force Recovery. The DP712-over-FT232 path, `ports --identify` and `psu set` have not been run on hardware yet.
 
 ## 1. Ask before touching anything
 
@@ -28,6 +28,7 @@ Do not power-cycle, flash or change a setpoint until the answers are in. Then ru
 | Item | Value |
 |---|---|
 | DP712 | RS232 through an FT232 cable, 9600 baud, SCPI. `:OUTP CH1,ON`/`OFF`, `:OUTP? CH1` → `ON`/`OFF`, `:SOUR:VOLT`/`:SOUR:CURR`, `:MEAS:VOLT? CH1`. The first query after opening the port is dropped, and back-to-back commands get garbled; the script retries and spaces them. |
+| DP800 (DP811) | USB-TMC, same SCPI; pass the kernel node (`/dev/usbtmcN`, group `dialout`) as the PSU port. The number changes whenever the supply re-enumerates: take it from `ports`. A DP811 has only CH1, and a query to a channel it lacks times out rather than erroring. |
 | Supply setpoints | Carrier-specific: ask. Benches have used 16 V (JAJ boot timing), 20 V (JAJ power), 25.2 V (PAB power modules). |
 | Debug UART | 115200 8N1, `ttyTCU0` on the device. Login `jetson` / `jetson`. With the fast-boot firmware, nothing prints before UEFI. |
 | USB IDs | `0955:7020` = booted with the L4T gadget. `0955:7323/7423/7523/7623` = recovery mode (NX 16 GB / NX 8 GB / Nano 8 GB / Nano 4 GB). |
@@ -36,7 +37,7 @@ Do not power-cycle, flash or change a setpoint until the answers are in. Then ru
 
 ## 3. Loops
 
-- **Cold boot with a timed console:** `jetson_hil.py console <uart> --cycle-psu <psu> --seconds 120 --until 'login:' --log boot.log`. Timestamps are seconds since `OUTP ON`, and that includes the carrier's ~2 s power-on reset. Then `wait-ssh`.
+- **Cold boot with a timed console:** `jetson_hil.py console <uart> --cycle-psu <psu> --seconds 120 --until 'login:' --log boot.log`. Timestamps are seconds since `OUTP ON`, and that includes the carrier's ~2 s power-on reset. Then `wait-ssh`, which waits for sshd's banner and needs no key, so it works on a fresh flash.
 - **Flash:** the user holds Force Recovery while you run `psu off` then `psu on`. Check that `ports` shows a recovery ID. `flash.sh` and `build.sh` prompt for sudo, so give the user the exact command (`./flash.sh <TARGET>`) to run themselves. Throw away the first boot after a flash (key generation, rootfs resize, first-boot provisioning) before timing anything.
 - **A failed flash** needs a physical re-entry: power off, then on with Force Recovery held. Re-authorizing USB does not reset the BootROM. Never start an RCM flash right after a software `reboot recovery`, because it stalls at `Sending mb1`.
 
@@ -46,6 +47,8 @@ Do not power-cycle, flash or change a setpoint until the answers are in. Then ru
 - A factory-fresh module can report flash success and still not boot, then succeed on the second pass.
 - On older images, an offline boot hangs in `starting` behind `systemd-time-wait-sync`. `systemctl list-jobs` shows it. Fix per device with `sudo systemctl disable systemd-time-wait-sync`.
 - A flash that dies with "cannot mount the NFS server" means NetworkManager grabbed the flasher's USB NIC. `flash.sh` guards against this; a hand-rolled `l4t_initrd_flash.sh` does not.
-- One process per serial port. A leftover reader steals lines; check with `fuser <tty>`.
+- One process per serial port. A leftover reader steals lines; check with `fuser <tty>`. A terminal the user has open (PuTTY, screen) makes the console look dead: a silent UART through a whole cold boot means ask, not "no UART wired".
+- No SSD, nothing to boot: the board powers up and draws current but never enumerates `0955:7020`, and is not on the network.
+- After repeated failed boots UEFI stops trying the rootfs and prints `L4TLauncher: Attempting Recovery Boot`, even after a power cycle. The recovery initrd then leaves a root shell on the debug UART, which is a handy place to inspect the SSD. A reflash clears it.
 - Measured supply current is a module plus carrier plus fan number. Read the module rail from the on-module INA3221 (`in1_input`).
 - Leave the supply in the state you found it and say so. If you changed a setpoint, restore it.
