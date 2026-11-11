@@ -68,19 +68,23 @@ sudo systemctl restart nvargus-daemon
 
 ## Demo
 
-Both cameras on one page in a browser, with the settings that change them:
+The demo shows the visible and thermal cameras side by side in your browser, and you can change their settings while you watch. Run it from your PC, in a checkout of this repo:
 
 ```
-scripts/camera/hadron/demo.sh [user@host]
+scripts/camera/hadron/demo.sh jetson@jetson.local
 ```
 
-Run it on a PC with this repo checked out. It copies the demo to the Jetson over SSH, starts it there and opens `http://<jetson>:8642/`. The host defaults to `jetson@jetson.local`. Ctrl-C stops it.
+The script copies the demo to the Jetson over SSH, starts it there and opens `http://jetson.local:8642/` in your browser. Press Ctrl-C in the terminal to stop it. If your Jetson has a different login or address, change `jetson@jetson.local` to match.
 
-- **EO:** through Argus, so the picture needs the ISP file above. The page sets the mode, the frame rate, auto or manual exposure and gain, white balance and saturation. A change of mode, frame rate or exposure restarts the stream.
-- **Boson:** colour palette and flat-field correction, over its serial port.
-- **Readout:** the exposure, gain and frame rate the sensor runs at, from the driver's controls.
-- **Orientation:** roll and pitch from the adapter's ICM-45686, drawn as an attitude indicator.
-- **Frame sync:** a switch makes the Boson the sync master. The page then counts the pulses the Jetson sees on the overlay's sync pad and the ones the IMU tags. The Boson's mode is put back on exit.
+On the page you can:
+
+- Change the visible camera's mode and frame rate, use auto exposure or set the exposure and gain yourself, and adjust white balance and saturation.
+- Pick a colour palette for the thermal camera and run its flat-field correction.
+- See the exposure, gain and frame rate the visible camera is running at.
+- See the Hadron's roll and pitch on an attitude indicator. They come from the IMU on the adapter.
+- Turn on **Boson drives sync** to make the thermal camera the frame-sync master. The page then counts the sync pulses that reach the Jetson and the ones the IMU tags.
+
+The visible camera's picture comes through Argus, so it uses the ISP file described above. Its stream restarts when you change the mode, the frame rate or the exposure. When the demo stops, it puts the thermal camera's palette and sync mode back as it found them.
 
 ## Live view
 
