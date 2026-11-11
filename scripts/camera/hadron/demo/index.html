@@ -11,7 +11,8 @@
   header { display: flex; align-items: baseline; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
   h1 { margin: 0; font-size: 18px; }
   #status { color: var(--bad); }
-  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 16px 20px; }
+  main { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; padding: 16px 20px; align-items: start; }
+  #eo { grid-row: span 2; }
   section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
   h2 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; gap: 12px; }
   h2 small { color: var(--dim); font-weight: normal; font-variant-numeric: tabular-nums; text-align: right; }
@@ -27,7 +28,13 @@
   input[type=range] { width: 100%; accent-color: var(--accent); }
   input[type=checkbox] { accent-color: var(--accent); width: 18px; height: 18px; justify-self: start; }
   input:disabled { opacity: 0.4; }
-  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .motion { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 16px; align-items: center; }
+  #horizon { width: 170px; height: 170px; }
+  #sync-status { list-style: none; margin: 12px 0 0; padding: 0; color: var(--dim); }
+  #sync-status li { display: flex; gap: 8px; align-items: baseline; margin-top: 6px; }
+  #sync-status i { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  #sync-status i.on { background: #4cc26a; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } #eo { grid-row: auto; } }
 </style>
 </head>
 <body>
@@ -36,7 +43,7 @@
   <span id="status"></span>
 </header>
 <main>
-  <section>
+  <section id="eo">
     <h2>Visible camera <small id="eo-read"></small></h2>
     <img src="/eo.mjpg" alt="Visible camera stream">
     <p class="error" id="eo-error"></p>
@@ -58,6 +65,35 @@
       <label for="palette">Palette</label><select id="palette"></select><span></span>
       <label for="ffc">Flat field</label><button id="ffc" type="button">Run correction</button><span></span>
     </div>
+  </section>
+  <section>
+    <h2>Orientation and frame sync <small id="tilt-read"></small></h2>
+    <div class="motion">
+      <svg id="horizon" viewBox="-100 -100 200 200" role="img" aria-label="Attitude indicator">
+        <defs><clipPath id="dial"><circle r="92"/></clipPath></defs>
+        <g clip-path="url(#dial)">
+          <g id="attitude">
+            <rect x="-400" y="-400" width="800" height="400" fill="#2f6f9f"/>
+            <rect x="-400" y="0" width="800" height="400" fill="#6b4a2b"/>
+            <line x1="-400" x2="400" y1="0" y2="0" stroke="#fff" stroke-width="1.5"/>
+            <g id="ladder" stroke="#fff" stroke-width="1"></g>
+          </g>
+        </g>
+        <circle r="92" fill="none" stroke="#2b323c" stroke-width="4"/>
+        <path d="M-62 0 H-24 L-12 13 L0 0 L12 13 L24 0 H62" fill="none" stroke="#f0a23a" stroke-width="4" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <div class="controls">
+          <label for="sync">Boson drives sync</label><input type="checkbox" id="sync"><span></span>
+        </div>
+        <ul id="sync-status">
+          <li><i id="dot-line"></i><span id="line-read"></span></li>
+          <li><i id="dot-imu"></i><span id="imu-read"></span></li>
+          <li><i></i><span>The visible camera runs on its own clock, not on these pulses.</span></li>
+        </ul>
+      </div>
+    </div>
+    <p class="error" id="motion-error"></p>
   </section>
 </main>
 <script>
@@ -100,7 +136,36 @@ function render(s) {
   $('palette').disabled = $('ffc').disabled = !ir.controls;
   $('ir-read').textContent = (ir.serial ? `serial ${ir.serial} · ` : '') + `page ${ir.fps} fps`;
   $('ir-error').textContent = ir.error || '';
+
+  const m = s.motion;
+  $('sync').checked = m.master;
+  $('sync').disabled = !ir.controls;
+  $('dot-line').className = m.seen >= 50 ? 'on' : '';
+  $('line-read').textContent = m.line === null ? 'This overlay sets up no sync pad.'
+    : `Jetson pin ${m.line}: ${m.seen ?? 0} pulses a second`;
+  $('dot-imu').className = m.tagged >= 50 ? 'on' : '';
+  $('imu-read').textContent = m.tagged === null ? 'No IMU.'
+    : `IMU tags ${m.tagged} a second` + (m.seen >= 50 && !m.tagged ? '. Is R12 fitted on the adapter?' : '');
+  $('motion-error').textContent = m.error || '';
 }
+
+// Pitch ladder: a short line every 10 degrees. Two pixels to the degree.
+const DEG = 2;
+for (const d of [-40, -30, -20, -10, 10, 20, 30, 40]) {
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', -16); line.setAttribute('x2', 16);
+  line.setAttribute('y1', -d * DEG); line.setAttribute('y2', -d * DEG);
+  $('ladder').append(line);
+}
+
+// Nose up moves the horizon down, and a roll to the right turns it anticlockwise, as on a flight display.
+new EventSource('/tilt').onmessage = e => {
+  const t = JSON.parse(e.data);
+  if (!t) { $('tilt-read').textContent = ''; return; }
+  $('attitude').setAttribute('transform', `rotate(${-t.roll}) translate(0 ${t.pitch * DEG})`);
+  const side = t.roll >= 0 ? 'right' : 'left', nose = t.pitch >= 0 ? 'up' : 'down';
+  $('tilt-read').textContent = `roll ${Math.abs(t.roll).toFixed(1)}° ${side} · pitch ${Math.abs(t.pitch).toFixed(1)}° ${nose}`;
+};
 
 async function send(changes) {
   try {
@@ -124,6 +189,7 @@ for (const id of ['exposure_ms', 'gain', 'saturation']) {
 }
 $('auto').addEventListener('change', e => send({auto: e.target.checked}));
 $('ffc').addEventListener('click', () => send({ffc: true}));
+$('sync').addEventListener('change', e => send({sync: e.target.checked}));
 
 poll();
 setInterval(poll, 1000);

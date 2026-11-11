@@ -2,13 +2,16 @@
 """Browser demo for the FLIR Hadron 640R on an ARK Jetson carrier.
 
 Serves one page with the EO camera, through Argus, beside the Boson, each as an MJPEG
-stream, and the settings that change them. Run it on the Jetson and open
-http://<jetson>:8642/, or start it from a PC with scripts/camera/hadron/demo.sh.
+stream, and the settings that change them. The adapter's IMU shows which way the Hadron
+tilts, and the sync line shows who sees the Boson's frame sync pulses. Run it on the
+Jetson and open http://<jetson>:8642/, or start it from a PC with
+scripts/camera/hadron/demo.sh.
 """
 import argparse
 import collections
 import glob
 import json
+import math
 import os
 import signal
 import subprocess
@@ -25,12 +28,16 @@ from gi.repository import Gst  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "view"))
 import boson  # noqa: E402
+from icm45686 import Icm45686  # noqa: E402
+from syncline import SyncLine  # noqa: E402
 
 PREVIEW_W = 1280        # Argus scales each mode to this width, so the page gets the whole field of view
 STREAM_FPS = 30         # frames a second sent to the browser, whatever the sensor runs at
 WB_MODES = ("Off", "Auto", "Incandescent", "Fluorescent", "Warm fluorescent", "Daylight", "Cloudy", "Twilight",
             "Shade")
 SINK = "appsink name=sink emit-signals=true max-buffers=1 drop=true sync=false"
+# The camera's axes (x right, y down, z out of the lens) in the axes of the adapter's IMU.
+IMU_TO_CAMERA = ((0, 1, 0), (1, 0, 0), (0, 0, -1))
 
 
 def log(msg):
@@ -53,6 +60,14 @@ def find_node(name_part):
                     return "/dev/" + os.path.basename(node)
         except OSError:
             continue
+    return None
+
+
+def sync_pad_line():
+    """GPIO line name of the pad the overlay made the sync input (extperiph2_clk_pp1 is PP.01), or None."""
+    for pins in glob.glob("/sys/firmware/devicetree/base/bus@0/pinmux@*/exp-header-pinmux/hadron-eo-sync/nvidia,pins"):
+        port = dt_text(pins).rsplit("_", 1)[-1]
+        return f"{port[:-1].upper()}.{int(port[-1]):02d}"
     return None
 
 
@@ -145,8 +160,57 @@ class Stream:
         return round((len(t) - 1) / (t[-1] - t[0]), 1)
 
 
+class Motion:
+    """The adapter's ICM-45686 and the Hadron sync line, which the IMU's FSYNC pin and a carrier pad both watch."""
+
+    def __init__(self, bus, addr):
+        self.line = self.imu = None
+        self.error = None
+        self.line_name = sync_pad_line()
+        if self.line_name:
+            try:
+                self.line = SyncLine(self.line_name)
+                self.line.start()
+            except OSError as e:
+                log(f"sync line {self.line_name}: {e}")
+        try:
+            self.imu = Icm45686(bus=bus, addr=addr, fsync=True, pulses=self.line.edges if self.line else None)
+            self.imu.start()
+        except OSError as e:
+            self.error = f"IMU on i2c-{bus}: {e}"
+
+    def tilt(self):
+        """Roll and pitch in degrees, from gravity over the last tenth of a second. None without an IMU."""
+        if not self.imu or self.imu.error:
+            return None
+        rows = self.imu.snapshot(0.1)
+        if not len(rows):
+            return None
+        up = rows[:, 1:4].mean(axis=0)      # at rest the accelerometer reads the force holding it up
+        norm = math.sqrt(sum(v * v for v in up)) or 1.0
+        x, y, z = (-sum(m * u for m, u in zip(row, up)) / norm for row in IMU_TO_CAMERA)
+        return dict(roll=round(math.degrees(math.atan2(x, y)), 1),
+                    pitch=round(math.degrees(math.atan2(-z, math.hypot(x, y))), 1))
+
+    def pulses(self):
+        """Sync pulses a second seen on the carrier pad and tagged by the IMU."""
+        now = time.monotonic()
+        seen = sum(1 for t in list(self.line.edges) if t > now - 1.0) if self.line else None
+        tagged = None
+        if self.imu and not self.imu.error:
+            latest = getattr(self.imu, "next_index", 0) / self.imu.odr
+            tagged = sum(1 for t in list(self.imu.tags) if t > latest - 1.0)
+        return dict(line=self.line_name, seen=seen, tagged=tagged)
+
+    def close(self):
+        if self.imu:
+            self.imu.stopping.set()
+        if self.line:
+            self.line.close()
+
+
 class Demo:
-    def __init__(self):
+    def __init__(self, imu_bus=1, imu_addr=0x68):
         self.lock = threading.Lock()
         self.modes = sensor_modes()
         self.eo_node = find_node("ov64b40")
@@ -157,8 +221,9 @@ class Demo:
         self.ir = Stream("IR")
         self.set = dict(mode=2, fps=30, auto=True, exposure_ms=8.0, gain=4.0, wb=1, saturation=1.0)
         self.cam = None
-        self.ir_info = dict(palette=None, serial=None, error=None)
-        self.palette_at_start = None
+        self.ir_info = dict(palette=None, serial=None, sync=None, error=None)
+        self.palette_at_start = self.sync_at_start = None
+        self.motion = Motion(imu_bus, imu_addr)
         self.sensor = {}
         self.sensor_read = 0.0
         if self.modes and self.set["mode"] >= len(self.modes):
@@ -200,8 +265,8 @@ class Demo:
                       f"framerate={STREAM_FPS}/1 ! jpegenc quality=85 ! {SINK}")
         try:
             self.cam = boson.Boson()
-            self.ir_info.update(serial=self.cam.serial(), palette=self.cam.color_lut())
-            self.palette_at_start = self.ir_info["palette"]
+            self.ir_info.update(serial=self.cam.serial(), palette=self.cam.color_lut(), sync=self.cam.ext_sync())
+            self.palette_at_start, self.sync_at_start = self.ir_info["palette"], self.ir_info["sync"]
         except OSError as e:
             self.ir_info["error"] = f"Boson serial port: {e}"
 
@@ -217,6 +282,9 @@ class Demo:
                         self.ir_info["palette"] = self.cam.color_lut()
                     if changes.get("ffc"):
                         self.cam.run_ffc()
+                    if "sync" in changes:
+                        self.cam.set_ext_sync(boson.EXT_SYNC_MASTER if changes["sync"] else boson.EXT_SYNC_DISABLED)
+                        self.ir_info["sync"] = self.cam.ext_sync()
                     self.ir_info["error"] = None
                 except OSError as e:
                     self.ir_info["error"] = str(e)
@@ -272,17 +340,22 @@ class Demo:
                             error=self.eo.error, sensor=self.read_sensor()),
                     ir=dict(fps=self.ir.fps(), error=self.ir.error or self.ir_info["error"],
                             palette=self.ir_info["palette"], palettes=boson.COLOR_LUTS,
-                            serial=self.ir_info["serial"], controls=self.cam is not None))
+                            serial=self.ir_info["serial"], controls=self.cam is not None),
+                    motion=dict(error=self.motion.error or (self.motion.imu.error if self.motion.imu else None),
+                                master=self.ir_info["sync"] == boson.EXT_SYNC_MASTER, **self.motion.pulses()))
 
     def close(self):
         self.eo.stop()
         self.ir.stop()
+        self.motion.close()
         if self.cam:
             try:
                 if self.palette_at_start is not None:
                     self.cam.set_color_lut(self.palette_at_start)
+                if self.sync_at_start is not None:
+                    self.cam.set_ext_sync(self.sync_at_start)
             except OSError as e:
-                log(f"Boson palette not restored: {e}")
+                log(f"Boson palette and sync mode not restored: {e}")
             self.cam.close()
             self.cam = None
 
@@ -310,6 +383,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(json.dumps(self.demo.state()).encode(), "application/json")
         elif path in ("/eo.mjpg", "/ir.mjpg"):
             self._stream(self.demo.eo if path == "/eo.mjpg" else self.demo.ir)
+        elif path == "/tilt":
+            self._tilt()
         else:
             self.send_error(404)
 
@@ -344,13 +419,30 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
+    def _tilt(self):
+        """Server-sent events: the tilt twenty times a second."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            while True:
+                self.wfile.write(b"data: " + json.dumps(self.demo.motion.tilt()).encode() + b"\n\n")
+                self.wfile.flush()
+                time.sleep(0.05)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--port", type=int, default=8642)
+    p.add_argument("--imu-bus", type=int, default=1, help="I2C bus of the adapter's ICM-45686 (1 on JAJ)")
+    p.add_argument("--imu-addr", type=lambda v: int(v, 0), default=0x68)
     args = p.parse_args()
 
     Gst.init(None)
-    demo = Handler.demo = Demo()
+    demo = Handler.demo = Demo(args.imu_bus, args.imu_addr)
     try:
         server = ThreadingHTTPServer(("", args.port), Handler)
     except OSError as e:

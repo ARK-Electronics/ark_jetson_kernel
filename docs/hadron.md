@@ -71,7 +71,7 @@ sudo systemctl restart nvargus-daemon
 Both cameras on one page in a browser, with the settings that change them:
 
 ```
-scripts/camera/hadron/demo.sh [user@host]
+scripts/camera/hadron/demo.sh [user@host [--imu-bus N]]
 ```
 
 Run it on a PC with this repo checked out. It copies the demo to the Jetson over SSH, starts it there and opens `http://<jetson>:8642/`. The host defaults to `jetson@192.168.55.1`, the Jetson over its USB-C cable. Ctrl-C stops it.
@@ -79,6 +79,8 @@ Run it on a PC with this repo checked out. It copies the demo to the Jetson over
 - **EO:** through Argus, so the picture needs the ISP file above. The page sets the mode, the frame rate, auto or manual exposure and gain, white balance and saturation. A change of mode, frame rate or exposure restarts the stream.
 - **Boson:** colour palette and flat-field correction, over its serial port.
 - **Readout:** the exposure, gain and frame rate the sensor runs at, from the driver's controls.
+- **Orientation:** roll and pitch from the adapter's ICM-45686, drawn as an attitude indicator. The IMU is read on `i2c-1`, its bus on JAJ. Pass `--imu-bus` after the host for another.
+- **Frame sync:** a switch makes the Boson the sync master. The page then counts the pulses the Jetson sees on the overlay's sync pad and the ones the IMU tags, which needs R12 fitted. The Boson's mode is put back on exit.
 
 ## Live view
 
