@@ -1,7 +1,7 @@
 #!/bin/bash
 # Start the Hadron demo on a Jetson from this PC and open its page in the browser.
-# usage: demo.sh [user@host]    default: jetson@192.168.55.1, the Jetson over its USB-C cable
-host=${1:-jetson@192.168.55.1}
+# usage: demo.sh [user@host]    default: jetson@jetson.local
+host=${1:-jetson@jetson.local}
 addr=${host#*@}
 port=8642
 dir=$(dirname "$(readlink -f "$0")")
