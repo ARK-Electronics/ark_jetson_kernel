@@ -9,6 +9,8 @@
  * Copyright (c) 2026, ARK Electronics.
  */
 
+#include <nvidia/conftest.h>
+
 #include <linux/gpio.h>
 #include <linux/mutex.h>
 #include <linux/of_device.h>
@@ -859,8 +861,12 @@ static const struct v4l2_subdev_internal_ops ov64b40_subdev_internal_ops = {
 	.open = ov64b40_open,
 };
 
+#if defined(NV_I2C_DRIVER_STRUCT_PROBE_WITHOUT_I2C_DEVICE_ID_ARG) /* Linux 6.3 */
+static int ov64b40_probe(struct i2c_client *client)
+#else
 static int ov64b40_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
+#endif
 {
 	struct device *dev = &client->dev;
 	struct tegracam_device *tc_dev;
@@ -939,24 +945,30 @@ tegracam_error:
 	return err;
 }
 
-/* Linux 5.15 signature, matching the supplied nv_imx708.c. */
+#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT) /* Linux 6.1 */
 static int ov64b40_remove(struct i2c_client *client)
+#else
+static void ov64b40_remove(struct i2c_client *client)
+#endif
 {
 	struct camera_common_data *s_data = to_camera_common_data(&client->dev);
 	struct ov64b40 *priv;
 	int err;
 
-	if (!s_data)
-		return 0;
-	priv = s_data->priv;
+	if (s_data) {
+		priv = s_data->priv;
 
-	err = ov64b40_power_off(s_data);
-	if (err)
-		dev_err(&client->dev, "failed to enter standby on remove (%d)\n", err);
-	tegracam_v4l2subdev_unregister(priv->tc_dev);
-	tegracam_device_unregister(priv->tc_dev);
+		err = ov64b40_power_off(s_data);
+		if (err)
+			dev_err(&client->dev,
+				"failed to enter standby on remove (%d)\n", err);
+		tegracam_v4l2subdev_unregister(priv->tc_dev);
+		tegracam_device_unregister(priv->tc_dev);
+	}
 
+#if defined(NV_I2C_DRIVER_STRUCT_REMOVE_RETURN_TYPE_INT)
 	return 0;
+#endif
 }
 
 static const struct i2c_device_id ov64b40_id[] = {
