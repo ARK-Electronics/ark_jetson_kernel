@@ -76,7 +76,7 @@ sudo systemctl restart nvargus-daemon
 - **Reset:** the carrier's `CAMn_PWDN` drives Hadron `/HADRON_RST` through the adapter, and high releases the sensor. FLIR documents the line as shared with the Boson, so the driver releases it once and never drives it low. Standby is software (`0x0100`).
 - **No MCLK:** the Hadron connector has no clock pin, because the EO has its own oscillator. The adapter routes the carrier's `CAMn_MCLK` to Hadron pin 43 `EXT_VSYNC` instead, so the overlays declare no clocks and make that pad an input (see [Frame sync](#frame-sync)).
 - **Orientation:** with the tables' phone-module mirror and flip, the EO reads out rotated 180° relative to the Boson in the same housing. The overlays set `rotation = <180>`, and the driver undoes both while keeping BGGR.
-- **Adapter I2C:** the adapter's ICM-45686 IMU (`0x68`) is on the Hadron control I2C, not on the camera bus. Its cable goes to either I2C connector of the carrier, and the scripts find the IMU by its ID. A second device answers at `0x28`. It is not the Hadron's own ICM-20602, which does not answer on this bus.
+- **Adapter I2C:** the Hadron has no IMU of its own, so the adapter carries an ICM-45686 (`0x68`). It is on the Hadron control I2C, not on the camera bus. That cable goes to either I2C connector of the carrier, and the scripts find the IMU by its ID. Another device answers at `0x28` on the same bus.
 - **IMU rate:** the scripts poll the IMU at 200 Hz. The I2C0 connector's bus runs at 100 kHz, which carries accel and gyro at up to 400 Hz. With that bus at 400 kHz, the I2C1 connector's speed, 1600 Hz held on the bench.
 
 ## Frame sync
