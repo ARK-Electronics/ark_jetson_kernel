@@ -719,19 +719,17 @@ EOF
 
 # ── Regenerate missing or empty SSH host keys ───────────────────────────────
 
-# cloud-init writes the host keys once, on the first boot, and then disables itself. A power
-# cut before they reach the disk leaves zero-length keys that nothing regenerates, and sshd
-# never starts again. ssh-keygen -A creates the missing keys, replaces the empty ones, and
-# does nothing when they are all there.
 echo "Installing the SSH host key drop-in..."
 sudo mkdir -p "$L4T_DIR/rootfs/etc/systemd/system/ssh.service.d"
 sudo tee "$L4T_DIR/rootfs/etc/systemd/system/ssh.service.d/ark-hostkeys.conf" >/dev/null <<'EOF'
-# cloud-init writes the host keys once, on the first boot, and then disables itself. A power
-# cut before they reach the disk leaves zero-length keys that nothing regenerates, and sshd
-# never starts again. ssh-keygen -A creates the missing keys, replaces the empty ones, and
-# does nothing when they are all there.
+# cloud-init writes the host keys once, on the first boot, and never again. A reset before
+# they reach the disk leaves them missing or empty, and sshd never starts. ssh-keygen -A
+# creates the missing keys and replaces the empty ones. It has to run ahead of the stock
+# sshd -t, which fails while there are no keys, so the list is cleared and rebuilt.
 [Service]
+ExecStartPre=
 ExecStartPre=/usr/bin/ssh-keygen -A
+ExecStartPre=/usr/sbin/sshd -t
 EOF
 
 # ── Record build metadata ───────────────────────────────────────────────────
