@@ -1,0 +1,9 @@
+# FLIR Hadron EO (OV64B40) ISP overrides for Argus. The file is named after the
+# module badge in the Hadron EO overlays.
+# Black level: 64 of 1023. Colour stays at the ISP's defaults.
+ap15Function.opticalBlack = TRUE;
+opticalBlack.mode = 0;
+opticalBlack.float.manualBiasR = 0.0625;
+opticalBlack.float.manualBiasGR = 0.0625;
+opticalBlack.float.manualBiasGB = 0.0625;
+opticalBlack.float.manualBiasB = 0.0625;

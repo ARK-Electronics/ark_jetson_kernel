@@ -21,3 +21,6 @@ ark-*.tar.gz
 
 # Misc
 output.txt
+
+# Python bytecode caches
+__pycache__/

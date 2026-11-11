@@ -9,8 +9,9 @@ Tested camera sensors, overlay names as they appear to jetson-io, verification c
 | IMX219 | 2     | 3280x2464  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 | IMX477 | 2     | 4056x3040  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 | IMX708 | 2     | 4608x2592  | dual (JAJ/PAB_V3), quad (PAB) | Working |
+| [OV64B40 (FLIR Hadron EO)](hadron.md) | 4 or 2 | 9248x6936 | one per CSI port | Working |
 
-Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports). The image already includes every overlay for that product; switch with `jetson-io` (details in [camera_overlays.md](camera_overlays.md)). Each carrier also bakes an IMX219 overlay at flash time so cameras work on first boot without a jetson-io step (quad on PAB, dual on JAJ and PAB_V3).
+Each carrier ships exactly one overlay per sensor: dual on JAJ / PAB_V3 (two CSI ports), quad on PAB (four CSI ports). The FLIR Hadron EO is the exception: it is one camera, so it ships one overlay per port. The image already includes every overlay for that product; switch with `jetson-io` (details in [camera_overlays.md](camera_overlays.md)). Each carrier also bakes an IMX219 overlay at flash time so cameras work on first boot without a jetson-io step (quad on PAB, dual on JAJ and PAB_V3).
 
 ## IMX219 (Sony, 8MP)
 

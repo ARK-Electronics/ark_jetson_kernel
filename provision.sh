@@ -182,6 +182,15 @@ sudo chroot "$ROOTFS_DIR" env GST_REGISTRY=/tmp/provision-gst-registry.bin \
 sudo rm -f "$ROOTFS_DIR/tmp/provision-gst-registry.bin"
 for pkg in "${NV_CAMERA_PKGS[@]}"; do sudo rm -f "$ROOTFS_DIR/tmp/ark1_$(nv_camera_deb "$pkg")"; done
 
+### Install the Argus ISP overrides
+# Argus loads <badge>.isp only for the camera module of that badge, and wants the file
+# root-owned and mode 664.
+for isp in "$SCRIPT_DIR"/camera_isp/*.isp; do
+    [ -e "$isp" ] || { echo "ERROR: no ISP overrides in $SCRIPT_DIR/camera_isp." >&2; exit 1; }
+    sudo install -D -m 664 -o root -g root "$isp" \
+        "$ROOTFS_DIR/var/nvidia/nvcam/settings/$(basename "$isp")"
+done
+
 ### Hold the boot chain we build ourselves
 # /boot/Image and /boot/*.dtb* are ordinary package files owned by nvidia-l4t-kernel
 # and nvidia-l4t-kernel-dtbs, not conffiles, and the image ships NVIDIA's apt source
