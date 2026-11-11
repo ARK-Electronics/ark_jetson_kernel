@@ -6,7 +6,7 @@ adapter's ICM-45686 plotted against the camera frame timing. Every timestamp is
 put on CLOCK_MONOTONIC so the panel shows where IMU samples land in each frame.
 
 Frame sync: while the view runs, the Boson is the Hadron's ext sync master and
-pulses pin 43 (EXT_VSYNC) at its 60 Hz core rate. The IMU's FSYNC input (R12)
+pulses pin 43 (EXT_VSYNC) at its 60 Hz core rate. The IMU's FSYNC input
 tags each pulse on the IMU's clock and the Jetson timestamps it on the carrier's
 MCLK pad, which together put the IMU samples on CLOCK_MONOTONIC. The Boson's
 smart averager sends one frame per two core frames over USB, each starting 9.4 ms
@@ -380,7 +380,7 @@ class FrameSync:
         if not edges and not tags:
             return "FSYNC: no pulses on Hadron pin 43 yet", True
         if not tags:
-            return "FSYNC: the Jetson sees pulses, the IMU tags none (R12 fitted?)", True
+            return "FSYNC: the Jetson sees pulses, the IMU tags none", True
         if not edges:
             return "FSYNC: IMU tags pulses, the Jetson can't read pin 43 (overlay?)", True
         if not self.imu.synced:

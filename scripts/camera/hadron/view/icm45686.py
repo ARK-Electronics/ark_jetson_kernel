@@ -3,7 +3,7 @@
 INT1 is not wired on the ARK Hadron adapter, so the FIFO is polled. Sample k is assigned
 t0 + k*T. Without FSYNC, T is fitted against host read times and t0 taken from the tightest
 read (a sample can only be in the FIFO after it happened), which leaves t0 a few hundred us
-late. With FSYNC (R12 fitted, pin 9 on the Hadron sync line), the IMU tags the first sample
+late. With FSYNC (pin 9 on the Hadron sync line), the IMU tags the first sample
 after each sync pulse with the pulse-to-sample delay, so each pulse is known on the IMU's
 clock to 1 us. Given the same pulses timestamped by the Jetson, a line fitted between the two
 puts the samples on CLOCK_MONOTONIC to within the Jetson's interrupt jitter.
