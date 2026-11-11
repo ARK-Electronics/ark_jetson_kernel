@@ -100,7 +100,7 @@ Copy the rebuilt overlay to the Jetson:
 
 ```
 DTB_PATH="staging/PAB/Linux_for_Tegra/source/kernel-devicetree/generic-dts/dtbs"
-scp $DTB_PATH/<overlay>.dtbo jetson@192.168.55.1:~
+scp $DTB_PATH/<overlay>.dtbo jetson@jetson.local:~
 ```
 
 Then, on the Jetson, move it into `/boot`, select it and reboot:
