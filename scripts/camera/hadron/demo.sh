@@ -1,10 +1,7 @@
 #!/bin/bash
 # Start the Hadron demo on a Jetson from this PC and open its page in the browser.
-# usage: demo.sh [user@host [server options]]
-#   user@host       default jetson@192.168.55.1, the Jetson over its USB-C cable
-#   server options  passed to hadron_demo.py, e.g. --imu-bus 7 on a carrier whose IMU bus is not i2c-1
+# usage: demo.sh [user@host]    default: jetson@192.168.55.1, the Jetson over its USB-C cable
 host=${1:-jetson@192.168.55.1}
-[ $# -gt 0 ] && shift
 addr=${host#*@}
 port=8642
 dir=$(dirname "$(readlink -f "$0")")
@@ -31,5 +28,5 @@ tar -C "$dir" --exclude=__pycache__ -c demo view/boson.py view/icm45686.py view/
 opener=$!
 
 # -t gives the server a terminal, so Ctrl-C here reaches it and it lets go of the cameras.
-on_jetson -t "$host" "exec python3 hadron-demo/demo/hadron_demo.py $* >/dev/null"
+on_jetson -t "$host" 'exec python3 hadron-demo/demo/hadron_demo.py >/dev/null'
 kill "$opener" 2>/dev/null

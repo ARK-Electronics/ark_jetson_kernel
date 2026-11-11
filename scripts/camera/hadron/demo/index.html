@@ -145,7 +145,7 @@ function render(s) {
     : `Jetson pin ${m.line}: ${m.seen ?? 0} pulses a second`;
   $('dot-imu').className = m.tagged >= 50 ? 'on' : '';
   $('imu-read').textContent = m.tagged === null ? 'No IMU.'
-    : `IMU tags ${m.tagged} a second` + (m.seen >= 50 && !m.tagged ? '. Is R12 fitted on the adapter?' : '');
+    : `IMU tags ${m.tagged} a second`;
   $('motion-error').textContent = m.error || '';
 }
 

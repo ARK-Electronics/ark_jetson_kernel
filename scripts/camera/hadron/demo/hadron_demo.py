@@ -28,7 +28,7 @@ from gi.repository import Gst  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "view"))
 import boson  # noqa: E402
-from icm45686 import Icm45686  # noqa: E402
+from icm45686 import Icm45686, find_bus  # noqa: E402
 from syncline import SyncLine  # noqa: E402
 
 PREVIEW_W = 1280        # Argus scales each mode to this width, so the page gets the whole field of view
@@ -163,7 +163,7 @@ class Stream:
 class Motion:
     """The adapter's ICM-45686 and the Hadron sync line, which the IMU's FSYNC pin and a carrier pad both watch."""
 
-    def __init__(self, bus, addr):
+    def __init__(self):
         self.line = self.imu = None
         self.error = None
         self.line_name = sync_pad_line()
@@ -173,8 +173,12 @@ class Motion:
                 self.line.start()
             except OSError as e:
                 log(f"sync line {self.line_name}: {e}")
+        bus = find_bus()
+        if bus is None:
+            self.error = "no ICM-45686 on any I2C bus: is the adapter's I2C cable on a carrier I2C connector?"
+            return
         try:
-            self.imu = Icm45686(bus=bus, addr=addr, fsync=True, pulses=self.line.edges if self.line else None)
+            self.imu = Icm45686(bus=bus, fsync=True, pulses=self.line.edges if self.line else None)
             self.imu.start()
         except OSError as e:
             self.error = f"IMU on i2c-{bus}: {e}"
@@ -210,7 +214,7 @@ class Motion:
 
 
 class Demo:
-    def __init__(self, imu_bus=1, imu_addr=0x68):
+    def __init__(self):
         self.lock = threading.Lock()
         self.modes = sensor_modes()
         self.eo_node = find_node("ov64b40")
@@ -223,7 +227,7 @@ class Demo:
         self.cam = None
         self.ir_info = dict(palette=None, serial=None, sync=None, error=None)
         self.palette_at_start = self.sync_at_start = None
-        self.motion = Motion(imu_bus, imu_addr)
+        self.motion = Motion()
         self.sensor = {}
         self.sensor_read = 0.0
         if self.modes and self.set["mode"] >= len(self.modes):
@@ -437,12 +441,10 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--port", type=int, default=8642)
-    p.add_argument("--imu-bus", type=int, default=1, help="I2C bus of the adapter's ICM-45686 (1 on JAJ)")
-    p.add_argument("--imu-addr", type=lambda v: int(v, 0), default=0x68)
     args = p.parse_args()
 
     Gst.init(None)
-    demo = Handler.demo = Demo(args.imu_bus, args.imu_addr)
+    demo = Handler.demo = Demo()
     try:
         server = ThreadingHTTPServer(("", args.port), Handler)
     except OSError as e:
