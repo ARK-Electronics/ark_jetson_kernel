@@ -160,6 +160,7 @@ class Icm45686(threading.Thread):
         self.dev.write(FIFO_CONFIG0, 0x9F)              # stop-on-full, 8K depth
         self.dev.write(FIFO_CONFIG3, 0x07)              # gyro + accel + FIFO enable
         self.next_index = 0
+        self.n_reads = 0                                # paces the fit: len(reads) stops at its cap
         self.reads.clear()
         self.tags.clear()
         with self.lock:
@@ -191,6 +192,7 @@ class Icm45686(threading.Thread):
             return
         first = self.next_index
         self.reads.append((first + n - 1, t_read))
+        self.n_reads += 1
         take = min(n, 48)
         pk = np.frombuffer(self.dev.read(FIFO_DATA, take * PACKET.itemsize), PACKET)
         a = pk["accel"].astype(np.float64) * ACCEL_SCALE
@@ -205,7 +207,7 @@ class Icm45686(threading.Thread):
         if valid.any():
             self.temp_c = float(pk["temp"][valid][-1]) / 2 + 25
         self.next_index = first + take
-        if len(self.reads) < 50 or len(self.reads) % 10 == 0:
+        if self.n_reads < 50 or self.n_reads % 10 == 0:
             self._fit()
 
     def _fit(self):
