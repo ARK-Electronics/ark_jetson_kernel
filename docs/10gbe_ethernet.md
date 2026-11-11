@@ -4,13 +4,15 @@ The [Auvidea M20E](https://auvidea.eu/product/m20e-m-2-10gbe/) is an M.2 (M-key)
 
 ## Prerequisites
 
+You need:
+
 - Auvidea M20E M.2 10GbE adapter
 - USB thumb drive (for booting the Jetson OS)
 - ARK Jetson carrier board with M.2 M-key slot
 
 ## Step 1: Flash to USB Drive
 
-Flash the ARK kernel image onto a USB thumb drive instead of NVMe:
+Flash the ARK kernel image onto a USB thumb drive instead of NVMe. The script asks which carrier you have.
 
 ```
 ./flash.sh --usb
@@ -24,16 +26,15 @@ Flash the ARK kernel image onto a USB thumb drive instead of NVMe:
 
 ## Step 3: Install Realtek RTL8127 Driver
 
-The RTL8127 driver is not included in the default kernel. Install it on the Jetson after booting:
+The RTL8127 driver is not included in the default kernel, so you build it on the Jetson after booting. First install the build tools:
 
 ```bash
 sudo apt install build-essential dkms
 ```
 
-Download the driver from Realtek:
-- [RTL8127 Driver Download (r8127-11.015.00)](https://www.realtek.com/Download/ToDownload?type=direct&downloadid=4636)
+Download the driver from Realtek: [RTL8127 Driver Download (r8127-11.015.00)](https://www.realtek.com/Download/ToDownload?type=direct&downloadid=4636).
 
-Build and install:
+Then build it, install it and load it:
 
 ```bash
 tar xf r8127-11.015.00.tar.bz2
@@ -44,7 +45,7 @@ sudo depmod -a
 sudo modprobe r8127
 ```
 
-The 10GbE interface should now appear in `ip link`. You can verify with:
+The 10GbE interface now appears in `ip link`. Check it with:
 
 ```bash
 ip link show
