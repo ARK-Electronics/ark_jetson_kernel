@@ -407,6 +407,26 @@ if [ -d "$SCRIPT_DIR/kernel_overlay" ]; then
     done
 fi
 
+# ── Apply ARK kernel patches ────────────────────────────────────────────────
+# Changes to files the kernel tree already has live in kernel_patches/, so a BSP bump that
+# moves the code stops the build instead of dropping the change. Runs every build: --fast
+# reuses a tree that already carries them.
+
+KERNEL_TREE="$SOURCE_DIR/kernel/${KERNEL_SRC_DIR}"
+for kernel_patch in "$SCRIPT_DIR"/kernel_patches/*.patch; do
+    [ -e "$kernel_patch" ] || continue
+    if patch -d "$KERNEL_TREE" -p1 --reverse --force --dry-run --silent < "$kernel_patch" >/dev/null 2>&1; then
+        echo "Kernel patch already applied: $(basename "$kernel_patch")"
+    elif patch -d "$KERNEL_TREE" -p1 --forward --dry-run --silent < "$kernel_patch" >/dev/null 2>&1; then
+        echo "Applying kernel patch: $(basename "$kernel_patch")"
+        patch -d "$KERNEL_TREE" -p1 --forward --silent < "$kernel_patch"
+    else
+        echo "ERROR: $(basename "$kernel_patch") does not apply to $KERNEL_TREE —" >&2
+        echo "       the BSP's kernel source changed; rebase the patch before building." >&2
+        exit 1
+    fi
+done
+
 # ── Stage ARK device-tree overlays ───────────────────────────────────────────
 # ARK overlay sources live in products/<target>/overlay/, not the BSP source
 # mirror. Copy them into the stock overlay dir and make the built dtbo set
