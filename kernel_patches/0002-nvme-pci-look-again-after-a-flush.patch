@@ -1,0 +1,58 @@
+nvme-pci: look again after a flush when an interrupt finds no completion
+
+The PCIe root ports on Tegra234 turn an MSI into an interrupt inside the
+controller, ahead of the memory writes the device sent before it. An NVMe
+completion interrupt can therefore arrive before the completion entry it
+announces is visible in memory. The handler finds nothing, the device sends
+no further interrupt for that entry, and the command waits out the 30 s I/O
+timeout: "I/O tag N QID M timeout, completion polled".
+
+A driver that reads a device register in its interrupt handler is safe: the
+read's completion cannot pass the device's earlier writes. The NVMe handler
+reads only host memory. When it finds no completion, read CSTS and look
+again.
+
+Applies to the Linux 6.8 tree in L4T R39.2.1.
+---
+diff --git a/drivers/nvme/host/pci.c b/drivers/nvme/host/pci.c
+index c10042c..5372eef 100644
+--- a/drivers/nvme/host/pci.c
++++ b/drivers/nvme/host/pci.c
+@@ -1077,11 +1077,28 @@ static inline int nvme_poll_cq(struct nvme_queue *nvmeq,
+ 	return found;
+ }
+ 
++/*
++ * Tegra's PCIe root port turns an MSI into an interrupt inside the controller, ahead of the
++ * memory writes the device sent before it. The interrupt can arrive before the completion it
++ * announces is visible, and the device sends no other, so the command waits out its timeout.
++ * A read from the device returns only after its earlier writes have landed: on an interrupt
++ * that finds nothing, read CSTS and look again.
++ */
++static bool nvme_cqe_pending_flushed(struct nvme_queue *nvmeq)
++{
++	if (nvme_cqe_pending(nvmeq))
++		return true;
++	readl(nvmeq->dev->bar + NVME_REG_CSTS);
++	return nvme_cqe_pending(nvmeq);
++}
++
+ static irqreturn_t nvme_irq(int irq, void *data)
+ {
+ 	struct nvme_queue *nvmeq = data;
+ 	DEFINE_IO_COMP_BATCH(iob);
+ 
++	if (!nvme_cqe_pending_flushed(nvmeq))
++		return IRQ_NONE;
+ 	if (nvme_poll_cq(nvmeq, &iob)) {
+ 		if (!rq_list_empty(iob.req_list))
+ 			nvme_pci_complete_batch(&iob);
+@@ -1094,7 +1111,7 @@ static irqreturn_t nvme_irq_check(int irq, void *data)
+ {
+ 	struct nvme_queue *nvmeq = data;
+ 
+-	if (nvme_cqe_pending(nvmeq))
++	if (nvme_cqe_pending_flushed(nvmeq))
+ 		return IRQ_WAKE_THREAD;
+ 	return IRQ_NONE;
+ }

@@ -9,6 +9,7 @@ New source files, such as a sensor driver, go in `kernel_overlay/` instead.
 | Patch | What it fixes |
 | --- | --- |
 | `0001-efi-keep-runtime-services-and-optee-calls-apart.patch` | A boot that hangs when a UEFI variable is read or written while a Linux OP-TEE call, such as the fTPM loading, is waiting on a lock in OP-TEE. The patch header has the mechanism. |
+| `0002-nvme-pci-look-again-after-a-flush.patch` | NVMe commands that wait out the 30 s timeout with `completion polled`, because their interrupt arrived before the completion was visible. |
 
 ## Adding a patch
 
