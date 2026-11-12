@@ -62,7 +62,7 @@ gst-launch-1.0 -e nvarguscamerasrc sensor-id=0 sensor-mode=2 ! \
 ```
 
 - **Modes:** `sensor-mode` is the mode number from the table above. The frame rate in the caps can be anything up to that mode's rate on your port.
-- **Full array:** mode 3 runs on an Orin NX 16GB. On an Orin Nano 4GB, Argus runs out of memory at about 1.5 GB of buffers. If you want a smaller picture from mode 3, put the size in the caps so that Argus scales it. An 8x downscale in `nvvidconv` leaves bands in the picture.
+- **Full array:** Argus keeps twelve raw frames in memory, and in mode 3 they take 1.5 GB. An Orin Nano 4GB therefore runs mode 3 only when the caps ask for a smaller picture, such as `width=1280,height=960`, which Argus then scales. That leaves a few hundred MB free with the desktop running, and about 800 MB after `sudo systemctl stop gdm`. At full size the output buffers do not fit, and the pipeline fails with `InsufficientMemory`. An Orin NX 16GB runs mode 3 at full size. Scale in the caps and not in `nvvidconv`, where an 8x downscale leaves bands in the picture.
 - **120 fps:** mode 2 on a 4-lane port delivers about 100 fps through Argus. Run `sudo jetson_clocks` first to get the full rate.
 - **Sensor ID:** the Hadron EO is always `sensor-id=0`, because each overlay disables the other camera modules that the image enables at flash time.
 - **ISP file:** Argus has no tuning for this sensor. [ark_hadron_rear_OV64B40.isp](../camera_isp/ark_hadron_rear_OV64B40.isp) sets the black level to 64, and without it the picture looks hazy. Colour is still the ISP's default. The image installs the file for you. If your image was built before it did, install the file by hand:
