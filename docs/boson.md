@@ -2,7 +2,7 @@
 
 A MIPI-model FLIR Boson+ connects to an ARK carrier's CSI port through the ARK Boson Adapter. The `nv_boson` driver sets the Boson up over I2C and streams 640x512 at 60 fps, either colourised (UYVY) or as pre-AGC 14-bit data.
 
-**Status:** both modes run at 60 fps through V4L2 on a JAJ with an Orin Nano 4GB, on CAM1. The camera was a Boson+ 640, part number 22640A095-6IAAX, software 4.1.27660. The CAM0 overlay has not been tested on hardware, and there are no overlays for PAB or PAB_V3 yet.
+**Status:** both modes run at 60 fps through V4L2 on a JAJ with an Orin Nano 4GB, on CAM1. The camera was a Boson+ 640, part number 22640A095-6IAAX, software 4.1.27660. CAM0 does not stream yet, as [CAM0](#cam0) describes. There are no overlays for PAB or PAB_V3 yet.
 
 ## Overlays
 
@@ -10,8 +10,8 @@ There is one overlay for each CSI port. Apply the one for your port with `jetson
 
 | Carrier | Port | Overlay name | Notes |
 |---------|------|--------------|-------|
-| JAJ | CAM1 (J25) | Camera FLIR Boson+ CAM1 | CSI2, bench-tested |
-| JAJ | CAM0 (J28) | Camera FLIR Boson+ CAM0 | CSI1, untested on hardware |
+| JAJ | CAM1 (J25) | Camera FLIR Boson+ CAM1 | CSI2, continuous clock, bench-tested |
+| JAJ | CAM0 (J28) | Camera FLIR Boson+ CAM0 | CSI1, gated clock, does not stream yet |
 
 The overlay files are named `tegra234-p3767-camera-p3768-boson-cam<n>.dtbo`, where `<n>` is the port number.
 
@@ -47,7 +47,7 @@ v4l2-ctl -d /dev/videoN --set-fmt-video=width=640,height=512,pixelformat=RG14 \
 
 ## What the driver changes on the Boson
 
-When a stream starts, the driver switches the Boson's video output to MIPI with a continuous clock, selects the mode's format, and turns off telemetry and the MIPI embedded-data tag. The VI would otherwise reject every frame for the embedded-data line. None of this is saved to the Boson's flash, so a power cycle brings back the camera's own settings. The driver changes nothing else, so palette, flat-field correction and frame sync stay under your control over the serial port.
+When a stream starts, the driver switches the Boson's video output to MIPI, sets its clock lane to the overlay's `discontinuous_clk`, selects the mode's format, and turns off telemetry and the MIPI embedded-data tag. The VI would otherwise reject every frame for the embedded-data line. None of this is saved to the Boson's flash, so a power cycle brings back the camera's own settings. The driver changes nothing else, so palette, flat-field correction and frame sync stay under your control over the serial port.
 
 ## Wiring
 
@@ -58,6 +58,10 @@ J3, the 6-pin Boson Control connector, carries the Boson's UART on pins 2 and 3 
 - **Do not use the JAJ's UART2/I2C0 connector for J3.** JAJ UART2 is the Jetson's debug console (`ttyTCU0`), which runs at a fixed 115200, so you cannot talk to the Boson there.
 - **Rev 1.0 swaps the Boson's TX and RX.** Boson pin 33 is its UART input and pin 43 its output, and the Rev 1.0 adapter wires them the other way round. Cross pins 2 and 3 in the J3 cable.
 - **On a JAJ UART connector, the IMU lands on RTS and CTS.** With J3 in UART1 (`/dev/ttyTHS1`), the IMU's SCL is on CTS (`PR.05`) and SDA on RTS (`PR.04`). On the bench the IMU answered over I2C bit-banged on those two pins, after setting both pads to drive and read (tristate off, input on).
+
+## CAM0
+
+On JAJ CAM0 the Boson probes, answers on I2C and takes its configuration, but the VI receives almost no valid packets, so no frame completes. With a continuous clock the VI does not recognise any frame starts. With a gated clock it decodes the Boson's frame numbers for a few percent of frames, which shows the lane mapping and polarity are right, and still no frame completes. Two cables gave the same result. The port settings are the ones the IMX219, IMX477 and Hadron overlays use on CAM0, and the board routes CSI1 straight to the connector. The cause is not known yet.
 
 ## Hardware notes
 

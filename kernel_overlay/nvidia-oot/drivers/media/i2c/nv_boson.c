@@ -59,6 +59,7 @@
 #define FLR_DVO_MIPI			1
 #define FLR_DVO_MIPI_STATE_OFF		0
 #define FLR_DVO_MIPI_STATE_ACTIVE	2
+#define FLR_DVO_MIPI_CLOCK_NON_CONTINUOUS	0
 #define FLR_DVO_MIPI_CLOCK_CONTINUOUS	1
 #define FLR_DVOMUX_OUTPUT_IF_MIPITX	3
 #define FLR_DVOMUX_SRC_IR		0
@@ -416,14 +417,19 @@ static struct camera_common_pdata *boson_parse_dt(struct tegracam_device *tc_dev
 static int boson_set_mode(struct tegracam_device *tc_dev)
 {
 	struct boson *priv = tegracam_get_privdata(tc_dev);
+	struct camera_common_data *s_data = tc_dev->s_data;
 	const struct boson_mode_cfg *cfg;
-	int mode = tc_dev->s_data->mode;
-	u32 mux[3];
+	int mode = s_data->mode_prop_idx;
+	u32 mux[3], clock;
 	int err;
 
-	if (mode < 0 || mode >= ARRAY_SIZE(boson_mode_cfg))
+	if (mode < 0 || mode >= ARRAY_SIZE(boson_mode_cfg) ||
+	    mode >= s_data->sensor_props.num_modes)
 		return -EINVAL;
 	cfg = &boson_mode_cfg[mode];
+	/* The mode's discontinuous_clk picks the Boson's clock-lane mode. */
+	clock =s_data->sensor_props.sensor_modes[mode].signal_properties.discontinuous_clk ?
+		FLR_DVO_MIPI_CLOCK_NON_CONTINUOUS : FLR_DVO_MIPI_CLOCK_CONTINUOUS;
 	mux[0] = FLR_DVOMUX_OUTPUT_IF_MIPITX;
 	mux[1] = FLR_DVOMUX_SRC_IR;
 	mux[2] = cfg->mux_type;
@@ -454,8 +460,7 @@ static int boson_set_mode(struct tegracam_device *tc_dev)
 	if (!err)
 		err = boson_cmd(priv, DVOMUX_SETTYPE, mux, ARRAY_SIZE(mux), NULL, 0, 0);
 	if (!err)
-		err = boson_set_u32(priv, DVO_SETMIPICLOCKLANEMODE,
-				    FLR_DVO_MIPI_CLOCK_CONTINUOUS, 0);
+		err = boson_set_u32(priv, DVO_SETMIPICLOCKLANEMODE, clock, 0);
 	mutex_unlock(&priv->lock);
 
 	if (err)

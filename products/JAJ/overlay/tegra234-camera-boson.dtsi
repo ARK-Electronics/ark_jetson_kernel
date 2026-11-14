@@ -4,8 +4,8 @@
 /*
  * FLIR Boson+ MIPI thermal camera, through the ARK Boson Adapter.
  *
- * The Boson+ sends 640x512 at 60 Hz on two D-PHY lanes, with a continuous
- * 246 MHz clock (492 Mbps per lane). The nv_boson driver sets it up over I2C
+ * The Boson+ sends 640x512 at 60 Hz on two D-PHY lanes, with a 246 MHz clock
+ * (492 Mbps per lane), continuous or gated. The nv_boson driver sets it up over I2C
  * at 0x6a. The adapter wires no reset, power-down or clock to the Boson, which
  * runs from the connector's 3.3 V and its own oscillator. It routes the
  * carrier's MCLK net to Boson pin 72 EXT_SYNC through R12, so the port's MCLK
@@ -21,6 +21,8 @@
  *   BOSON_PORT_INDEX      CSI port (0..3)
  *   BOSON_SINTERFACE      "serial_a" .. "serial_d"
  *   BOSON_LANE_POLARITY   "6" on CSI0/1 (module-internal swaps), "0" on CSI2/3
+ *   BOSON_DISCONTINUOUS_CLK  "yes" or "no"; the driver sets the Boson's clock
+ *                         lane to match
  *   BOSON_SENSOR_SYSFS    /sys/firmware/devicetree/base path of the sensor node
  *   BOSON_SYNC_PAD        pinmux group of the port's MCLK pad
  */
@@ -29,8 +31,8 @@
 #include <dt-bindings/pinctrl/pinctrl-tegra.h>
 
 #if !defined(BOSON_PORT_INDEX) || !defined(BOSON_SINTERFACE) || \
-	!defined(BOSON_LANE_POLARITY) || !defined(BOSON_SENSOR_SYSFS) || \
-	!defined(BOSON_SYNC_PAD)
+	!defined(BOSON_LANE_POLARITY) || !defined(BOSON_DISCONTINUOUS_CLK) || \
+	!defined(BOSON_SENSOR_SYSFS) || !defined(BOSON_SYNC_PAD)
 #error "define the BOSON_* port macros before including tegra234-camera-boson.dtsi"
 #endif
 
@@ -47,7 +49,7 @@
 		num_lanes = "2";					\
 		tegra_sinterface = BOSON_SINTERFACE;			\
 		phy_mode = "DPHY";					\
-		discontinuous_clk = "no";				\
+		discontinuous_clk = BOSON_DISCONTINUOUS_CLK;		\
 		dpcm_enable = "false";					\
 		cil_settletime = "0";					\
 		lane_polarity = BOSON_LANE_POLARITY;			\
