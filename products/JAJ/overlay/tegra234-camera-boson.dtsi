@@ -1,0 +1,195 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026, ARK Electronics.
+
+/*
+ * FLIR Boson+ MIPI thermal camera, through the ARK Boson Adapter.
+ *
+ * The Boson+ sends 640x512 at 60 Hz on two D-PHY lanes, with a continuous
+ * 246 MHz clock (492 Mbps per lane). The nv_boson driver sets it up over I2C
+ * at 0x6a. The adapter wires no reset, power-down or clock to the Boson, which
+ * runs from the connector's 3.3 V and its own oscillator. It routes the
+ * carrier's MCLK net to Boson pin 72 EXT_SYNC through R12, so the port's MCLK
+ * pad becomes a pulled-down input: the bootloader leaves it driving, which
+ * would fight the Boson when it is the sync master.
+ *
+ * This file is the port-independent part of every Boson overlay: the VI /
+ * NVCSI graph, tegra-camera-platform, the mode table and the sync pad. Each
+ * per-port .dts defines the macros below, includes this file at the top
+ * level, wires the I2C mux, and includes tegra234-camera-boson-sensor.dtsi
+ * inside its sensor node.
+ *
+ *   BOSON_PORT_INDEX      CSI port (0..3)
+ *   BOSON_SINTERFACE      "serial_a" .. "serial_d"
+ *   BOSON_LANE_POLARITY   "6" on CSI0/1 (module-internal swaps), "0" on CSI2/3
+ *   BOSON_SENSOR_SYSFS    /sys/firmware/devicetree/base path of the sensor node
+ *   BOSON_SYNC_PAD        pinmux group of the port's MCLK pad
+ */
+
+#include <dt-bindings/gpio/tegra234-gpio.h>
+#include <dt-bindings/pinctrl/pinctrl-tegra.h>
+
+#if !defined(BOSON_PORT_INDEX) || !defined(BOSON_SINTERFACE) || \
+	!defined(BOSON_LANE_POLARITY) || !defined(BOSON_SENSOR_SYSFS) || \
+	!defined(BOSON_SYNC_PAD)
+#error "define the BOSON_* port macros before including tegra234-camera-boson.dtsi"
+#endif
+
+/*
+ * One sensor mode, 640x512 at 60 fps. pix_clk_hz is the MIPI pixel rate
+ * (2 lanes * 492 Mbps / bits per pixel), which NVCSI uses to settle the
+ * lanes. The Boson has no gain, exposure or frame-rate control through this
+ * driver, so those ranges are single values. line_length is nominal: 525
+ * lines per 60 Hz frame.
+ */
+#define BOSON_MODE(name, type, phase, bits, pclk, ll, mult)		\
+	name {								\
+		mclk_khz = "24000";					\
+		num_lanes = "2";					\
+		tegra_sinterface = BOSON_SINTERFACE;			\
+		phy_mode = "DPHY";					\
+		discontinuous_clk = "no";				\
+		dpcm_enable = "false";					\
+		cil_settletime = "0";					\
+		lane_polarity = BOSON_LANE_POLARITY;			\
+		active_w = "640";					\
+		active_h = "512";					\
+		mode_type = type;					\
+		pixel_phase = phase;					\
+		csi_pixel_bit_depth = #bits;				\
+		readout_orientation = "0";				\
+		line_length = #ll;					\
+		inherent_gain = "1";					\
+		mclk_multiplier = #mult;				\
+		pix_clk_hz = #pclk;					\
+		gain_factor = "1";					\
+		framerate_factor = "1000000";				\
+		exposure_factor = "1000000";				\
+		min_gain_val = "1";					\
+		max_gain_val = "1";					\
+		step_gain_val = "1";					\
+		default_gain = "1";					\
+		min_hdr_ratio = "1";					\
+		max_hdr_ratio = "1";					\
+		min_framerate = "60000000";				\
+		max_framerate = "60000000";				\
+		step_framerate = "1";					\
+		default_framerate = "60000000";				\
+		min_exp_time = "16667";					\
+		max_exp_time = "16667";					\
+		step_exp_time = "1";					\
+		default_exp_time = "16667";				\
+		embedded_metadata_height = "0";				\
+	}
+
+/ {
+	fragment-boson@0 {
+		target-path = "/";
+		__overlay__ {
+			tegra-capture-vi {
+				num-channels = <1>;
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					port@0 {
+						reg = <0>;
+						boson_vi_in0: endpoint {
+							port-index = <BOSON_PORT_INDEX>;
+							bus-width = <2>;
+							remote-endpoint = <&boson_csi_out0>;
+						};
+					};
+				};
+			};
+
+			bus@0 {
+				host1x@13e00000 {
+					nvcsi@15a00000 {
+						num-channels = <1>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						status = "okay";
+						channel@0 {
+							reg = <0>;
+							ports {
+								#address-cells = <1>;
+								#size-cells = <0>;
+								port@0 {
+									reg = <0>;
+									boson_csi_in0: endpoint@0 {
+										port-index = <BOSON_PORT_INDEX>;
+										bus-width = <2>;
+										remote-endpoint = <&boson_out0>;
+									};
+								};
+								port@1 {
+									reg = <1>;
+									boson_csi_out0: endpoint@1 {
+										remote-endpoint = <&boson_vi_in0>;
+									};
+								};
+							};
+						};
+					};
+				};
+			};
+
+			tegra-camera-platform {
+				compatible = "nvidia, tegra-camera-platform";
+				num_csi_lanes = <2>;
+				max_lane_speed = <1500000>;
+				min_bits_per_pixel = <14>;
+				vi_peak_byte_per_pixel = <2>;
+				vi_bw_margin_pct = <25>;
+				/* kpixel/s of the RAW14 mode */
+				max_pixel_rate = <70286>;
+				isp_peak_byte_per_pixel = <5>;
+				isp_bw_margin_pct = <25>;
+				modules {
+					module0 {
+						badge = "ark_boson_front_BOSONPLUS";
+						position = "front";
+						orientation = "1";
+						drivernode0 {
+							pcl_id = "v4l2_sensor";
+							sysfs-device-tree = BOSON_SENSOR_SYSFS;
+						};
+					};
+					/*
+					 * UEFI lays this overlay over the flash-time camera default,
+					 * whose other modules would stay.
+					 */
+					module1 {
+						status = "disabled";
+					};
+					module2 {
+						status = "disabled";
+					};
+					module3 {
+						status = "disabled";
+					};
+				};
+			};
+		};
+	};
+
+	/*
+	 * exp-header-pinmux is the default state jetson-io's header configurations
+	 * fill. Sharing the node merges the sync pad with their pins; a separate
+	 * state would replace theirs, or be replaced by it.
+	 */
+	fragment-boson-sync@0 {
+		target = <&pinmux>;
+		__overlay__ {
+			pinctrl-names = "default";
+			pinctrl-0 = <&boson_pinmux>;
+			boson_pinmux: exp-header-pinmux {
+				boson-sync {
+					nvidia,pins = BOSON_SYNC_PAD;
+					nvidia,pull = <TEGRA_PIN_PULL_DOWN>;
+					nvidia,tristate = <TEGRA_PIN_ENABLE>;
+					nvidia,enable-input = <TEGRA_PIN_ENABLE>;
+				};
+			};
+		};
+	};
+};

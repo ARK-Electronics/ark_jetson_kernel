@@ -13,5 +13,10 @@ tegra234-p3767-camera-p3768-imx708-dual.dtbo
 tegra234-p3767-camera-p3768-hadron-eo-cam0.dtbo
 tegra234-p3767-camera-p3768-hadron-eo-cam1.dtbo
 
+# FLIR Boson+ (MIPI) through the ARK Boson Adapter, one overlay per CSI port
+# (driver: kernel_overlay nv_boson); see docs/boson.md.
+tegra234-p3767-camera-p3768-boson-cam0.dtbo
+tegra234-p3767-camera-p3768-boson-cam1.dtbo
+
 # Not a camera overlay: UEFI boot order (see the source file).
 ark_boot_order.dtbo
