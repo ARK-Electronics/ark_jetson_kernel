@@ -409,11 +409,11 @@ if [ -d "$SCRIPT_DIR/kernel_overlay" ]; then
         cp -r "$dir" "$SOURCE_DIR/"
     done
 
-    # Register ARK's sensor drivers (IMX708, OV64B40 for the FLIR Hadron EO) in the
-    # OOT media Makefile (idempotent). Fail loud if the anchor moves on a BSP bump
-    # rather than silently building without them.
+    # Register ARK's sensor drivers (IMX708, OV64B40 for the FLIR Hadron EO, the
+    # FLIR Boson+) in the OOT media Makefile (idempotent). Fail loud if the anchor
+    # moves on a BSP bump rather than silently building without them.
     OOT_I2C_MAKEFILE="$SOURCE_DIR/nvidia-oot/drivers/media/i2c/Makefile"
-    for drv in nv_imx708 nv_ov64b40; do
+    for drv in nv_imx708 nv_ov64b40 nv_boson; do
         grep -q "$drv.o" "$OOT_I2C_MAKEFILE" && continue
         if ! grep -q '^obj-m += nv_imx477.o' "$OOT_I2C_MAKEFILE"; then
             echo "ERROR: anchor 'obj-m += nv_imx477.o' not found in" >&2

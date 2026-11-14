@@ -10,8 +10,9 @@ Here you will find the camera sensors tested on ARK carriers, the name each over
 | IMX477 | 2     | 4056x3040  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 | IMX708 | 2     | 4608x2592  | dual (JAJ/PAB_V3), quad (PAB) | Working |
 | [OV64B40 (FLIR Hadron EO)](hadron.md) | 4 or 2 | 9248x6936 | one per CSI port | Working |
+| [FLIR Boson+ (thermal)](boson.md) | 2 | 640x512 | one per CSI port (JAJ) | Working on JAJ CAM1 |
 
-Each carrier ships one overlay per sensor. JAJ and PAB_V3 have two CSI ports, so theirs is a dual overlay. PAB has four, so its overlay is a quad. The FLIR Hadron EO is the exception. It is a single camera, so it ships one overlay for each port.
+Each carrier ships one overlay per sensor. JAJ and PAB_V3 have two CSI ports, so theirs is a dual overlay. PAB has four, so its overlay is a quad. The FLIR Hadron EO and the FLIR Boson+ are the exceptions. Each is a single camera, so it ships one overlay for each port.
 
 The image already includes every overlay for its product, and you switch between them with `jetson-io`, as [camera_overlays.md](camera_overlays.md) describes. Each carrier also has an IMX219 overlay applied at flash time, so IMX219 cameras work on the first boot without a `jetson-io` step. That default is the quad on PAB and the dual on JAJ and PAB_V3.
 

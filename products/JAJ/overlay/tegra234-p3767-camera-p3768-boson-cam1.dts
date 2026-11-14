@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026, ARK Electronics.
+
+/*
+ * FLIR Boson+ through the ARK Boson Adapter on JAJ CAM1 (J25), 2-lane:
+ * CSI2_CLK with CSI2_D0/D1. I2C mux channel 1, EXT_SYNC on CAM1_MCLK (PP.01).
+ */
+
+/dts-v1/;
+/plugin/;
+
+#define CAM_I2C_MUX	TEGRA234_AON_GPIO(CC, 3)
+
+#define BOSON_PORT_INDEX	2
+#define BOSON_SINTERFACE	"serial_c"
+#define BOSON_LANE_POLARITY	"0"
+/* Continuous: the clock mode this port was bench-tested with. */
+#define BOSON_DISCONTINUOUS_CLK	"no"
+#define BOSON_SENSOR_SYSFS	"/sys/firmware/devicetree/base/bus@0/cam_i2cmux/i2c@1/boson@6a"
+#define BOSON_SYNC_PAD		"extperiph2_clk_pp1"
+
+#include <dt-bindings/tegra234-p3767-0000-common.h>
+#include "tegra234-camera-boson.dtsi"
+
+/ {
+	overlay-name = "Camera FLIR Boson+ CAM1";
+	jetson-header-name = "Jetson 22pin CSI Connector";
+	compatible = JETSON_COMPATIBLE_P3768;
+
+	fragment-boson-i2c@0 {
+		target-path = "/";
+		__overlay__ {
+			bus@0 {
+				cam_i2cmux {
+					status = "okay";
+					compatible = "i2c-mux-gpio";
+					#address-cells = <1>;
+					#size-cells = <0>;
+					i2c-parent = <&cam_i2c>;
+					mux-gpios = <&gpio_aon CAM_I2C_MUX GPIO_ACTIVE_HIGH>;
+					i2c@0 {
+						status = "okay";
+						reg = <0>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						/* the flash-time IMX219 default */
+						rbpcv2_imx219_a@10 {
+							status = "disabled";
+						};
+					};
+					i2c@1 {
+						status = "okay";
+						reg = <1>;
+						#address-cells = <1>;
+						#size-cells = <0>;
+						rbpcv2_imx219_c@10 {
+							status = "disabled";
+						};
+						boson@6a {
+							status = "okay";
+#include "tegra234-camera-boson-sensor.dtsi"
+						};
+					};
+				};
+			};
+		};
+	};
+};
