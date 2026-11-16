@@ -4,9 +4,6 @@
 /*
  * FLIR Boson+ through the ARK Boson Adapter on JAJ CAM0 (J28), 2-lane:
  * CSI1_CLK with CSI1_D0/D1. I2C mux channel 0, EXT_SYNC on CAM0_MCLK (PP.00).
- *
- * Not working yet: the Boson probes and configures, but the VI receives almost
- * no valid packets with either clock mode. See docs/boson.md.
  */
 
 /dts-v1/;
@@ -17,8 +14,14 @@
 #define BOSON_PORT_INDEX	1
 #define BOSON_SINTERFACE	"serial_b"
 #define BOSON_LANE_POLARITY	"6"
-/* Gated, as the IMX219, IMX477 and Hadron overlays on this port are. */
-#define BOSON_DISCONTINUOUS_CLK	"yes"
+#define BOSON_DISCONTINUOUS_CLK	"no"
+/*
+ * NVCSI's own THS-settle for the Boson's 492 Mbps lanes catches almost no
+ * bursts on CSI1, so no frame completes. On the bench every value from 72 to
+ * 230 streamed both modes cleanly with either clock mode, and 68 and 255 did
+ * not; 150 sits in the middle.
+ */
+#define BOSON_CIL_SETTLETIME	"150"
 #define BOSON_SENSOR_SYSFS	"/sys/firmware/devicetree/base/bus@0/cam_i2cmux/i2c@0/boson@6a"
 #define BOSON_SYNC_PAD		"extperiph1_clk_pp0"
 

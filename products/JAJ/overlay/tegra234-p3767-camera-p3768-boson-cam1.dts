@@ -14,8 +14,9 @@
 #define BOSON_PORT_INDEX	2
 #define BOSON_SINTERFACE	"serial_c"
 #define BOSON_LANE_POLARITY	"0"
-/* Continuous: the clock mode this port was bench-tested with. */
 #define BOSON_DISCONTINUOUS_CLK	"no"
+/* NVCSI's own THS-settle, which this port was bench-tested with. */
+#define BOSON_CIL_SETTLETIME	"0"
 #define BOSON_SENSOR_SYSFS	"/sys/firmware/devicetree/base/bus@0/cam_i2cmux/i2c@1/boson@6a"
 #define BOSON_SYNC_PAD		"extperiph2_clk_pp1"
 

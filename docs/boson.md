@@ -2,7 +2,7 @@
 
 A MIPI-model FLIR Boson+ connects to an ARK carrier's CSI port through the ARK Boson Adapter. The `nv_boson` driver sets the Boson up over I2C and streams 640x512 at 60 fps, either colourised (UYVY) or as pre-AGC 14-bit data.
 
-**Status:** both modes run at 60 fps through V4L2 on a JAJ with an Orin Nano 4GB, on CAM1. The camera was a Boson+ 640, part number 22640A095-6IAAX, software 4.1.27660. CAM0 does not stream yet, as [CAM0](#cam0) describes. There are no overlays for PAB or PAB_V3 yet.
+**Status:** both modes run at 60 fps through V4L2 on a JAJ with an Orin Nano 4GB, on CAM1 and on CAM0. The camera was a Boson+ 640, part number 22640A095-6IAAX, software 4.1.27660. There are no overlays for PAB or PAB_V3 yet.
 
 ## Overlays
 
@@ -10,8 +10,8 @@ There is one overlay for each CSI port. Apply the one for your port with `jetson
 
 | Carrier | Port | Overlay name | Notes |
 |---------|------|--------------|-------|
-| JAJ | CAM1 (J25) | Camera FLIR Boson+ CAM1 | CSI2, continuous clock, bench-tested |
-| JAJ | CAM0 (J28) | Camera FLIR Boson+ CAM0 | CSI1, gated clock, does not stream yet |
+| JAJ | CAM1 (J25) | Camera FLIR Boson+ CAM1 | CSI2, bench-tested |
+| JAJ | CAM0 (J28) | Camera FLIR Boson+ CAM0 | CSI1, bench-tested, sets its own settle time |
 
 The overlay files are named `tegra234-p3767-camera-p3768-boson-cam<n>.dtbo`, where `<n>` is the port number.
 
@@ -59,9 +59,9 @@ J3, the 6-pin Boson Control connector, carries the Boson's UART on pins 2 and 3 
 - **Rev 1.0 swaps the Boson's TX and RX.** Boson pin 33 is its UART input and pin 43 its output, and the Rev 1.0 adapter wires them the other way round. Cross pins 2 and 3 in the J3 cable.
 - **On a JAJ UART connector, the IMU lands on RTS and CTS.** With J3 in UART1 (`/dev/ttyTHS1`), the IMU's SCL is on CTS (`PR.05`) and SDA on RTS (`PR.04`). On the bench the IMU answered over I2C bit-banged on those two pins, after setting both pads to drive and read (tristate off, input on).
 
-## CAM0
+## Settle time
 
-On JAJ CAM0 the Boson probes, answers on I2C and takes its configuration, but the VI receives almost no valid packets, so no frame completes. With a continuous clock the VI does not recognise any frame starts. With a gated clock it decodes the Boson's frame numbers for a few percent of frames, which shows the lane mapping and polarity are right, and still no frame completes. Two cables gave the same result. The port settings are the ones the IMX219, IMX477 and Hadron overlays use on CAM0, and the board routes CSI1 straight to the connector. The cause is not known yet.
+NVCSI computes the D-PHY THS-settle time from the mode's pixel clock unless the overlay sets `cil_settletime`. On CAM1 its own value works. On CAM0 it catches almost no packet starts, so no frame completes, and the CAM0 overlay sets `cil_settletime = "150"`. On the bench every value from 72 to 230 streamed both modes cleanly, and 68 and 255 did not. If a Boson on another port receives frame starts but no whole frames, try the same setting there.
 
 ## Hardware notes
 
