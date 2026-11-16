@@ -718,9 +718,8 @@ EOF
 # The PMIC RTC driver is a module on R39, and the kernel sets the system clock from it when
 # it registers, seconds into boot. systemd-timesyncd has by then restored its recorded time,
 # which provision.sh seeds with the build time, and the RTC winds the clock back: to 1970 on
-# a board whose RTC was never set. snapd then rejects its signing keys as expired, and
-# snapd.seeded holds multi-user.target, gdm and jtop forever. Start timesyncd after the RTC
-# instead. The udev rule gives /dev/rtc0 the device unit the ordering needs.
+# a board whose RTC was never set. Start timesyncd after the RTC instead. The udev rule gives
+# /dev/rtc0 the device unit the ordering needs.
 echo "Ordering systemd-timesyncd after the RTC..."
 sudo tee "$L4T_DIR/rootfs/etc/udev/rules.d/60-ark-rtc.rules" >/dev/null <<'EOF'
 # Gives /dev/rtc0 a systemd device unit, so systemd-timesyncd can be ordered after the RTC
