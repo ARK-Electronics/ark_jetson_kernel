@@ -198,6 +198,13 @@ for pkg in "${NV_BOOT_CHAIN_PKGS[@]}"; do
         echo "ERROR: $pkg is not held; an apt upgrade would replace it." >&2; exit 1; }
 done
 
+### Remove snapd
+# Nothing in the image uses snaps, and on an offline first boot gdm and jtop wait about 45 s
+# for snapd to give up on the Snap Store. The firefox and thunderbird snap stubs and GNOME
+# Software's snap plugin depend on it and go with it.
+echo "Removing snapd..."
+sudo chroot "$ROOTFS_DIR" apt-get purge -y snapd firefox
+
 ### Install pip
 sudo chroot "$ROOTFS_DIR" apt-get install -y python3-pip
 
