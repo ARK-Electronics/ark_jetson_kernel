@@ -8,9 +8,10 @@
  * (492 Mbps per lane), continuous or gated. The nv_boson driver sets it up over I2C
  * at 0x6a. The adapter wires no reset, power-down or clock to the Boson, which
  * runs from the connector's 3.3 V and its own oscillator. It routes the
- * carrier's MCLK net to Boson pin 72 EXT_SYNC through R12, so the port's MCLK
- * pad becomes a pulled-down input: the bootloader leaves it driving, which
- * would fight the Boson when it is the sync master.
+ * carrier's MCLK net to Boson pin 72 EXT_SYNC through R12, and the IMU's FSYNC
+ * through R13, so the port's MCLK pad becomes a pulled-down input: the
+ * bootloader leaves it driving, which would fight the Boson when it is the
+ * sync master.
  *
  * This file is the port-independent part of every Boson overlay: the VI /
  * NVCSI graph, tegra-camera-platform, the mode table and the sync pad. Each

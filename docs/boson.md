@@ -56,7 +56,7 @@ Connect the adapter's J2 to the CSI port with a 22-pin 0.5 mm FFC. The adapter t
 J3, the 6-pin Boson Control connector, carries the Boson's UART on pins 2 and 3 and the adapter IMU's I2C on pins 4 and 5. The video does not need it: the driver controls the Boson over the CSI port's own I2C. You need J3 only for the Boson's serial port (921600 8N1) or the IMU.
 
 - **Do not use the JAJ's UART2/I2C0 connector for J3.** JAJ UART2 is the Jetson's debug console (`ttyTCU0`), which runs at a fixed 115200, so you cannot talk to the Boson there.
-- **Rev 1.0 swaps the Boson's TX and RX.** Boson pin 33 is its UART input and pin 43 its output, and the Rev 1.0 adapter wires them the other way round. Cross pins 2 and 3 in the J3 cable.
+- **Rev 1.0 swaps the Boson's TX and RX.** Boson pin 33 is its UART input and pin 43 its output, and the Rev 1.0 adapter wires them the other way round. Cross pins 2 and 3 in the J3 cable. The fix is to swap the two nets at J1, leaving R7 and R8 where they are, after which the cable is straight.
 - **On a JAJ UART connector, the IMU lands on RTS and CTS.** With J3 in UART1 (`/dev/ttyTHS1`), the IMU's SCL is on CTS (`PR.05`) and SDA on RTS (`PR.04`). On the bench the IMU answered over I2C bit-banged on those two pins, after setting both pads to drive and read (tristate off, input on).
 
 ## Settle time
@@ -68,5 +68,12 @@ NVCSI computes the D-PHY THS-settle time from the mode's pixel clock unless the 
 - **I2C:** the Boson answers on the camera bus at 7-bit address `0x6a`. Its command protocol on I2C is FLIR's, framed as `8E A1`, a 16-bit length and the command, with no CRC. Function codes are from FLIR's Boson SDK.
 - **Busy Boson:** starting MIPI keeps the Boson busy for about 300 ms. During that time it holds the I2C clock until the Jetson's controller gives up, and the read that times out still takes the first byte of the reply. The driver allows for that.
 - **IMU:** the adapter carries an ICM-45686 at `0x68`, on J3's I2C, not on the camera bus.
-- **Frame sync:** the adapter routes the port's `CAMn_MCLK` net to Boson pin 72 `EXT_SYNC` through R12. Each overlay makes that pad a pulled-down input, as the Hadron overlays do: CAM0 `PP.00` and CAM1 `PP.01`. R13 (not fitted) would route it to the IMU's FSYNC instead.
 - **No reset or clock:** the adapter wires no reset, power-down or clock to the Boson, so the overlays declare none.
+
+## Frame sync
+
+Boson pin 72 `EXT_SYNC` is the Boson's frame-sync line. On the ARK Boson Adapter, R12 joins it to the port's `CAMn_MCLK` pin and R13 joins it to the ICM-45686's FSYNC pin, so all three share one net. Rev 1.0 boards leave R13 unfitted. Fit a 0 Ω resistor there to use the IMU's FSYNC.
+
+- **Boson:** you set its ext sync mode over its UART on J3 (FLIR function `0x00050098`: 0 off, 1 master, 2 slave). The setting lasts until the Boson is power-cycled, and it powers on with sync off. As master it puts out one pulse per 60 Hz frame, and it streams MIPI at the same time.
+- **Carrier pad:** each overlay makes its port's MCLK pad a pulled-down input, as the Hadron overlays do: CAM0 `PP.00` and CAM1 `PP.01`. You can then timestamp the pulses on that GPIO line. On the bench, with the Boson as master, the pad counted 60.0–60.2 rising edges per second, and none with sync off. The other port's pad stays a driven output, so if the ribbon is in a port whose overlay is not applied, that pad holds the sync net and no pulses get through.
+- **IMU:** with R13 fitted, the ICM-45686 tags the first sample after each pulse with the pulse-to-sample delay, at 1 µs resolution. Switch its pin 9 from INT2, its power-on function, to FSYNC first. On the bench, 200 Hz samples came back with 59.6–59.8 tags per second, counted on the IMU's own clock.
