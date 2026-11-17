@@ -1,0 +1,27 @@
+PCI: tegra194: set the core clock for the link's speed
+
+The core clock table has a dummy first entry so that it is indexed by the
+link speed itself, but the one line that sets the rate still indexes it
+with speed - 1. Every controller runs one generation slow: the SSD's
+Gen3 x4 link runs its controller at 125 MHz instead of 250 MHz. Index the
+table by the speed, as mainline and L4T R36 do.
+
+At 125 MHz the controller still carries a Gen3 x4 link at full rate, with
+almost no margin. On the PAB's SSD the fix changes neither throughput nor
+queue-depth-1 latency.
+
+Applies to the Linux 6.8 tree in L4T R39.2.1.
+---
+diff --git a/drivers/pci/controller/dwc/pcie-tegra194.c b/drivers/pci/controller/dwc/pcie-tegra194.c
+index 4070105..03b6e69 100644
+--- a/drivers/pci/controller/dwc/pcie-tegra194.c
++++ b/drivers/pci/controller/dwc/pcie-tegra194.c
+@@ -473,7 +473,7 @@ static void tegra_pcie_icc_set(struct tegra_pcie_dw *pcie)
+ 		speed = 0;
+ 
+ 	if ((speed > 0) && (speed <= 4) && !pcie->is_safety_platform)
+-		clk_set_rate(pcie->core_clk, pcie_gen_freq[speed - 1]);
++		clk_set_rate(pcie->core_clk, pcie_gen_freq[speed]);
+ }
+ 
+ static void apply_bad_link_workaround(struct dw_pcie_rp *pp)
