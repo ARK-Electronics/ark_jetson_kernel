@@ -10,6 +10,8 @@ New source files, such as a sensor driver, go in `kernel_overlay/` instead.
 | --- | --- |
 | `0001-efi-keep-runtime-services-and-optee-calls-apart.patch` | A boot that hangs when a UEFI variable is read or written while a Linux OP-TEE call, such as the fTPM loading, is waiting on a lock in OP-TEE. The patch header has the mechanism. |
 | `0002-nvme-pci-look-again-after-a-flush.patch` | NVMe commands that wait out the 30 s timeout with `completion polled`, because their interrupt arrived before the completion was visible. |
+| `0003-pci-tegra194-set-the-core-clock-for-the-link-speed.patch` | Every PCIe controller running its core clock one link generation slow. |
+| `0004-pci-tegra194-route-msis-through-gicv2m.patch` | PCIe MSIs raised inside each controller ahead of the device's earlier writes, and all of them on CPU 0. They go to the GIC's v2m frame instead, as on JetPack 5. The frame and each controller's `msi-map` are in every product's `ark-<target>-overrides.dtsi`, and neither half works without the other. |
 
 ## Adding a patch
 
