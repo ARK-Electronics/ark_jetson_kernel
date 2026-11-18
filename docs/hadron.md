@@ -2,7 +2,7 @@
 
 The FLIR Hadron 640R and 640R+ carry two cameras. The visible one, the EO, connects to an ARK carrier through the ARK Hadron Adapter and needs the driver and overlays below. The thermal one, the Boson, shows up over USB as a UVC device (`09cb:4007`) and needs no overlay.
 
-**Status:** raw capture through V4L2 works in all four modes, and you can set exposure, gain and frame rate. Argus (`nvarguscamerasrc`) works in all four modes too, with the ISP's default colour. Both have been bench-tested on a JAJ only, on CAM1 with four lanes and on CAM0 with two.
+**Status:** raw capture through V4L2 works in all four modes, and you can set exposure, gain and frame rate. Argus (`nvarguscamerasrc`) works in all four modes too, with the ISP's default colour. Both have been bench-tested on a JAJ, on CAM1 with four lanes and on CAM0 with two, and on all four of a PAB's ports with two.
 
 ## Driver
 
@@ -29,7 +29,7 @@ There is one overlay for each CSI port the adapter can plug into. Apply the one 
 | JAJ | CAM1 (J25) | 4 | Camera FLIR Hadron EO CAM1 4-lane | Bench-tested |
 | PAB_V3 | CAM0 (J28) | 4 | Camera FLIR Hadron EO CAM0 4-lane | Untested on hardware |
 | PAB_V3 | CAM1 (J25) | 4 | Camera FLIR Hadron EO CAM1 4-lane | Untested on hardware |
-| PAB | CAM0–CAM3 | 2 | Camera FLIR Hadron EO CAM*n* 2-lane | 15-pin connectors: needs a 22-to-15-pin FFC adapter. Untested on hardware |
+| PAB | CAM0–CAM3 | 2 | Camera FLIR Hadron EO CAM*n* 2-lane | 15-pin connectors: needs a 22-to-15-pin FFC adapter. Bench-tested |
 
 The overlay files are named `tegra234-p3767-camera-p3768-hadron-eo-cam<n>.dtbo`, where `<n>` is the port number.
 
