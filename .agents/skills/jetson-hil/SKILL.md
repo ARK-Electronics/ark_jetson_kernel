@@ -29,7 +29,8 @@ Do not power-cycle, flash or change a setpoint until the answers are in. Then ru
 |---|---|
 | DP712 | RS232 through an FT232 cable, 9600 baud, SCPI. `:OUTP CH1,ON`/`OFF`, `:OUTP? CH1` → `ON`/`OFF`, `:SOUR:VOLT`/`:SOUR:CURR`, `:MEAS:VOLT? CH1`. The first query after opening the port is dropped, and back-to-back commands get garbled; the script retries and spaces them. |
 | Supply setpoints | Carrier-specific: ask. Benches have used 16 V (JAJ boot timing), 20 V (JAJ power), 25.2 V (PAB power modules). |
-| Debug UART | 115200 8N1, `ttyTCU0` on the device. Login `jetson` / `jetson`. With the fast-boot firmware, nothing prints before UEFI. |
+| DP932A | The PAB carrier test stations use a three-channel DP932A over USBTMC, which `jetson_hil.py psu` does not drive. Use ark-bench's `arkbenchlib.rigol_dp932` from the station's `~/ark-bench/.venv`. `connect()` as a context manager switches every output off on exit, and `energize()` switches a rail off before it configures it. Hold the handle and call `disconnect()` to leave the rails as they are. |
+| Debug UART | 115200 8N1, `ttyTCU0` on the device. Login `jetson` / `jetson`. With the fast-boot firmware, nothing prints before UEFI. The kernel boots `quiet`, so the console is silent between UEFI and the login prompt. |
 | USB IDs | `0955:7020` = booted with the L4T gadget. `0955:7323/7423/7523/7623` = recovery mode (NX 16 GB / NX 8 GB / Nano 8 GB / Nano 4 GB). |
 | USB network | The gadget shows up as two host NICs (rndis + cdc_ncm) and only one answers. Use whichever holds `192.168.55.100`, or bring the profile up by hand with `nmcli con up ark-jetson-usb ifname <nic>`. A Jetson reboot can leave the NIC without an address until the profile is brought up again. Never pin a profile to a MAC; it changes per board and per flash. |
 | SSH | `jetson@192.168.55.1` over USB, or the Ethernet IP; `jetson.local` via mDNS. A stock image has no key installed: log in with `sshpass -p jetson`. `sudo` password `jetson`. |
@@ -57,3 +58,7 @@ Do not power-cycle, flash or change a setpoint until the answers are in. Then ru
 - A board can wait in recovery while a build finishes. One sat there for twelve minutes before a good flash.
 - A software power-off does not keep a JAJ down: after `shutdown -h now` the module boots again within seconds. To power down cleanly, run `sync`, remount read-only with `echo u > /proc/sysrq-trigger`, then `psu off`.
 - Leave the supply in the state you found it and say so. If you changed a setpoint, restore it.
+- ark-bench's carrier test binds its ethernet profile to the first `enx*` NIC. With the recovery cable plugged in, that is the Jetson's USB gadget NIC, and the test never sees a DHCP lease on the real dongle.
+- The PAB muxes usb2-0 between the FMU and the recovery port. With the recovery cable in, the FMU is not on the Jetson's USB and `mavlink-router` fails.
+- Over `sudo` in a remote one-liner, only the first command is elevated. Wrap the line in `sh -c`.
+- `pkill -f` over SSH kills the SSH shell too when its own command line contains the pattern.
