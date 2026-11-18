@@ -221,7 +221,6 @@ wait_for_first_boot() {
     echo "" >&2
     echo "ERROR: no sshd on $JETSON_USB_ADDRESS:22 within ${FIRST_BOOT_TIMEOUT}s — the first boot did not finish." >&2
     echo "       Keep it powered and cabled; check its console: systemctl status cloud-init ssh" >&2
-    echo "       Removing power now can leave a unit whose sshd never starts." >&2
     return 1
 }
 
