@@ -102,7 +102,7 @@
 
 /* PCIe MSIs go to the GIC's v2m frame, as on JetPack 5, and not to each controller's DesignWare
  * MSI receiver. That receiver raises an MSI ahead of the device's earlier memory writes, so an NVMe
- * completion can be missed, and it sends every MSI to CPU 0. kernel_patches/0004 has the Tegra half:
+ * completion can be missed, and it sends every MSI to CPU 0. kernel_patches/0003 has the Tegra half:
  * the controller rewrites a write to the frame into the window at 0x54000000, which reaches the GIC
  * through the IOMMU. SPIs 608 to 959 are the range NVIDIA documents for PCIe MSIs.
  * The frame sits under the GIC, which needs address cells for it. Each PCIe interrupt map then
