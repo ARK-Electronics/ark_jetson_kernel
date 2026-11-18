@@ -2,7 +2,7 @@
 
 A MIPI-model FLIR Boson+ connects to an ARK carrier's CSI port through the ARK Boson Adapter. The `nv_boson` driver sets the Boson up over I2C and streams 640x512 at 60 fps, either colourised (UYVY) or as pre-AGC 14-bit data.
 
-**Status:** both modes run at 60 fps through V4L2 on a JAJ with an Orin Nano 4GB, on CAM1 and on CAM0. The camera was a Boson+ 640, part number 22640A095-6IAAX, software 4.1.27660. There are no overlays for PAB or PAB_V3 yet.
+**Status:** both modes run at 60 fps through V4L2 on a JAJ with an Orin Nano 4GB, on CAM1 and on CAM0, and on a PAB with an Orin Nano 8GB, on all four ports. The camera was a Boson+ 640, part number 22640A095-6IAAX, software 4.1.27660. There are no overlays for PAB_V3 yet.
 
 ## Overlays
 
@@ -12,6 +12,12 @@ There is one overlay for each CSI port. Apply the one for your port with `jetson
 |---------|------|--------------|-------|
 | JAJ | CAM1 (J25) | Camera FLIR Boson+ CAM1 | CSI2, bench-tested |
 | JAJ | CAM0 (J28) | Camera FLIR Boson+ CAM0 | CSI1, bench-tested, sets its own settle time |
+| PAB | CAM0 (J28) | Camera FLIR Boson+ CAM0 | CSI0, bench-tested, sets its own settle time |
+| PAB | CAM1 (J25) | Camera FLIR Boson+ CAM1 | CSI1, bench-tested, sets its own settle time |
+| PAB | CAM2 (J29) | Camera FLIR Boson+ CAM2 | CSI2, bench-tested |
+| PAB | CAM3 (J27) | Camera FLIR Boson+ CAM3 | CSI3, bench-tested |
+
+PAB's camera connectors are 15-pin, so on a PAB you connect the adapter through a 22-to-15-pin FFC adapter.
 
 The overlay files are named `tegra234-p3767-camera-p3768-boson-cam<n>.dtbo`, where `<n>` is the port number.
 
@@ -61,7 +67,7 @@ J3, the 6-pin Boson Control connector, carries the Boson's UART on pins 2 and 3 
 
 ## Settle time
 
-NVCSI computes the D-PHY THS-settle time from the mode's pixel clock unless the overlay sets `cil_settletime`. On CAM1 its own value works. On CAM0 it catches almost no packet starts, so no frame completes, and the CAM0 overlay sets `cil_settletime = "150"`. On the bench every value from 72 to 230 streamed both modes cleanly, and 68 and 255 did not. If a Boson on another port receives frame starts but no whole frames, try the same setting there.
+NVCSI computes the D-PHY THS-settle time from the mode's pixel clock unless the overlay sets `cil_settletime`. On JAJ CAM1 and PAB CAM2 and CAM3 its own value works. On JAJ CAM0, which is CSI1, it catches almost no packet starts, so no frame completes, and that overlay sets `cil_settletime = "150"`. The PAB CAM1 overlay sets the same value, because that port is CSI1 too, and so does PAB CAM0. Both stream cleanly with it, and neither has been tried without it. On the bench every value from 72 to 230 streamed both modes cleanly, and 68 and 255 did not. If a Boson on another port receives frame starts but no whole frames, try the same setting there.
 
 ## Hardware notes
 
@@ -74,6 +80,6 @@ NVCSI computes the D-PHY THS-settle time from the mode's pixel clock unless the 
 
 Boson pin 72 `EXT_SYNC` is the Boson's frame-sync line. On the ARK Boson Adapter, R12 joins it to the port's `CAMn_MCLK` pin and R13 joins it to the ICM-45686's FSYNC pin, so all three share one net. Rev 1.0 boards leave R13 unfitted. Fit a 0 Ω resistor there to use the IMU's FSYNC.
 
-- **Boson:** you set its ext sync mode over its UART on J3 (FLIR function `0x00050098`: 0 off, 1 master, 2 slave). The setting lasts until the Boson is power-cycled, and it powers on with sync off. As master it puts out one pulse per 60 Hz frame, and it streams MIPI at the same time.
-- **Carrier pad:** each overlay makes its port's MCLK pad a pulled-down input, as the Hadron overlays do: CAM0 `PP.00` and CAM1 `PP.01`. You can then timestamp the pulses on that GPIO line. On the bench, with the Boson as master, the pad counted 60.0–60.2 rising edges per second, and none with sync off. The other port's pad stays a driven output, so if the ribbon is in a port whose overlay is not applied, that pad holds the sync net and no pulses get through.
-- **IMU:** with R13 fitted, the ICM-45686 tags the first sample after each pulse with the pulse-to-sample delay, at 1 µs resolution. Switch its pin 9 from INT2, its power-on function, to FSYNC first. On the bench, 200 Hz samples came back with 59.6–59.8 tags per second, counted on the IMU's own clock.
+- **Boson:** you set its ext sync mode over its UART on J3 (FLIR function `0x00050098`: 0 off, 1 master, 2 slave). The same command also works over the camera I2C at `0x6a`, framed as the driver frames it, while nothing is streaming. The PAB bench did that because it had no spare UART for J3. The setting lasts until the Boson is power-cycled, and it powers on with sync off. As master it puts out one pulse per 60 Hz frame, and it streams MIPI at the same time.
+- **Carrier pad:** each overlay makes its port's MCLK pad a pulled-down input, as the Hadron overlays do: CAM0 `PP.00` and CAM1 `PP.01` on every carrier, plus PAB CAM2 `PQ.05` and CAM3 `PQ.06`. You can then timestamp the pulses on that GPIO line. On the bench, with the Boson as master, the pad counted 59.9–60.2 rising edges per second, and none with sync off. The other port's pad stays a driven output, so if the ribbon is in a port whose overlay is not applied, that pad holds the sync net and no pulses get through.
+- **IMU:** with R13 fitted, the ICM-45686 tags the first sample after each pulse with the pulse-to-sample delay, at 1 µs resolution. Switch its pin 9 from INT2, its power-on function, to FSYNC first. On the bench, 200 Hz samples came back with 59.4–59.8 tags per second, counted on the IMU's own clock.
