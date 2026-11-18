@@ -680,6 +680,22 @@ if append + '\n' != lines[i]:
     open(path, 'w').writelines(lines)
 PY
 
+# ── Load firmware without crossing the /lib symlink ─────────────────────────
+
+# NVIDIA's CMDLINE_ADD sets firmware_class.path=/etc/firmware, which the rootfs lacks, so every
+# firmware load falls through to the /lib/firmware paths across /lib -> usr/lib. When the GPU
+# first powers on inside an open() of its device, its firmware loads share that open's
+# 40-symlink budget, the ACR firmware fails with ELOOP and the GPU stays down until reboot.
+BOARD_CONF="$L4T_DIR/p3767.conf.common"
+case "$(grep -c 'firmware_class.path=/etc/firmware' "$BOARD_CONF"):$(grep -c 'firmware_class.path=/usr/lib/firmware' "$BOARD_CONF")" in
+    1:0) echo "Pointing firmware_class.path at /usr/lib/firmware..."
+         sudo sed -i 's#firmware_class.path=/etc/firmware#firmware_class.path=/usr/lib/firmware#' "$BOARD_CONF" ;;
+    0:1) ;;
+    *) echo "ERROR: $BOARD_CONF no longer sets firmware_class.path=/etc/firmware once — BSP changed;" >&2
+       echo "       re-check the firmware path fix in build.sh." >&2
+       exit 1 ;;
+esac
+
 # quiet only holds until systemd-sysctl runs. nvidia-l4t-configs ships
 # /etc/sysctl.d/30-nv-console-messages.conf with kernel.printk = 6 6 1 7, which puts the
 # console threshold back to 6 a few seconds into userspace and the whole KERN_WARNING
