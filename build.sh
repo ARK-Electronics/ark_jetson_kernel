@@ -752,6 +752,21 @@ Wants=dev-rtc0.device
 After=dev-rtc0.device
 EOF
 
+# ── Refresh NVIDIA's CDI spec after nvpmodel ────────────────────────────────
+
+# nvidia-jetpack pulls in nvidia-container-toolkit-base, whose nvidia-cdi-refresh runs early in
+# boot. It fails while the GPU driver is not ready, and its NVML probe can bring the GPU up before
+# nvpmodel sets the power-gating masks, which fails nvpmodel. The image does not ship the toolkit,
+# so the drop-in waits for an install.
+echo "Installing the nvidia-cdi-refresh ordering drop-in..."
+sudo mkdir -p "$L4T_DIR/rootfs/etc/systemd/system/nvidia-cdi-refresh.service.d"
+sudo tee "$L4T_DIR/rootfs/etc/systemd/system/nvidia-cdi-refresh.service.d/ark-after-nvpmodel.conf" >/dev/null <<'EOF'
+# nvidia-cdi-refresh brings the GPU up through NVML. Started before nvpmodel, it runs before the GPU
+# driver is ready and locks the GPU before nvpmodel sets its power-gating masks.
+[Unit]
+After=nvpmodel.service
+EOF
+
 # ── Regenerate missing or empty SSH host keys ───────────────────────────────
 
 echo "Installing the SSH host key drop-in..."
