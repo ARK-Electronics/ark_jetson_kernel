@@ -22,16 +22,6 @@ ARK_OS_PKG="ark-os-jetson-noble"
 ARK_OS_DEB="${ARK_OS_PKG}_${ARK_OS_VERSION}_arm64.deb"
 ARK_OS_URL="https://github.com/ARK-Electronics/ARK-OS/releases/download/v${ARK_OS_VERSION}/${ARK_OS_DEB}"
 
-# Camera userspace stack — see versions.env. gstreamer ships from the `common`
-# pool, the other three from the `som` pool.
-NV_CAMERA_PKGS=(nvidia-l4t-gstreamer nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils)
-nv_camera_deb() { echo "${1}_${NV_CAMERA_STACK_VERSION}_arm64.deb"; }
-nv_camera_url() {
-    local pool="som"
-    [ "$1" = "nvidia-l4t-gstreamer" ] && pool="common"
-    echo "https://repo.download.nvidia.com/jetson/${pool}/pool/main/n/${1}/$(nv_camera_deb "$1")"
-}
-
 # Prefer a deb already in downloads/ over downloading
 DOWNLOADS_DIR="${DOWNLOADS_DIR:-$SCRIPT_DIR/downloads}"
 
@@ -124,22 +114,23 @@ fi
 sudo chroot "$ROOTFS_DIR" sh -c 'ls /usr/lib/ark-os/mavsdk/lib/libmavsdk.so.* >/dev/null 2>&1' \
     || { echo "ERROR: installed ark-os ships no bundled MAVSDK under /usr/lib/ark-os/mavsdk." >&2; exit 1; }
 
-### Install the camera userspace stack (Argus + GStreamer plugins)
-# apply_binaries installs the camera/multimedia debs but not nvidia-l4t-gstreamer.
-# Install all four at NV_CAMERA_STACK_VERSION so the set stays on one stamp.
-echo "Installing the camera userspace stack (${NV_CAMERA_STACK_VERSION})..."
-NV_CAMERA_TMP_DEBS=()
-for pkg in "${NV_CAMERA_PKGS[@]}"; do
-    deb=$(nv_camera_deb "$pkg")
-    fetch_deb "$deb" "$(nv_camera_url "$pkg")"
-    NV_CAMERA_TMP_DEBS+=("/tmp/$deb")
-done
-# One transaction: the set inter-depends by exact version.
-sudo chroot "$ROOTFS_DIR" apt-get install -y --allow-downgrades "${NV_CAMERA_TMP_DEBS[@]}"
+### Install nvarguscamerasrc
+# apply_binaries installs nvidia-l4t-camera, -multimedia and -multimedia-utils but not
+# nvidia-l4t-gstreamer, which has the plugin. The four depend on each other by exact
+# version, so it goes in at the stamp of the camera package the BSP installed.
+NV_CAMERA_PKGS=(nvidia-l4t-camera nvidia-l4t-multimedia nvidia-l4t-multimedia-utils nvidia-l4t-gstreamer)
+NV_CAMERA_STAMP=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Version}' nvidia-l4t-camera) \
+    && [ -n "$NV_CAMERA_STAMP" ] \
+    || { echo "ERROR: the BSP installed no nvidia-l4t-camera." >&2; exit 1; }
+NV_GSTREAMER_DEB="nvidia-l4t-gstreamer_${NV_CAMERA_STAMP}_arm64.deb"
+echo "Installing nvidia-l4t-gstreamer ${NV_CAMERA_STAMP}..."
+fetch_deb "$NV_GSTREAMER_DEB" \
+    "https://repo.download.nvidia.com/jetson/common/pool/main/n/nvidia-l4t-gstreamer/$NV_GSTREAMER_DEB"
+sudo chroot "$ROOTFS_DIR" apt-get install -y "/tmp/$NV_GSTREAMER_DEB"
 for pkg in "${NV_CAMERA_PKGS[@]}"; do
     v=$(sudo chroot "$ROOTFS_DIR" dpkg-query -W -f='${Version}' "$pkg")
-    [ "$v" = "${NV_CAMERA_STACK_VERSION}" ] || {
-        echo "ERROR: $pkg is '$v', expected ${NV_CAMERA_STACK_VERSION}." >&2; exit 1; }
+    [ "$v" = "$NV_CAMERA_STAMP" ] || {
+        echo "ERROR: $pkg is '$v', expected ${NV_CAMERA_STAMP}, the BSP's nvidia-l4t-camera." >&2; exit 1; }
 done
 # Assert the plugin actually loads and registers nvarguscamerasrc — file existence
 # alone misses unresolvable libraries. Inspect the plugin *file*, not the element:
@@ -153,7 +144,7 @@ sudo chroot "$ROOTFS_DIR" env GST_REGISTRY=/tmp/provision-gst-registry.bin \
     | grep -qw nvarguscamerasrc \
     || { echo "ERROR: nvarguscamerasrc missing or failed to load after installing the camera stack." >&2; exit 1; }
 sudo rm -f "$ROOTFS_DIR/tmp/provision-gst-registry.bin"
-for deb in "${NV_CAMERA_TMP_DEBS[@]}"; do sudo rm -f "$ROOTFS_DIR$deb"; done
+sudo rm -f "$ROOTFS_DIR/tmp/$NV_GSTREAMER_DEB"
 
 ### Install the Argus ISP overrides
 # Argus loads <badge>.isp only for the camera module of that badge, and wants the file
