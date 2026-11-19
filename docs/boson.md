@@ -80,7 +80,7 @@ NVCSI computes the D-PHY THS-settle time from the mode's pixel clock unless the 
 
 ## Frame sync
 
-Boson pin 72 `EXT_SYNC` is the Boson's frame-sync line. On the ARK Boson Adapter, R12 joins it to the port's `CAMn_MCLK` pin and R13 joins it to the ICM-45686's FSYNC pin, so all three share one net. Both are fitted.
+Boson pin 72 `EXT_SYNC` is the Boson's frame-sync line. On the ARK Boson Adapter it connects to the port's `CAMn_MCLK` pin and to the ICM-45686's FSYNC pin.
 
 - **Boson:** you set its ext sync mode over its UART on J3 (FLIR function `0x00050098`: 0 off, 1 master, 2 slave). The same command also works over the camera I2C at `0x6a`, framed as the driver frames it, while nothing is streaming. The PAB bench did that because it had no spare UART for J3. The setting lasts until the Boson is power-cycled, and it powers on with sync off. As master it puts out one pulse per 60 Hz frame, and it streams MIPI at the same time.
 - **Carrier pad:** each overlay makes its port's MCLK pad a pulled-down input, as the Hadron overlays do: CAM0 `PP.00` and CAM1 `PP.01` on every carrier, plus PAB CAM2 `PQ.05` and CAM3 `PQ.06`. You can then timestamp the pulses on that GPIO line. On the bench, with the Boson as master, the pad counted 59.9–60.2 rising edges per second, and none with sync off. The other port's pad stays a driven output, so if the ribbon is in a port whose overlay is not applied, that pad holds the sync net and no pulses get through.
