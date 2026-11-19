@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026, ARK Electronics.
+
+/*
+ * Body of the FLIR Boson+ sensor node. Include it inside the node once
+ * tegra234-camera-boson.dtsi is in scope. Bound by kernel_overlay's nv_boson
+ * driver, which selects the mode on the Boson over I2C.
+ */
+
+compatible = "flir,boson-plus";
+reg = <0x6a>;
+devnode = "video0";
+/* 640 x 512 at 12 um */
+physical_w = "7.680";
+physical_h = "6.144";
+sensor_model = "boson";
+/* Both modes are 640x512: pick RAW14 with the sensor_mode control. */
+use_sensor_mode_id = "true";
+
+/* Post-colorize UYVY, 16 bits per pixel */
+BOSON_MODE(mode0, "yuv", "uyvy", 16, 61500000, 1952, 2.5625);
+/*
+ * Pre-AGC 14-bit. The VI has no 14-bit mono format, so this is a 14-bit Bayer
+ * format: the samples are monochrome, and nothing downstream should demosaic.
+ */
+BOSON_MODE(mode1, "bayer", "rggb", 14, 70285714, 2231, 2.9286);
+
+ports {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	port@0 {
+		reg = <0>;
+		boson_out0: endpoint {
+			status = "okay";
+			port-index = <BOSON_PORT_INDEX>;
+			bus-width = <2>;
+			remote-endpoint = <&boson_csi_in0>;
+		};
+	};
+};

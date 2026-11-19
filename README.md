@@ -133,6 +133,7 @@ sudo reboot
 | [docs/cameras.md](docs/cameras.md) | Supported sensors, streaming, and known issues |
 | [docs/camera_overlays.md](docs/camera_overlays.md) | Build, install, and author camera device-tree overlays |
 | [docs/hadron.md](docs/hadron.md) | FLIR Hadron EO camera: driver, overlays, capture, demo and frame sync |
+| [docs/boson.md](docs/boson.md) | FLIR Boson+ thermal camera on the ARK Boson Adapter: driver, overlays, capture and wiring |
 | [docs/argus_relaunch_regression.md](docs/argus_relaunch_regression.md) | The JetPack 6.2.2 Argus regression and the camera stack pin that fixes it |
 | [docs/gpio.md](docs/gpio.md) | 40-pin / I2S header GPIO and boot-time pad defaults |
 | [docs/i2c.md](docs/i2c.md) | I2C bus map and scanning |
