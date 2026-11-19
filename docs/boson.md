@@ -59,6 +59,8 @@ When a stream starts, the driver switches the Boson's video output to MIPI, sets
 
 Connect the adapter's J2 to the CSI port with a 22-pin 0.5 mm FFC. The adapter takes its power from the port's 3.3 V.
 
+The adapter leaves the Boson's USB unconnected on purpose, to save space, so MIPI is its only video path. Use a Boson+ with the MIPI option. An original Boson has no MIPI output: its part number starts with `20640` or `20320`, and it runs 3.x software. The one tried on the bench did not answer on the camera I2C, so the driver logged `no Boson answering at 0x6a`.
+
 J3, the 6-pin Boson Control connector, carries the Boson's UART on pins 2 and 3 and the adapter IMU's I2C on pins 4 and 5. The video does not need it: the driver controls the Boson over the CSI port's own I2C. You need J3 only for the Boson's serial port (921600 8N1) or the IMU.
 
 - **Do not use the JAJ's UART2/I2C0 connector for J3.** JAJ UART2 is the Jetson's debug console (`ttyTCU0`), which runs at a fixed 115200, so you cannot talk to the Boson there.
