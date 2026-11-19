@@ -231,19 +231,26 @@ if [ ! -d "$L4T_DIR" ]; then
     # skips that file, the reconfigure finally exits 0, nvfb drops its once-only
     # nvfirstboot guard, and sshd can never start again. Clearing truncated keys first
     # lets nvfb's own retry loop do what it was written to do.
+    # nvfb.sh also drops the guard straight after writing the keys. A power cut before
+    # writeback then leaves empty keys and no guard, so nvfb never runs again. A sync
+    # first makes everything nvfb wrote durable before sshd starts, which is when
+    # flash.sh says the unit is safe to power off.
     echo "Patching nvfb.sh so an interrupted SSH host key generation can be retried..."
     sudo python3 - "$L4T_DIR/rootfs/etc/systemd/nvfb.sh" <<'PY'
 import sys
 path = sys.argv[1]
 src = open(path).read()
 anchor = '\twhile [ "${status-1}" -ne 0 ]; do\n'
-if src.count(anchor) != 1:
-    sys.exit("ERROR: nvfb.sh has no single openssh reconfigure loop to patch; "
+guard = 'rm -rf /etc/nv/nvfirstboot\n'
+if src.count(anchor) != 1 or src.count(guard) != 1:
+    sys.exit("ERROR: nvfb.sh has no single openssh reconfigure loop or guard removal to patch; "
              "re-check how this BSP generates SSH host keys before shipping.")
 fix = ("\t# A zero-length key from an interrupted run would otherwise be skipped\n"
        "\t# forever by create_key(), leaving sshd permanently unable to start.\n"
        "\tfind /etc/ssh -maxdepth 1 -name 'ssh_host_*_key' -empty -print -delete\n")
-open(path, 'w').write(src.replace(anchor, fix + anchor))
+src = src.replace(anchor, fix + anchor)
+src = src.replace(guard, "# Everything above reaches the disk before the guard goes.\nsync\n" + guard)
+open(path, 'w').write(src)
 PY
 
     if [ "$PROVISION" -eq 1 ]; then
