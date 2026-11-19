@@ -233,10 +233,19 @@ fi
 echo "Installing jetson-stats (jtop) system-wide..."
 sudo chroot "$ROOTFS_DIR" pip3 install "${PIP_FLAGS[@]}" "jetson-stats==${JETSON_STATS_VERSION}"
 sudo chroot "$ROOTFS_DIR" python3 -c "import jtop"
+# jetson-stats 7 installs from a wheel, which never runs its service installer. SUDO_USER would name a
+# build-host user that the rootfs lacks.
+sudo chroot "$ROOTFS_DIR" env -u SUDO_USER jtop --install-service
 sudo chroot "$ROOTFS_DIR" test -f /etc/systemd/system/jtop.service
 # Enable jtop.service for first boot, since systemctl can't reach a manager in the chroot.
 sudo chroot "$ROOTFS_DIR" mkdir -p /etc/systemd/system/multi-user.target.wants
 sudo chroot "$ROOTFS_DIR" ln -sf /etc/systemd/system/jtop.service /etc/systemd/system/multi-user.target.wants/jtop.service
+sudo mkdir -p "$ROOTFS_DIR/etc/systemd/system/jtop.service.d"
+sudo tee "$ROOTFS_DIR/etc/systemd/system/jtop.service.d/ark-after-nvpmodel.conf" >/dev/null <<'EOF'
+# jtop reads the power mode once at startup, so it starts after nvpmodel has set it.
+[Unit]
+After=nvpmodel.service
+EOF
 
 ### Install bench test tooling
 echo "Installing bench-test tools"
