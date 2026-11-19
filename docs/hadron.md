@@ -107,7 +107,7 @@ The live view in `scripts/camera/hadron/view/` shows the EO and the Boson side b
 
 ## Frame sync
 
-Hadron pin 43 `EXT_VSYNC` is the Hadron's frame-sync line. On the ARK Hadron Adapter, R11 joins it to the carrier's `CAMn_MCLK`, and R12 joins it to the ICM-45686's FSYNC pin.
+Hadron pin 43 `EXT_VSYNC` is the Hadron's frame-sync line. On the ARK Hadron Adapter it connects to the carrier's `CAMn_MCLK` and to the ICM-45686's FSYNC pin.
 
 - **Boson:** you set the Boson's ext sync mode over its USB serial port, and it lasts until the Hadron is power-cycled. The Boson powers on with sync disabled, and it then holds the line low. As master it puts out a short high pulse for each 60 Hz core frame. As slave its frames follow pulses on the line, and it sends none without them.
 - **EO:** with these tables the OV64B40 neither drives the line nor follows it. It free-runs on its own oscillator.
