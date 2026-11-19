@@ -767,6 +767,22 @@ sudo tee "$L4T_DIR/rootfs/etc/systemd/system/nvidia-cdi-refresh.service.d/ark-af
 After=nvpmodel.service
 EOF
 
+# ── Keep unused servers off through the first-boot preset pass ──────────────
+
+# R39's rootfs has no /etc/machine-id, so systemd treats the first boot as one and enables every unit
+# no preset excludes. That started an iperf3 server and saned listening on every interface, and
+# systemd-networkd beside NetworkManager, which NVIDIA's own preset meant to keep off.
+echo "Installing the first-boot preset..."
+sudo mkdir -p "$L4T_DIR/rootfs/etc/systemd/system-preset"
+sudo tee "$L4T_DIR/rootfs/etc/systemd/system-preset/80-ark.preset" >/dev/null <<'EOF'
+# Servers the image does not use. The first boot enables every unit that no preset excludes.
+disable iperf3.service
+disable saned.socket
+disable saned@.service
+disable rsync.service
+disable systemd-networkd.socket
+EOF
+
 # ── Regenerate missing or empty SSH host keys ───────────────────────────────
 
 echo "Installing the SSH host key drop-in..."
