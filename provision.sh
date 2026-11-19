@@ -217,6 +217,14 @@ sudo chroot "$ROOTFS_DIR" test -f /etc/systemd/system/jtop.service
 # Enable jtop.service for first boot, since systemctl can't reach a manager in the chroot.
 sudo chroot "$ROOTFS_DIR" mkdir -p /etc/systemd/system/multi-user.target.wants
 sudo chroot "$ROOTFS_DIR" ln -sf /etc/systemd/system/jtop.service /etc/systemd/system/multi-user.target.wants/jtop.service
+sudo mkdir -p "$ROOTFS_DIR/etc/systemd/system/jtop.service.d"
+sudo tee "$ROOTFS_DIR/etc/systemd/system/jtop.service.d/ark-after-nvpmodel.conf" >/dev/null <<'EOF'
+# jtop reads the power mode once at startup and, on JetPack 7, opens the GPU through NVML. Started
+# before nvpmodel, it reports no power mode for the boot, and nvpmodel cannot set the GPU's
+# power-gating masks.
+[Unit]
+After=nvpmodel.service
+EOF
 
 ### Install bench test tooling
 echo "Installing bench-test tools"
