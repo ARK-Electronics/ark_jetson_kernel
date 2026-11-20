@@ -2,6 +2,7 @@
 
 ## 6.2.2.9 - 2026-11-20
 
+- Added support for the FLIR Hadron 640R's EO camera through the ARK Hadron Adapter, with a jetson-io overlay for CAM0 and for CAM1
 - ARK-OS updated to v1.5.1: on modules with a hardware video encoder, the camera stream uses it instead of the CPU, and saving a config on the Services page no longer corrupts it
 - The ARK UI's Connections page loads in under a second and network stats update every 2 s. Both had waited 15 s on a Wi-Fi scan, which the radio cannot run while it hosts the hotspot
 - The unit no longer hangs when a UEFI variable is read or written, for example by `efibootmgr` or a bootloader update, while the firmware TPM is in use
