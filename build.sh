@@ -715,6 +715,24 @@ if sudo find "$L4T_DIR/rootfs/etc/systemd/system" -name 'rpcbind.*' | grep -q .;
     exit 1
 fi
 
+# ── Keep nv-update-initrd's lists to files the image has ────────────────────
+# apt runs nv-update-initrd whenever an upgrade touches a file the initrd carries, such as
+# tee-supplicant, and it stops at the first listed file that is missing. NVIDIA lists uas.ko,
+# which our kernel builds in, so every apt upgrade left nvidia-l4t-initrd unconfigured and
+# apt failing until the line went.
+INITRD_LISTS="$L4T_DIR/rootfs/etc/nv-update-initrd/list.d"
+echo "Dropping built-in UAS from nv-update-initrd's module list..."
+sudo sed -i '\#/usb/storage/uas\.ko:#d' "$INITRD_LISTS/modules"
+missing=""
+while IFS=: read -r src _; do
+    src=${src//<KERNEL_VERSION>/$JETSON_KERNEL_VERSION}
+    compgen -G "$L4T_DIR/rootfs$src" >/dev/null || missing="$missing $src"
+done < <(sudo cat "$INITRD_LISTS/modules" "$INITRD_LISTS/binlist" | sed 's/#.*//' | grep -v '^[[:space:]]*$')
+if [ -n "$missing" ]; then
+    echo "ERROR: nv-update-initrd lists files the rootfs does not have:$missing" >&2
+    exit 1
+fi
+
 # ── Record build metadata ───────────────────────────────────────────────────
 
 BUILD_COMMIT=$ARK_BUILD_COMMIT

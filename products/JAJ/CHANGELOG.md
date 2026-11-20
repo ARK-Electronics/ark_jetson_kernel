@@ -8,6 +8,7 @@
 - jtop and the ARK UI's System page show the JetPack version: jetson-stats updated to 7.3.0
 - SSH no longer stays dead when power is cut in the first 30 s after the flash reports the first boot complete
 - `apt upgrade` no longer replaces the initrd, which carries the NVMe and PCIe modules the ARK kernel boots with
+- `apt upgrade` no longer fails in `nvidia-l4t-initrd`, which had left every later apt command failing too
 - rpcbind no longer listens on port 111
 
 ## 6.2.2.8 - 2026-10-30
