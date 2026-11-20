@@ -684,6 +684,17 @@ sudo tee "$L4T_DIR/rootfs/etc/sysctl.d/99-ark-console-quiet.conf" >/dev/null <<'
 kernel.printk = 4 4 1 7
 EOF
 
+# ── Keep rpcbind off ────────────────────────────────────────────────────────
+# NVIDIA's sample rootfs enables rpcbind, which listens on port 111 on every interface, the
+# Wi-Fi hotspot included. Nothing in the image uses it.
+echo "Disabling rpcbind..."
+sudo rm -f "$L4T_DIR/rootfs/etc/systemd/system/sockets.target.wants/rpcbind.socket" \
+    "$L4T_DIR/rootfs/etc/systemd/system/multi-user.target.wants/rpcbind.service"
+if sudo find "$L4T_DIR/rootfs/etc/systemd/system" -name 'rpcbind.*' | grep -q .; then
+    echo "ERROR: rpcbind is still enabled in the rootfs." >&2
+    exit 1
+fi
+
 # ── Record build metadata ───────────────────────────────────────────────────
 
 BUILD_COMMIT=$ARK_BUILD_COMMIT
