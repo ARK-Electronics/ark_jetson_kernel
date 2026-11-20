@@ -231,19 +231,26 @@ if [ ! -d "$L4T_DIR" ]; then
     # skips that file, the reconfigure finally exits 0, nvfb drops its once-only
     # nvfirstboot guard, and sshd can never start again. Clearing truncated keys first
     # lets nvfb's own retry loop do what it was written to do.
+    # nvfb.sh also drops the guard straight after writing the keys. A power cut before
+    # writeback then leaves empty keys and no guard, so nvfb never runs again. A sync
+    # first makes everything nvfb wrote durable before sshd starts, which is when
+    # flash.sh says the unit is safe to power off.
     echo "Patching nvfb.sh so an interrupted SSH host key generation can be retried..."
     sudo python3 - "$L4T_DIR/rootfs/etc/systemd/nvfb.sh" <<'PY'
 import sys
 path = sys.argv[1]
 src = open(path).read()
 anchor = '\twhile [ "${status-1}" -ne 0 ]; do\n'
-if src.count(anchor) != 1:
-    sys.exit("ERROR: nvfb.sh has no single openssh reconfigure loop to patch; "
+guard = 'rm -rf /etc/nv/nvfirstboot\n'
+if src.count(anchor) != 1 or src.count(guard) != 1:
+    sys.exit("ERROR: nvfb.sh has no single openssh reconfigure loop or guard removal to patch; "
              "re-check how this BSP generates SSH host keys before shipping.")
 fix = ("\t# A zero-length key from an interrupted run would otherwise be skipped\n"
        "\t# forever by create_key(), leaving sshd permanently unable to start.\n"
        "\tfind /etc/ssh -maxdepth 1 -name 'ssh_host_*_key' -empty -print -delete\n")
-open(path, 'w').write(src.replace(anchor, fix + anchor))
+src = src.replace(anchor, fix + anchor)
+src = src.replace(guard, "# Everything above reaches the disk before the guard goes.\nsync\n" + guard)
+open(path, 'w').write(src)
 PY
 
     if [ "$PROVISION" -eq 1 ]; then
@@ -424,6 +431,26 @@ if [ -d "$SCRIPT_DIR/kernel_overlay" ]; then
         sed -i "/^obj-m += nv_imx477.o/a obj-m += $drv.o" "$OOT_I2C_MAKEFILE"
     done
 fi
+
+# ── Apply ARK kernel patches ────────────────────────────────────────────────
+# Changes to files the kernel tree already has live in kernel_patches/, so a BSP bump that
+# moves the code stops the build instead of dropping the change. Runs every build: --fast
+# reuses a tree that already carries them.
+
+KERNEL_TREE="$SOURCE_DIR/kernel/kernel-jammy-src"
+for kernel_patch in "$SCRIPT_DIR"/kernel_patches/*.patch; do
+    [ -e "$kernel_patch" ] || continue
+    if patch -d "$KERNEL_TREE" -p1 --reverse --force --dry-run --silent < "$kernel_patch" >/dev/null 2>&1; then
+        echo "Kernel patch already applied: $(basename "$kernel_patch")"
+    elif patch -d "$KERNEL_TREE" -p1 --forward --dry-run --silent < "$kernel_patch" >/dev/null 2>&1; then
+        echo "Applying kernel patch: $(basename "$kernel_patch")"
+        patch -d "$KERNEL_TREE" -p1 --forward --silent < "$kernel_patch"
+    else
+        echo "ERROR: $(basename "$kernel_patch") does not apply to $KERNEL_TREE —" >&2
+        echo "       the BSP's kernel source changed; rebase the patch before building." >&2
+        exit 1
+    fi
+done
 
 # ── Stage ARK device-tree overlays ───────────────────────────────────────────
 # ARK overlay sources live in products/<target>/overlay/, not the BSP source
@@ -676,6 +703,35 @@ sudo tee "$L4T_DIR/rootfs/etc/sysctl.d/99-ark-console-quiet.conf" >/dev/null <<'
 # the kernel blocks on. KERN_ERR and worse still print; dmesg still records everything.
 kernel.printk = 4 4 1 7
 EOF
+
+# ── Keep rpcbind off ────────────────────────────────────────────────────────
+# NVIDIA's sample rootfs enables rpcbind, which listens on port 111 on every interface, the
+# Wi-Fi hotspot included. Nothing in the image uses it.
+echo "Disabling rpcbind..."
+sudo rm -f "$L4T_DIR/rootfs/etc/systemd/system/sockets.target.wants/rpcbind.socket" \
+    "$L4T_DIR/rootfs/etc/systemd/system/multi-user.target.wants/rpcbind.service"
+if sudo find "$L4T_DIR/rootfs/etc/systemd/system" -name 'rpcbind.*' | grep -q .; then
+    echo "ERROR: rpcbind is still enabled in the rootfs." >&2
+    exit 1
+fi
+
+# ── Keep nv-update-initrd's lists to files the image has ────────────────────
+# apt runs nv-update-initrd whenever an upgrade touches a file the initrd carries, such as
+# tee-supplicant, and it stops at the first listed file that is missing. NVIDIA lists uas.ko,
+# which our kernel builds in, so every apt upgrade left nvidia-l4t-initrd unconfigured and
+# apt failing until the line went.
+INITRD_LISTS="$L4T_DIR/rootfs/etc/nv-update-initrd/list.d"
+echo "Dropping built-in UAS from nv-update-initrd's module list..."
+sudo sed -i '\#/usb/storage/uas\.ko:#d' "$INITRD_LISTS/modules"
+missing=""
+while IFS=: read -r src _; do
+    src=${src//<KERNEL_VERSION>/$JETSON_KERNEL_VERSION}
+    compgen -G "$L4T_DIR/rootfs$src" >/dev/null || missing="$missing $src"
+done < <(sudo cat "$INITRD_LISTS/modules" "$INITRD_LISTS/binlist" | sed 's/#.*//' | grep -v '^[[:space:]]*$')
+if [ -n "$missing" ]; then
+    echo "ERROR: nv-update-initrd lists files the rootfs does not have:$missing" >&2
+    exit 1
+fi
 
 # ── Record build metadata ───────────────────────────────────────────────────
 
