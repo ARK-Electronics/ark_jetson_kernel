@@ -2,7 +2,8 @@
 
 ## 6.2.2.9 - 2026-11-20
 
-- ARK-OS updated to v1.5.0: on modules with a hardware video encoder, the camera stream uses it instead of the CPU, and saving a config on the Services page no longer corrupts it
+- ARK-OS updated to v1.5.1: on modules with a hardware video encoder, the camera stream uses it instead of the CPU, and saving a config on the Services page no longer corrupts it
+- The ARK UI's Connections page loads in under a second and network stats update every 2 s. Both had waited 15 s on a Wi-Fi scan, which the radio cannot run while it hosts the hotspot
 - jtop and the ARK UI's System page show the JetPack version: jetson-stats updated to 7.3.0
 - SSH no longer stays dead when power is cut in the first 30 s after the flash reports the first boot complete
 - `apt upgrade` no longer replaces the initrd, which carries the NVMe and PCIe modules the ARK kernel boots with
