@@ -28,7 +28,7 @@
 					port@0 {
 						reg = <0>;
 						imx708_vi_in0: endpoint {
-							port-index = <0>;
+							port-index = <1>;
 							bus-width = <2>;
 							remote-endpoint = <&imx708_csi_out0>;
 						};
@@ -89,7 +89,7 @@
 								port@0 {
 									reg = <0>;
 									imx708_csi_in0: endpoint@0 {
-										port-index = <0>;
+										port-index = <1>;
 										bus-width = <2>;
 										remote-endpoint = <&imx708_out0>;
 									};
@@ -157,7 +157,7 @@
 							mode0 { /* IMX708_MODE_4608x2592_14FPS */
 								mclk_khz = "24000";
 								num_lanes = "2";
-								tegra_sinterface = "serial_a";
+								tegra_sinterface = "serial_b";
 								lane_polarity = "6";
 								phy_mode = "DPHY";
 								discontinuous_clk = "yes";
@@ -199,7 +199,7 @@
 									reg = <0>;
 									imx708_out0: endpoint {
 										status = "okay";
-										port-index = <0>;
+										port-index = <1>;
 										bus-width = <2>;
 										remote-endpoint = <&imx708_csi_in0>;
 									};
