@@ -199,7 +199,8 @@ done
 # partition, so only jetson-io notices, dying on the resulting model mismatch.
 # nvidia-l4t-bootloader is in the set because its postinst rewrites the QSPI that
 # carries our MB1 BCT pinmux. The kernel packages hold as one group — vermagic ties
-# the OOT modules to the kernel, so a partial upgrade is worse than either.
+# the OOT modules to the kernel, so a partial upgrade is worse than either. The initrd
+# carries the kernel's NVMe and PCIe modules, so it holds with them.
 NV_BOOT_CHAIN_PKGS=(
     nvidia-l4t-kernel
     nvidia-l4t-kernel-dtbs
@@ -207,6 +208,7 @@ NV_BOOT_CHAIN_PKGS=(
     nvidia-l4t-kernel-oot-headers
     nvidia-l4t-kernel-oot-modules
     nvidia-l4t-display-kernel
+    nvidia-l4t-initrd
     nvidia-l4t-bootloader
 )
 echo "Holding the ARK-built boot chain against NVIDIA's apt repo..."
