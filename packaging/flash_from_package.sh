@@ -106,7 +106,9 @@ done
 
 if [ ${#missing[@]} -gt 0 ]; then
     echo "Installing ${#missing[@]} missing prerequisites..."
-    sudo apt-get update -qq
+    # One broken third-party source, such as a PPA with no build for this Ubuntu release, fails the
+    # update but leaves the other lists refreshed. The install still stops on a package it cannot find.
+    sudo apt-get update -qq || echo "WARNING: apt-get update reported errors, so installing from the package lists apt has." >&2
     sudo apt-get install -y "${missing[@]}"
 else
     echo "All prerequisites installed."
