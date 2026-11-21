@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-FileCopyrightText: Copyright (c) 2026, ARK Electronics.
+
+/dts-v1/;
+/plugin/;
+
+/* Apply after ark_boot_order.dtbo, and only with the JAJ NVMe fast UEFI.
+ * R36.5's embedded L4TLauncher compares this complete string to one device
+ * class; a comma-separated priority list does not select an NVMe device.
+ */
+/ {
+    overlay-name = "ARK JAJ Fast Boot NVMe";
+    fragment@0 {
+        target-path = "/";
+        board_config {
+            sw-modules = "uefi";
+        };
+        __overlay__ {
+            firmware {
+                uefi {
+                    variables {
+                        gNVIDIATokenSpaceGuid {
+                            DefaultBootPriority {
+                                data = "nvme";
+                                locked;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+};

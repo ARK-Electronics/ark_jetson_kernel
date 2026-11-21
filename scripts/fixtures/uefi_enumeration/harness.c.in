@@ -1,0 +1,141 @@
+
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#define IN
+#define EFIAPI
+#define OUT
+#define STATIC static
+#define CONST const
+#define VOID void
+#define TRUE 1
+#define EFI_SUCCESS 0
+#define EFI_UNSUPPORTED 3
+#define EFI_DEVICE_ERROR 7
+#define EFI_NOT_FOUND 14
+#define EFI_INVALID_PARAMETER 2
+#define EFI_OUT_OF_RESOURCES 9
+#define EFI_BUFFER_TOO_SMALL 5
+#define EFI_ERROR(x) ((x)!=EFI_SUCCESS)
+#define DEBUG(x) ((void)0)
+#define CopyMem memcpy
+#define SwapBytes32 __builtin_bswap32
+#define AsciiStrCmp strcmp
+#define T234_CHIP_ID 0x23
+#define DeviceDiscoveryDeviceTreeCompatibility 1
+#define DeviceDiscoveryDriverBindingSupported 2
+#define DeviceDiscoveryEnumerationCompleted 3
+#define DeviceDiscoveryDriverStart 4
+#define TegrablBootRcm 1
+typedef int EFI_STATUS;
+typedef void EFI_GUID;
+typedef void NVIDIA_DEVICE_TREE_COMPATIBILITY_PROTOCOL;
+typedef void *NON_DISCOVERABLE_DEVICE_INIT;
+typedef int EFI_SYSTEM_TABLE;
+typedef struct {const char *Compatibility;void *DeviceType;} NVIDIA_COMPATIBILITY_MAPPING;
+typedef struct {int BootType;} TEGRA_PLATFORM_RESOURCE_INFO;
+static int fixture_guid;
+static NVIDIA_COMPATIBILITY_MAPPING gDeviceCompatibilityMap[]={{"nvidia,tegra234-pcie",&fixture_guid},{NULL,NULL}};
+static int DeviceTreeCheckNodeSingleCompatibility(const char *name,int offset) {return 0;}
+static int gNVIDIAPlatformResourceDataGuid,gArmScmiClock2ProtocolGuid,gNVIDIAClockParentsProtocolGuid;
+static void *gScmiClockProtocol,*gClockParentsProtocol;
+static TEGRA_PLATFORM_RESOURCE_INFO fixture_resource={0};
+static void *GetFirstGuidHob(void *guid) {return &fixture_resource;}
+#define GET_GUID_HOB_DATA_SIZE(hob) sizeof(TEGRA_PLATFORM_RESOURCE_INFO)
+#define GET_GUID_HOB_DATA(hob) (hob)
+static int locate_protocol(void *guid,void *registration,void **interface) {*interface=&fixture_guid;return 0;}
+static struct {int (*LocateProtocol)(void*,void*,void**);} fixture_bs={locate_protocol};
+#define gBS (&fixture_bs)
+static unsigned assertions;
+#define ASSERT_EFI_ERROR(status) do {if (EFI_ERROR(status)) assertions++;} while(0)
+typedef int32_t INT32;
+typedef uint32_t UINT32;
+typedef uint8_t UINT8;
+typedef uintptr_t UINTN;
+typedef void *EFI_HANDLE;
+typedef struct { const void *DeviceTreeBase; int NodeOffset; } NVIDIA_DEVICE_TREE_NODE_PROTOCOL;
+typedef struct { void *DeviceTreeBase; int NodeOffset; void *DeviceType; void *PciIoInitialize; unsigned Phandle; } NVIDIA_DT_NODE_INFO;
+typedef EFI_STATUS (*DEVICE_TREE_NODE_SUPPORTED)(NVIDIA_DT_NODE_INFO*);
+typedef struct {int dummy;} NON_DISCOVERABLE_DEVICE;
+static unsigned node_ids[5],node_count,filter_phase,fail_load,fail_alloc,fail_start;
+static unsigned processed,started,completed,SubThreadsRunning,EnumerationCompleted;
+static void *mImageHandle;
+static struct {int ThreadedDeviceStart;int DisableInRcm;int DelayEnumeration;} gDeviceDiscoverDriverConfig={1,0,0};
+static unsigned TegraGetChipID(void) { return T234_CHIP_ID; }
+static int fdt_next_node(const void *base,int offset,void *unused) { return (unsigned)offset<node_count ? offset+1 : -1; }
+static unsigned fdt_get_phandle(const void *base,int offset) {return offset;}
+static const void *fdt_getprop(const void *base,int offset,const char *name,int *size) {
+ static unsigned domain;
+ if (strcmp(name,"nvidia,controller-id")==0) {*size=-1;return NULL;}
+ if (strcmp(name,"linux,pci-domain")==0) {*size=4;domain=__builtin_bswap32(node_ids[offset]);return &domain;}
+ assert(strcmp(name,"status")==0);*size=5;return "okay";
+}
+static EFI_STATUS DtPlatformLoadDtb(void **base,UINTN *size) {*base=node_ids;*size=sizeof(node_ids);return fail_load?EFI_DEVICE_ERROR:EFI_SUCCESS;}
+static void *AllocateZeroPool(size_t size) {return fail_alloc==1?NULL:calloc(1,size);}
+static void *AllocatePool(size_t size) {return fail_alloc==2?NULL:malloc(size);}
+#define FreePool free
+
+@PATCH_SELECTOR@
+
+static EFI_STATUS DeviceDiscoveryNotify(int Phase,void *driver,void *controller,const NVIDIA_DEVICE_TREE_NODE_PROTOCOL *DeviceTreeNode) {
+ /* Counterfactual old placement, using the same actual selector/case. */
+ if (filter_phase==DeviceDiscoveryDriverBindingSupported) {
+  if (Phase==DeviceDiscoveryDriverBindingSupported) Phase=DeviceDiscoveryDeviceTreeCompatibility;
+  else if (Phase==DeviceDiscoveryDeviceTreeCompatibility) return EFI_SUCCESS;
+ }
+ switch (Phase) {
+@PATCH_CASE@
+ case DeviceDiscoveryEnumerationCompleted:completed++;break;
+ default:break;
+ }
+ return EFI_SUCCESS;
+}
+static EFI_STATUS ProcessDeviceTreeNodeWithHandle(NVIDIA_DT_NODE_INFO *info,NON_DISCOVERABLE_DEVICE *device,void *driver,void **handle) {
+ processed++;*handle=(void*)(uintptr_t)info->NodeOffset;free(device);return EFI_SUCCESS;
+}
+static EFI_STATUS DeviceDiscoveryStart(void *handle) {
+ unsigned index=(uintptr_t)handle;
+ NVIDIA_DEVICE_TREE_NODE_PROTOCOL node={node_ids,(int)index};
+ EFI_STATUS status=DeviceDiscoveryNotify(DeviceDiscoveryDriverBindingSupported,NULL,handle,&node);
+ if (EFI_ERROR(status)) return status;
+ if (node_ids[index]==fail_start) return EFI_DEVICE_ERROR;
+ started++;SubThreadsRunning++;return EFI_SUCCESS;
+}
+static void reset(unsigned phase) {
+ filter_phase=phase;node_count=2;node_ids[1]=4;node_ids[2]=7;
+ fail_load=fail_alloc=fail_start=processed=started=completed=SubThreadsRunning=EnumerationCompleted=assertions=0;
+}
+
+@VENDOR_FUNCTIONS@
+
+int main(void) {
+ reset(DeviceDiscoveryDriverBindingSupported);
+ assert(DeviceDiscoveryDriverInitialize(NULL,NULL)==EFI_UNSUPPORTED);
+ assert(processed==2 && started==1 && SubThreadsRunning==1 && completed==0 && assertions==1);
+ puts("reproduced original last-C7 unsupported leak with pending C4 thread");
+ reset(DeviceDiscoveryDeviceTreeCompatibility);
+ assert(DeviceDiscoveryDriverInitialize(NULL,NULL)==EFI_SUCCESS);
+ assert(processed==1 && started==1 && SubThreadsRunning==1 && completed==0 && EnumerationCompleted && assertions==0);
+ puts("compatibility filter skips C7 before handle creation and returns success");
+ reset(DeviceDiscoveryDeviceTreeCompatibility);node_count=1;node_ids[1]=7;
+ assert(DeviceDiscoveryDriverInitialize(NULL,NULL)==EFI_SUCCESS);
+ assert(processed==0 && started==0 && completed==1 && assertions==0);
+ puts("all-filtered tree completes normally without controller handles");
+ reset(DeviceDiscoveryDeviceTreeCompatibility);fail_load=1;
+ assert(DeviceDiscoveryDriverInitialize(NULL,NULL)==EFI_DEVICE_ERROR);
+ assert(assertions==1);
+ reset(DeviceDiscoveryDeviceTreeCompatibility);fail_alloc=1;
+ assert(DeviceDiscoveryDriverInitialize(NULL,NULL)==EFI_OUT_OF_RESOURCES);
+ assert(assertions==1);
+ reset(DeviceDiscoveryDeviceTreeCompatibility);fail_alloc=2;
+ assert(DeviceDiscoveryDriverInitialize(NULL,NULL)==EFI_DEVICE_ERROR);
+ assert(assertions==1);
+ reset(DeviceDiscoveryDeviceTreeCompatibility);node_count=3;node_ids[1]=1;node_ids[2]=4;node_ids[3]=7;fail_start=4;
+ assert(DeviceDiscoveryDriverInitialize(NULL,NULL)==EFI_DEVICE_ERROR);
+ assert(assertions==1);
+ assert(processed==2 && started==1 && SubThreadsRunning==1 && assertions==1);
+ puts("DT-load, both allocation errors, and genuine last-start error still propagate");
+ return 0;
+}
