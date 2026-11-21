@@ -212,10 +212,19 @@ if [ ! -d "$L4T_DIR" ]; then
     sudo "$L4T_DIR/tools/l4t_flash_prerequisites.sh"
 
     # qemu-aarch64 binfmt handler: lets the host run aarch64 binaries when we chroot
-    # into the rootfs during provisioning.
+    # into the rootfs during provisioning. Ubuntu 24.04's qemu-user-static ships only a
+    # systemd binfmt.d entry, which update-binfmts does not know.
     if [[ "$THIS_MACHINE" != "aarch64" && ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]]; then
         echo "Registering qemu-aarch64 binfmt handler"
-        sudo update-binfmts --enable qemu-aarch64
+        if [ -f /usr/lib/binfmt.d/qemu-aarch64.conf ]; then
+            sudo /usr/lib/systemd/systemd-binfmt /usr/lib/binfmt.d/qemu-aarch64.conf
+        else
+            sudo update-binfmts --enable qemu-aarch64
+        fi
+        if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+            echo "ERROR: the qemu-aarch64 binfmt handler did not register." >&2
+            exit 1
+        fi
     fi
 
     echo "Applying binaries..."
