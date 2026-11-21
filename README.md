@@ -4,12 +4,13 @@ These scripts build and flash an image for a Jetson **Orin Nano** or **Orin NX**
 
 | Component | Version |
 | --- | --- |
-| JetPack | 6.2.2 |
-| L4T (BSP) | R36.5.0 |
-| Kernel | Linux 5.15 |
-| Host OS | Ubuntu 22.04 |
+| JetPack | 7.2.1 |
+| L4T (BSP) | R39.2.1 |
+| Kernel | Linux 6.8 |
+| Device OS | Ubuntu 24.04 |
+| Host OS | Ubuntu 24.04 |
 
-> **Building on a host other than Ubuntu 22.04?** `setup.sh` and `build.sh` run themselves inside a 22.04 docker image, and install docker through apt if it is missing. [docs/build_host.md](docs/build_host.md) explains why the build is pinned to 22.04.
+> **Building on a host other than Ubuntu 24.04?** `setup.sh` and `build.sh` run themselves inside a 24.04 docker image, and install docker through apt if it is missing. [docs/build_host.md](docs/build_host.md) explains why the build is pinned to 24.04.
 
 ## Products
 
@@ -130,11 +131,10 @@ sudo reboot
 
 | Page | Covers |
 | --- | --- |
-| [docs/cameras.md](docs/cameras.md) | Supported sensors, streaming, and known issues |
+| [docs/cameras.md](docs/cameras.md) | Supported sensors and streaming |
 | [docs/camera_overlays.md](docs/camera_overlays.md) | Build, install, and author camera device-tree overlays |
 | [docs/hadron.md](docs/hadron.md) | FLIR Hadron EO camera: driver, overlays, capture, demo and frame sync |
 | [docs/boson.md](docs/boson.md) | FLIR Boson+ thermal camera on the ARK Boson Adapter: driver, overlays, capture and wiring |
-| [docs/argus_relaunch_regression.md](docs/argus_relaunch_regression.md) | The JetPack 6.2.2 Argus regression and the camera stack pin that fixes it |
 | [docs/gpio.md](docs/gpio.md) | 40-pin / I2S header GPIO and boot-time pad defaults |
 | [docs/i2c.md](docs/i2c.md) | I2C bus map and scanning |
 | [docs/servo_expander.md](docs/servo_expander.md) | PWM / servo output via the ARK Servo Expander (PCA9685) over I2C |
@@ -144,4 +144,4 @@ sudo reboot
 | [docs/kernel_development.md](docs/kernel_development.md) | Manual kernel builds and device tree changes |
 | [docs/device-tree.md](docs/device-tree.md) | Where a device-tree change belongs, and how the build applies ARK's changes |
 | [docs/qspi_bootloader.md](docs/qspi_bootloader.md) | Flashing only the QSPI bootloader |
-| [docs/build_host.md](docs/build_host.md) | Why the build pins to Ubuntu 22.04 |
+| [docs/build_host.md](docs/build_host.md) | Why the build pins to Ubuntu 24.04 |

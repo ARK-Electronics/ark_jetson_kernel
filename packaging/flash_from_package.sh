@@ -106,7 +106,9 @@ done
 
 if [ ${#missing[@]} -gt 0 ]; then
     echo "Installing ${#missing[@]} missing prerequisites..."
-    sudo apt-get update -qq
+    # One broken third-party source, such as a PPA with no build for this Ubuntu release, fails the
+    # update but leaves the other lists refreshed. The install still stops on a package it cannot find.
+    sudo apt-get update -qq || echo "WARNING: apt-get update reported errors, so installing from the package lists apt has." >&2
     sudo apt-get install -y "${missing[@]}"
 else
     echo "All prerequisites installed."
@@ -558,11 +560,9 @@ else
 fi
 
 # ── Wait for the flashed image to finish its first boot ─────────────────────
-# The image ships no SSH host keys: /etc/systemd/nvfb.sh generates them on the
-# first boot, and nvfb.service is ordered Before=ssh.service, so an answering
-# port 22 proves the board is past the window where losing power strands it. A
-# key truncated by a power cut is skipped forever afterwards — openssh's
-# create_key() guards on existence, not size — and sshd then never starts.
+# The image ships no SSH host keys: cloud-init generates them on the first boot, so
+# an sshd banner proves they exist. A power cut before they reach the disk leaves
+# empty keys, which ssh.service regenerates the next time it starts.
 # The board serves 192.168.55.1 over the cable it was just flashed on.
 # Keep in sync with the copy in flash.sh.
 
@@ -581,6 +581,16 @@ jetson_usb_interface() {
         fi
     done
     return 1
+}
+
+ssh_banner_ready() {
+    # Noble socket-activates sshd, so port 22 opens before the host keys exist.
+    # Only the identification banner proves sshd itself is up.
+    timeout 3 bash -c '
+        exec 3<>"/dev/tcp/$1/$2"
+        IFS= read -r -t 2 banner <&3
+        [[ "$banner" == SSH-2.0-* ]]
+    ' -- "$1" "${2:-22}" 2>/dev/null
 }
 
 wait_for_first_boot() {
@@ -602,7 +612,7 @@ wait_for_first_boot() {
                 *"inet 192.168.55."*) ;;
                 *) sudo ip addr add 192.168.55.100/24 dev "$interface" 2>/dev/null || true ;;
             esac
-            if timeout 2 bash -c "exec 3<>/dev/tcp/$JETSON_USB_ADDRESS/22" 2>/dev/null; then
+            if ssh_banner_ready "$JETSON_USB_ADDRESS"; then
                 echo "First boot complete after ${elapsed}s — sshd is up on $JETSON_USB_ADDRESS. Safe to power off."
                 return 0
             fi
@@ -615,8 +625,7 @@ wait_for_first_boot() {
     done
     echo "" >&2
     echo "ERROR: no sshd on $JETSON_USB_ADDRESS:22 within ${FIRST_BOOT_TIMEOUT}s — the first boot did not finish." >&2
-    echo "       Keep it powered and cabled; check its console: systemctl status nvfb ssh" >&2
-    echo "       Removing power now can leave a unit whose sshd never starts." >&2
+    echo "       Keep it powered and cabled; check its console: systemctl status cloud-init ssh" >&2
     return 1
 }
 

@@ -14,7 +14,7 @@ Each JetPack has its own branch: JetPack 6 versions (6.2.2.x) are cut from `jetp
 - Everything intended for the release must be merged to the branch; the tag build checks out the tagged commit, so an unmerged fix is simply absent.
 - Each product being released needs a `## <version> - <YYYY-MM-DD>` section at the top of `products/<TARGET>/CHANGELOG.md` on the branch: customer-facing bullets, no PR numbers. The tag build fails before building without it. The tag freezes the changelog: both the draft's section and the product changelog that promotion publishes come from the tagged commit.
 - Promotion publishes one changelog per product, the tagged commit's whole file. After a JetPack 6 release, copy its sections into `main`'s changelogs, or the next JetPack 7 promotion publishes a changelog without them.
-- `versions.env` pins the payload (`ARK_OS_VERSION`, `NV_CAMERA_STACK_VERSION`, BSP). Confirm any referenced ARK-OS version is *published*, or `--provision` fails to resolve it.
+- `versions.env` pins the payload (`ARK_OS_VERSION`, BSP). Confirm any referenced ARK-OS version is *published*, or `--provision` fails to resolve it.
 - `products/<TARGET>/default_overlays` names the flash-time overlay bake; `generate_flash_package.sh` fails loud at tag time if a dtbo isn't in `kernel/dtb/`.
 - A version is built once: the site never replaces a version folder. A fix after a failed validation is the next version, never a moved tag.
 
