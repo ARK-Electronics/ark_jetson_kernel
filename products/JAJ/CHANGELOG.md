@@ -1,5 +1,14 @@
 # Release Notes
 
+## 7.2.1.1 - 2026-11-23
+
+- Moved to JetPack 7.2.1 (L4T R39.2.1): Ubuntu 24.04 and Linux 6.8
+- ARK-OS v1.5.1, the release 6.2.2.9 ships, built for Ubuntu 24.04
+- PCIe interrupts from the NVMe, Wi-Fi and Ethernet go through the GIC and can run on any CPU, instead of all on CPU 0
+- The camera userspace is no longer pinned to the L4T 36.4.4 packages or held from `apt upgrade`: JetPack 7's own Argus stack relaunches cleanly
+- snapd is removed, along with the Firefox and Thunderbird launchers, which only installed their snaps
+- Fixed CAM0 on the IMX708 dual-camera overlay, which was set to a CSI port with no clock on this carrier
+
 ## 6.2.2.9 - 2026-11-20
 
 - Added support for the FLIR Hadron 640R's EO camera through the ARK Hadron Adapter, with a jetson-io overlay for CAM0 and for CAM1
