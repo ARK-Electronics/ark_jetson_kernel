@@ -12,6 +12,8 @@ These scripts build and flash an image for a Jetson **Orin Nano** or **Orin NX**
 
 > **Building on a host other than Ubuntu 24.04?** `setup.sh` and `build.sh` run themselves inside a 24.04 docker image, and install docker through apt if it is missing. [docs/build_host.md](docs/build_host.md) explains why the build is pinned to 24.04.
 
+> **Need JetPack 6?** JetPack 6.2.2 (L4T R36.5.0, Ubuntu 22.04) builds from the [`jetpack6`](https://github.com/ARK-Electronics/ark_jetson_kernel/tree/jetpack6) branch. Run `git checkout jetpack6` and follow the README there. Its releases are numbered 6.2.2.x.
+
 ## Products
 
 | Target | Carrier Board | Docs |
@@ -31,8 +33,10 @@ Connect the Jetson to a Debian or Ubuntu host over USB, and boot it into recover
 ```
 curl -LO https://raw.githubusercontent.com/ARK-Electronics/ark_jetson_kernel/main/packaging/flash_from_package.sh
 chmod +x flash_from_package.sh
-./flash_from_package.sh pab        # or jaj / pab-v3, or a specific tag like pab-6.2.2.4
+./flash_from_package.sh pab        # or jaj / pab-v3, or a specific tag like pab-6.2.2.9
 ```
+
+Without a tag, the script flashes the latest release. To flash JetPack 6, pass a 6.2.2.x tag such as `pab-6.2.2.9`.
 
 The script flashes the QSPI bootloader and writes the rootfs to NVMe. One package covers every Orin Nano and NX module variant. [packaging/README.md](packaging/README.md) has the details.
 
