@@ -1,8 +1,8 @@
-# Build environment matching NVIDIA's documented host for L4T R36.5.0 / JP 6.2.2.
-# See docs/build_host.md for why we pin to 22.04 (kmod 29 in the Jetson sample
-# rootfs cannot parse kmod 31's modules.builtin index format).
+# Build environment for L4T R39.2.1 / JP 7.2.1: Ubuntu 24.04, the same release as
+# the Jetson sample rootfs, so the host's kmod matches the device's. See
+# docs/build_host.md.
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         tar \
         bzip2 \
+        zstd \
         cpio \
         sudo \
         git \

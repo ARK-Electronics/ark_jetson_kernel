@@ -1,6 +1,6 @@
 # Camera Support
 
-Here you will find the camera sensors tested on ARK carriers, the name each overlay has in `jetson-io`, the commands to test a camera, and the known issues. To build, install or write a camera overlay, see [camera_overlays.md](camera_overlays.md).
+Here you will find the camera sensors tested on ARK carriers, the name each overlay has in `jetson-io`, and the commands to test a camera. To build, install or write a camera overlay, see [camera_overlays.md](camera_overlays.md).
 
 ## Tested Cameras
 
@@ -116,11 +116,3 @@ With more than one camera, pick the sensor with `sensor-id`:
 gst-launch-1.0 nvarguscamerasrc sensor-id=0 ...
 gst-launch-1.0 nvarguscamerasrc sensor-id=1 ...
 ```
-
-## Known Issues
-
-**Argus regression in JetPack 6.2.2 / R36.5.0.** With NVIDIA's camera packages for this release, every `nvarguscamerasrc` teardown ends in an error, `CANCELLED` or `Argus Correctable Error Status`. Roughly 1 in 60–120 camera relaunches fails outright: no frames arrive, then nvargus-daemon segfaults and video is out for about 40 s. It reproduces on the bench on a PAB_V3 with an Orin NX and dual IMX219.
-
-NVIDIA introduced it in the L4T 36.4.7 userspace refresh, and it is still present in 36.5.0. The kernel, the device tree and the RCE firmware are not involved. NVIDIA's forum workaround, keeping the camera RTCPU powered, does **not** prevent it on Orin NX.
-
-This repo ships a fix. Provisioning, which `build.sh` does by default, pins the camera userspace packages for gstreamer, camera and multimedia to the last good release, through `NV_CAMERA_STACK_VERSION` in `versions.env`. [argus_relaunch_regression.md](argus_relaunch_regression.md) has the full evidence, the steps to reproduce it and the bench data. The issue is [#107](https://github.com/ARK-Electronics/ark_jetson_kernel/issues/107).

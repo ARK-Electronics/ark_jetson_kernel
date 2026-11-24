@@ -120,3 +120,94 @@
 &{/bus@0/pcie@141e0000} {
 	status = "disabled";
 };
+
+/* PCIe MSIs go to the GIC's v2m frame, as on JetPack 5, and not to each controller's DesignWare
+ * MSI receiver. That receiver raises an MSI ahead of the device's earlier memory writes, so an NVMe
+ * completion can be missed, and it sends every MSI to CPU 0. kernel_patches/0003 has the Tegra half:
+ * the controller rewrites a write to the frame into the window at 0x54000000, which reaches the GIC
+ * through the IOMMU. SPIs 608 to 959 are the range NVIDIA documents for PCIe MSIs.
+ * The frame sits under the GIC, which needs address cells for it. Each PCIe interrupt map then
+ * carries two parent address cells, so the stock maps are restated with them: UEFI's PCIe driver
+ * asserts on a map that does not match the GIC's #address-cells. */
+&gic {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+	gic_v2m: v2m@f410000 {
+		compatible = "arm,gic-v2m-frame";
+		msi-controller;
+		#msi-cells = <1>;
+		reg = <0x0 0x0f410000 0x0 0x00010000>,	/* GICA */
+		      <0x0 0x54000000 0x0 0x04000000>;	/* MSI window */
+		reg-names = "gic_base", "msi_base";
+		arm,msi-base-spi = <608>;
+		arm,msi-num-spis = <352>;
+	};
+};
+
+&{/bus@0/pcie@140a0000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 356 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE8>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE8 0x1000>;
+};
+
+&{/bus@0/pcie@140c0000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 358 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE9>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE9 0x1000>;
+};
+
+&{/bus@0/pcie@140e0000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 360 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE10>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE10 0x1000>;
+};
+
+&{/bus@0/pcie@14100000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 45 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE1>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE1 0x1000>;
+};
+
+&{/bus@0/pcie@14120000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 47 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE2>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE2 0x1000>;
+};
+
+&{/bus@0/pcie@14140000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 49 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE3>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE3 0x1000>;
+};
+
+&{/bus@0/pcie@14160000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 51 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE4>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE4 0x1000>;
+};
+
+&{/bus@0/pcie@14180000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 72 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE0>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE0 0x1000>;
+};
+
+&{/bus@0/pcie@141a0000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 53 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE5>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE5 0x1000>;
+};
+
+&{/bus@0/pcie@141c0000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 352 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE6>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE6 0x1000>;
+};
+
+&{/bus@0/pcie@141e0000} {
+	interrupt-map = <0 0 0 0 &gic 0 0 GIC_SPI 354 IRQ_TYPE_LEVEL_HIGH>;
+	msi-parent = <&gic_v2m TEGRA234_SID_PCIE7>;
+	msi-map = <0x0 &gic_v2m TEGRA234_SID_PCIE7 0x1000>;
+};

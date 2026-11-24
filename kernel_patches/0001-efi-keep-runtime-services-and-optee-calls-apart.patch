@@ -1,0 +1,211 @@
+efi: keep runtime services and OP-TEE calls apart
+
+NVIDIA's UEFI serves its variables from a secure partition inside OP-TEE, so
+a UEFI runtime service and a Linux OP-TEE call can be in OP-TEE at once. When
+a runtime service releases an OP-TEE lock that a Linux call is waiting on,
+OP-TEE sends the wake-up as an RPC through the client that released it. That
+client is the UEFI runtime driver, which ignores RPCs. The Linux call then
+sleeps for good in optee_notif_wait(), and the next runtime service that
+needs what it holds spins in the firmware without returning.
+
+L4T R39.2.1 hits this on boot: nv-tee-supplicant.service loads tpm_ftpm_tee
+while nv-l4t-bootloader-config writes a UEFI variable. Either the fTPM load
+never returns, or the kworker in efi_call_rts() spins until the watchdog
+resets the board.
+
+A runtime service now waits for the OP-TEE calls in flight to finish and
+holds new ones off until it returns. The wait is bounded at ten seconds.
+
+Applies to the Linux 6.8 tree in L4T R39.2.1.
+---
+diff --git a/drivers/firmware/efi/runtime-wrappers.c b/drivers/firmware/efi/runtime-wrappers.c
+index 5d56bc4..1a310c0 100644
+--- a/drivers/firmware/efi/runtime-wrappers.c
++++ b/drivers/firmware/efi/runtime-wrappers.c
+@@ -24,14 +24,17 @@
+ 
+ #define pr_fmt(fmt)	"efi: " fmt
+ 
++#include <linux/atomic.h>
+ #include <linux/bug.h>
+ #include <linux/efi.h>
++#include <linux/efi_optee_gate.h>
+ #include <linux/irqflags.h>
+ #include <linux/mutex.h>
+ #include <linux/semaphore.h>
+ #include <linux/stringify.h>
+ #include <linux/workqueue.h>
+ #include <linux/completion.h>
++#include <linux/wait.h>
+ 
+ #include <asm/efi.h>
+ 
+@@ -312,6 +315,39 @@ static void efi_call_rts(struct work_struct *work)
+ 	complete(&efi_rts_work.efi_rts_comp);
+ }
+ 
++/*
++ * NVIDIA's UEFI runs its variable services inside OP-TEE. When a runtime
++ * service releases an OP-TEE lock that a Linux OP-TEE call is waiting on,
++ * OP-TEE sends the wake-up through the client that released it, which is the
++ * UEFI runtime driver, and that driver drops it. The Linux call then sleeps
++ * for good, holding whatever it held, and the next runtime service that needs
++ * it spins without returning.
++ *
++ * Keep the two apart. A runtime service waits for the OP-TEE calls in flight
++ * to finish and holds new ones off until it returns. The wait is bounded: a
++ * call that is still out after the timeout gets the old behaviour.
++ */
++static DEFINE_MUTEX(efi_optee_gate);
++static atomic_t efi_optee_calls = ATOMIC_INIT(0);
++static DECLARE_WAIT_QUEUE_HEAD(efi_optee_idle);
++
++#define EFI_OPTEE_DRAIN_TIMEOUT	(10 * HZ)
++
++void efi_optee_call_begin(void)
++{
++	mutex_lock(&efi_optee_gate);
++	atomic_inc(&efi_optee_calls);
++	mutex_unlock(&efi_optee_gate);
++}
++EXPORT_SYMBOL_GPL(efi_optee_call_begin);
++
++void efi_optee_call_end(void)
++{
++	if (atomic_dec_and_test(&efi_optee_calls))
++		wake_up(&efi_optee_idle);
++}
++EXPORT_SYMBOL_GPL(efi_optee_call_end);
++
+ static efi_status_t __efi_queue_work(enum efi_rts_ids id,
+ 				     union efi_rts_args *args)
+ {
+@@ -326,6 +362,11 @@ static efi_status_t __efi_queue_work(enum efi_rts_ids id,
+ 		goto exit;
+ 	}
+ 
++	mutex_lock(&efi_optee_gate);
++	if (!wait_event_timeout(efi_optee_idle, !atomic_read(&efi_optee_calls),
++				EFI_OPTEE_DRAIN_TIMEOUT))
++		pr_warn_ratelimited("OP-TEE calls still in flight, running the runtime service beside them\n");
++
+ 	init_completion(&efi_rts_work.efi_rts_comp);
+ 	INIT_WORK(&efi_rts_work.work, efi_call_rts);
+ 
+@@ -338,6 +379,8 @@ static efi_status_t __efi_queue_work(enum efi_rts_ids id,
+ 	else
+ 		pr_err("Failed to queue work to efi_rts_wq.\n");
+ 
++	mutex_unlock(&efi_optee_gate);
++
+ 	WARN_ON_ONCE(efi_rts_work.status == EFI_ABORTED);
+ exit:
+ 	efi_rts_work.efi_rts_id = EFI_NONE;
+diff --git a/drivers/tee/optee/call.c b/drivers/tee/optee/call.c
+index a91e50b..ffcd725 100644
+--- a/drivers/tee/optee/call.c
++++ b/drivers/tee/optee/call.c
+@@ -3,6 +3,7 @@
+  * Copyright (c) 2015-2021, 2023 Linaro Limited
+  */
+ #include <linux/device.h>
++#include <linux/efi_optee_gate.h>
+ #include <linux/err.h>
+ #include <linux/errno.h>
+ #include <linux/mm.h>
+@@ -359,6 +360,25 @@ void optee_free_msg_arg(struct tee_context *ctx,
+ 	mutex_unlock(&optee->shm_arg_cache.mutex);
+ }
+ 
++/*
++ * Every call that Linux starts goes through here, so that a UEFI runtime
++ * service never runs beside it. The calls an RPC makes on the way, such as
++ * registering shared memory, belong to a call already counted and are not
++ * bracketed again.
++ */
++static int optee_gated_call(struct optee *optee, struct tee_context *ctx,
++			    struct tee_shm *shm, u_int offs,
++			    bool system_thread)
++{
++	int rc;
++
++	efi_optee_call_begin();
++	rc = optee->ops->do_call_with_arg(ctx, shm, offs, system_thread);
++	efi_optee_call_end();
++
++	return rc;
++}
++
+ int optee_open_session(struct tee_context *ctx,
+ 		       struct tee_ioctl_open_session_arg *arg,
+ 		       struct tee_param *param)
+@@ -410,7 +430,7 @@ int optee_open_session(struct tee_context *ctx,
+ 		goto out;
+ 	}
+ 
+-	if (optee->ops->do_call_with_arg(ctx, shm, offs,
++	if (optee_gated_call(optee, ctx, shm, offs,
+ 					 sess->use_sys_thread)) {
+ 		msg_arg->ret = TEEC_ERROR_COMMUNICATION;
+ 		msg_arg->ret_origin = TEEC_ORIGIN_COMMS;
+@@ -479,7 +499,7 @@ int optee_close_session_helper(struct tee_context *ctx, u32 session,
+ 
+ 	msg_arg->cmd = OPTEE_MSG_CMD_CLOSE_SESSION;
+ 	msg_arg->session = session;
+-	optee->ops->do_call_with_arg(ctx, shm, offs, system_thread);
++	optee_gated_call(optee, ctx, shm, offs, system_thread);
+ 
+ 	optee_free_msg_arg(ctx, entry, offs);
+ 
+@@ -545,7 +565,7 @@ int optee_invoke_func(struct tee_context *ctx, struct tee_ioctl_invoke_arg *arg,
+ 	if (rc)
+ 		goto out;
+ 
+-	if (optee->ops->do_call_with_arg(ctx, shm, offs, system_thread)) {
++	if (optee_gated_call(optee, ctx, shm, offs, system_thread)) {
+ 		msg_arg->ret = TEEC_ERROR_COMMUNICATION;
+ 		msg_arg->ret_origin = TEEC_ORIGIN_COMMS;
+ 	}
+@@ -590,7 +610,7 @@ int optee_cancel_req(struct tee_context *ctx, u32 cancel_id, u32 session)
+ 	msg_arg->cmd = OPTEE_MSG_CMD_CANCEL;
+ 	msg_arg->session = session;
+ 	msg_arg->cancel_id = cancel_id;
+-	optee->ops->do_call_with_arg(ctx, shm, offs, system_thread);
++	optee_gated_call(optee, ctx, shm, offs, system_thread);
+ 
+ 	optee_free_msg_arg(ctx, entry, offs);
+ 	return 0;
+@@ -654,7 +674,7 @@ static int simple_call_with_arg(struct tee_context *ctx, u32 cmd)
+ 		return PTR_ERR(msg_arg);
+ 
+ 	msg_arg->cmd = cmd;
+-	optee->ops->do_call_with_arg(ctx, shm, offs, false);
++	optee_gated_call(optee, ctx, shm, offs, false);
+ 
+ 	optee_free_msg_arg(ctx, entry, offs);
+ 	return 0;
+diff --git a/include/linux/efi_optee_gate.h b/include/linux/efi_optee_gate.h
+new file mode 100644
+index 0000000..20a5fd4
+--- /dev/null
++++ b/include/linux/efi_optee_gate.h
+@@ -0,0 +1,19 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _LINUX_EFI_OPTEE_GATE_H
++#define _LINUX_EFI_OPTEE_GATE_H
++
++#include <linux/kconfig.h>
++
++/*
++ * Brackets for an OP-TEE call, so that no UEFI runtime service runs beside
++ * it. See the comment at efi_optee_gate in runtime-wrappers.c.
++ */
++#if IS_ENABLED(CONFIG_EFI_RUNTIME_WRAPPERS)
++void efi_optee_call_begin(void);
++void efi_optee_call_end(void);
++#else
++static inline void efi_optee_call_begin(void) { }
++static inline void efi_optee_call_end(void) { }
++#endif
++
++#endif /* _LINUX_EFI_OPTEE_GATE_H */

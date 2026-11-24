@@ -141,6 +141,7 @@ EOF
 PRUNE=(
     --exclude='Linux_for_Tegra/source'
     --exclude='Linux_for_Tegra/tools/kernel_flash/images'
+    --exclude='Linux_for_Tegra/bootloader/system.img*'
     --exclude='Linux_for_Tegra/nv_tegra/l4t_deb_packages'
     --exclude='Linux_for_Tegra/rootfs/proc/*'
     --exclude='Linux_for_Tegra/rootfs/sys/*'

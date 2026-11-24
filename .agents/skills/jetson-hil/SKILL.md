@@ -1,11 +1,11 @@
 ---
 name: jetson-hil
-description: Drive a Jetson carrier (PAB, JAJ, PAB_V3) on the bench — power it from the Rigol DP712, capture the debug UART, flash over USB, reach it over SSH, and run boot or regression loops. Use when a task needs a real Jetson in the loop.
+description: Drive a Jetson carrier (PAB, JAJ, PAB_V3) on the bench — power it from a Rigol DP712 or a test station's DP932A, capture the debug UART, flash over USB, reach it over SSH, and run boot or regression loops. Use when a task needs a real Jetson in the loop.
 ---
 
 # Jetson hardware in the loop
 
-> **TODO: partly tested.** `ports`, `psu`, `wait-ssh` and the DP712, USB and SSH facts below were checked on a JAJ on 2026-11-10, the flash steps on 2026-11-11, and the UEFI shell route into recovery on a PAB on 2026-11-17. `console` and the cold-boot loop have not been run against hardware. The first session that uses those must check them, fix what is wrong, and include those fixes and the removal of this notice in any PR produced with the skill's help.
+> **TODO: `console --cycle-psu` is untested.** The timed cold boot has not run against hardware, because the stations with a Jetson bench run a DP932A, which `psu` does not drive. The rest was checked: `ports`, `psu`, `wait-ssh` and the DP712, USB and SSH facts on a JAJ on 2026-11-10, the flash steps on 2026-11-11, the UEFI shell route into recovery on a PAB on 2026-11-17, and `console` on a PAB on 2026-11-18. The first session that runs `--cycle-psu` on a DP712 must check it, fix what is wrong, and include those fixes and the removal of this notice in any PR produced with the skill's help.
 
 `jetson_hil.py` (next to this file, needs pyserial) does the mechanics: `ports`, `psu`, `console` (with `--cycle-psu` for a timed cold boot), `wait-ssh`. Run it with `--help`.
 
@@ -14,7 +14,7 @@ description: Drive a Jetson carrier (PAB, JAJ, PAB_V3) on the bench — power it
 The bench changes between sessions and is shared. Ask the user, in one message:
 
 1. Carrier and module (PAB / JAJ / PAB_V3; Orin NX 16/8 GB, Nano 8/4 GB) and the image it runs.
-2. Supply: which (DP712?), the setpoint voltage and current limit, and **what else is on that output**. A cycle reboots everything it feeds.
+2. Supply: which (DP712, or a station's DP932A?), the setpoint voltage and current limit, and **what else is on that output**. A cycle reboots everything it feeds.
 3. Debug UART: is it wired, and which adapter?
 4. USB-C device port to this host: wired? It carries flashing and SSH at `192.168.55.1`.
 5. Ethernet: wired, and the Jetson's IP.

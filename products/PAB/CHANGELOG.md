@@ -1,5 +1,26 @@
 # Release Notes
 
+## 7.2.1.1 - 2026-11-23
+
+- Moved to JetPack 7.2.1 (L4T R39.2.1): Ubuntu 24.04 and Linux 6.8
+- ARK-OS v1.5.1, the release 6.2.2.9 ships, built for Ubuntu 24.04
+- PCIe interrupts from the NVMe, Wi-Fi and Ethernet go through the GIC and can run on any CPU, instead of all on CPU 0
+- The camera userspace is no longer pinned to the L4T 36.4.4 packages or held from `apt upgrade`: JetPack 7's own Argus stack relaunches cleanly
+- snapd is removed, along with the Firefox and Thunderbird launchers, which only installed their snaps
+
+## 6.2.2.9 - 2026-11-20
+
+- Added support for the FLIR Hadron 640R's EO camera through the ARK Hadron Adapter, with a jetson-io overlay for each of CAM0 to CAM3
+- Added support for the MIPI FLIR Boson+ through the ARK Boson Adapter, with a jetson-io overlay for each of CAM0 to CAM3
+- ARK-OS updated to v1.5.1: on modules with a hardware video encoder, the camera stream uses it instead of the CPU, and saving a config on the Services page no longer corrupts it
+- The ARK UI's Connections page loads in under a second and network stats update every 2 s. Both had waited 15 s on a Wi-Fi scan, which the radio cannot run while it hosts the hotspot
+- The unit no longer hangs when a UEFI variable is read or written, for example by `efibootmgr` or a bootloader update, while the firmware TPM is in use
+- jtop and the ARK UI's System page show the JetPack version: jetson-stats updated to 7.3.0
+- SSH no longer stays dead when power is cut in the first 30 s after the flash reports the first boot complete
+- `apt upgrade` no longer replaces the initrd, which carries the NVMe and PCIe modules the ARK kernel boots with
+- `apt upgrade` no longer fails in `nvidia-l4t-initrd`, which had left every later apt command failing too
+- rpcbind no longer listens on port 111
+
 ## 6.2.2.8 - 2026-10-30
 
 - The UEFI boot order is re-sorted on every boot with the NVMe first: a boot without the SSD detected no longer moves it to the end of the order, where the unit stopped in the UEFI shell instead of booting
